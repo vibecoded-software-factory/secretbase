@@ -240,6 +240,18 @@ re-implementing per screen** — that's what keeps the app coherent.
 - Don't add a surface that writes chat content to disk (beyond the
   user-chosen attachment download path) without an explicit ask.
 
+## Branching & PRs
+
+- The default / integration branch is **`dev`** — never commit directly
+  to it.
+- **One feature = one branch = one PR.** Branch off `dev` as
+  `feat/<short-slug>` (or `fix/` · `chore/` · `docs/`), implement +
+  verify, push, open a PR against `dev`, then **merge it** (squash,
+  `--delete-branch`) and `git checkout dev && git pull`. Keep PRs small
+  and focused on a single feature.
+- Remote is SSH (`git@github.com:vibecoded-software-factory/secretbase`);
+  push with `gh`/`git` over SSH.
+
 ## Commits
 
 - **Conventional Commits** prefix: `feat:` · `fix:` · `refactor:` ·
