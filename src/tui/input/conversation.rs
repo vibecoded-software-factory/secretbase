@@ -1,0 +1,158 @@
+//! Input handling for the conversation detail screen.
+//!
+//! Two interaction modes share the screen:
+//!
+//! * **Compose** (default) — every printable key extends the draft;
+//!   vertical arrows scroll messages; Enter sends.
+//! * **Select** — entered via `Alt+V` or via a message-action
+//!   shortcut. A cursor highlights one message; `e`/`d`/`:`/`p`
+//!   trigger edit / delete / react / pin; arrows move the cursor;
+//!   `i` / Enter / Esc return to Compose mode.
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use crate::tui::app::App;
+use crate::tui::flows::chat;
+use crate::tui::input::common;
+
+/// Queues a pagination fetch when the user has scrolled past the top
+/// of the currently-loaded history and more is available.
+fn maybe_queue_older(app: &mut App) {
+    if app.messages_scroll <= app.messages_max_back {
+        return;
+    }
+    if app.messages_next.is_none() || app.messages_loading_older {
+        app.messages_scroll = app.messages_max_back;
+        return;
+    }
+    app.messages_scroll = app.messages_max_back;
+    app.messages_loading_older = true;
+    chat::request_load_older_messages(app);
+}
+
+pub fn handle(app: &mut App, key: KeyEvent) {
+    if app.selected_msg_idx.is_some() {
+        return handle_select(app, key);
+    }
+    handle_compose(app, key);
+}
+
+fn handle_compose(app: &mut App, key: KeyEvent) {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+
+    match key.code {
+        // ── lifecycle ───────────────────────────────────────────────────
+        KeyCode::Esc => {
+            if app.edit_target_id.is_some() {
+                chat::cancel_edit(app);
+            } else if app.compose.is_empty() {
+                chat::close_conversation(app);
+            } else {
+                app.compose_clear();
+            }
+        }
+        KeyCode::Enter => {
+            if app.compose.text().trim().is_empty() {
+                app.set_action(crate::tui::action::ActionState::Error(
+                    "Message is empty".into(),
+                ));
+                return;
+            }
+            if app.edit_target_id.is_some() {
+                chat::request_save_edit(app);
+            } else {
+                chat::request_send_message(app);
+            }
+        }
+
+        // ── history viewport scroll ────────────────────────────────────
+        KeyCode::Up => {
+            app.messages_scroll = app.messages_scroll.saturating_add(1);
+            maybe_queue_older(app);
+        }
+        KeyCode::Down => app.messages_scroll = app.messages_scroll.saturating_sub(1),
+        KeyCode::PageUp => {
+            app.messages_scroll = app.messages_scroll.saturating_add(10);
+            maybe_queue_older(app);
+        }
+        KeyCode::PageDown => app.messages_scroll = app.messages_scroll.saturating_sub(10),
+
+        // ── Ctrl shortcuts (don't collide with printable text) ─────────
+        KeyCode::F(5) => chat::request_load_messages(app),
+        KeyCode::Char('r') if ctrl => chat::request_load_messages(app),
+        KeyCode::Char('y') if ctrl => chat::do_copy_conversation_label(app),
+
+        // ── Alt shortcuts — one-shot actions on the "latest of mine".
+        // These transiently select a message; `select_from_compose`
+        // marks the action as Compose-initiated so its popup's cancel
+        // path returns to Compose instead of stranding the user in
+        // Select mode.
+        KeyCode::Char('e') | KeyCode::Char('E') if alt => {
+            app.select_from_compose = true;
+            select_my_latest_message(app);
+            chat::open_edit_for_selected(app); // edit goes straight to Compose
+            app.select_from_compose = false;
+        }
+        KeyCode::Char('d') | KeyCode::Char('D') if alt => {
+            app.select_from_compose = true;
+            select_my_latest_message(app);
+            chat::open_delete_for_selected(app);
+        }
+        KeyCode::Char('j') | KeyCode::Char('J') if alt => {
+            app.select_from_compose = true;
+            select_latest_message(app);
+            chat::open_react_for_selected(app);
+        }
+        KeyCode::Char('p') | KeyCode::Char('P') if alt => {
+            select_latest_message(app);
+            chat::request_pin_selected_message(app);
+            // Pin has no popup; return to Compose immediately so the
+            // next keystroke isn't routed to Select mode (the reload in
+            // handle_pin_response also clears this).
+            app.selected_msg_idx = None;
+        }
+        KeyCode::Char('u') | KeyCode::Char('U') if alt => chat::request_unpin_conversation(app),
+        KeyCode::Char('v') | KeyCode::Char('V') if alt => chat::enter_select_mode(app),
+
+        // ── text input (cursor moves + edits) ──────────────────────────
+        _ => {
+            common::route_line_editor(&mut app.compose, key);
+        }
+    }
+}
+
+fn handle_select(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('i') | KeyCode::Enter => chat::leave_select_mode(app),
+        KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),
+        KeyCode::Down | KeyCode::Char('j') => chat::select_move_down(app),
+        KeyCode::Home | KeyCode::Char('g') => app.selected_msg_idx = Some(0),
+        KeyCode::End | KeyCode::Char('G') => {
+            app.selected_msg_idx = Some(app.messages.len().saturating_sub(1));
+        }
+        KeyCode::Char('e') => chat::open_edit_for_selected(app),
+        KeyCode::Char('d') => chat::open_delete_for_selected(app),
+        KeyCode::Char(':') => chat::open_react_for_selected(app),
+        KeyCode::Char('p') => chat::request_pin_selected_message(app),
+        KeyCode::Char('r') => chat::start_reply_for_selected(app),
+        KeyCode::Char('s') => chat::open_download_for_selected(app),
+        _ => {}
+    }
+}
+
+fn select_my_latest_message(app: &mut App) {
+    let me = app.identity.username.clone();
+    if me.is_empty() {
+        return;
+    }
+    if let Some(i) = app.messages.iter().rposition(|m| m.sender == me) {
+        app.selected_msg_idx = Some(i);
+    }
+}
+
+fn select_latest_message(app: &mut App) {
+    if !app.messages.is_empty() {
+        app.selected_msg_idx = Some(app.messages.len() - 1);
+    }
+}

@@ -1,0 +1,249 @@
+# CLI.md — Keybase command-line reference
+
+Mirror of the Keybase CLI docs at <https://book.keybase.io/docs/cli>
+(fetched 2026-06-26). **Read this before adding or editing any
+functionality** (see `CLAUDE.md`): secretbase is a wrapper over this
+binary, so every feature maps to a `keybase` command. When in doubt
+about exact syntax/flags, confirm against `keybase help <cmd>` on a real
+install — the built-in help is the authoritative source.
+
+> The page itself covers account / identity / device / crypto commands
+> plus Tor. The **JSON API** that secretbase actually drives
+> (`keybase chat api`, `keybase team api`, `keybase wallet api`) lives on
+> separate pages — see **Related** at the bottom.
+
+---
+
+## Overview
+
+The Keybase CLI provides cryptographic operations and identity
+verification. Consult the built-in help for any command:
+
+```sh
+keybase help
+keybase help follow
+keybase help pgp
+keybase help prove
+```
+
+## Account management
+
+| Command | Action |
+|---|---|
+| `keybase version` | Display the version number |
+| `keybase signup` | Create a new account |
+| `keybase login` | Authenticate an existing account (device provisioning) |
+| `keybase logout` | Log out the current device |
+| `keybase status` | Show session / device / login status (`--json` for machine-readable) |
+| `keybase help` | Access help documentation |
+
+## Identity proofs
+
+```sh
+keybase prove twitter
+keybase prove github
+keybase prove reddit
+keybase prove facebook
+keybase prove hackernews
+keybase prove https you.com   # prove a website via HTTPS
+keybase prove http  you.com   # prove a website without a certificate
+keybase prove dns   you.com   # prove ownership via a DNS entry
+```
+
+## User lookup & following
+
+```sh
+keybase id max                # verify a user's identity
+keybase id maxtaco@twitter    # look up by social proof
+keybase follow max            # publicly track a user's identity
+keybase follow maxtaco@reddit # follow by social proof
+```
+
+## Device & key management
+
+```sh
+keybase device list           # list all devices and paper keys
+keybase device remove [ID]    # revoke a device
+keybase device add            # provision a new device
+keybase paperkey              # generate a new paper key
+```
+
+Every device gets a unique key; paper keys function identically to device
+keys.
+
+## Cryptographic commands
+
+Flag conventions shared across the crypto verbs:
+
+| Flag | Meaning |
+|---|---|
+| `-m` | message argument (inline) |
+| `-i` | input file |
+| `-o` | output file |
+| `-b` | binary output format |
+
+### Encryption (Keybase-native, for Keybase users)
+
+```sh
+keybase encrypt max -m "message"                       # encrypt a message
+echo "secret" | keybase encrypt max                    # pipe input
+echo "secret" | keybase encrypt maxtaco@twitter        # via social proof
+keybase encrypt max -i ~/file.ext -o ~/file.encrypted  # encrypt a file
+```
+
+### Decryption
+
+```sh
+keybase decrypt -i file.encrypted -o file   # decrypt a file
+keybase decrypt -i encrypted.txt            # decrypt to stdout
+cat encrypted.txt | keybase decrypt         # stream decryption
+```
+
+### Signing
+
+```sh
+keybase sign -m "statement"                      # sign a message
+keybase sign -i file.exe -b -o file.exe.signed   # sign a binary file
+```
+
+### Verification
+
+```sh
+cat statement.txt | keybase verify       # verify a signed statement
+keybase verify -i file.signed -o file    # extract + verify
+```
+
+## PGP operations
+
+### PGP encryption
+
+```sh
+keybase pgp encrypt chris -m "secret"               # encrypt with a PGP key
+keybase pgp encrypt maxtaco@twitter -m "secret"     # via social identity
+keybase pgp encrypt chris -s -m "secret"            # encrypt AND sign
+keybase pgp encrypt chris -i file.txt               # encrypt file → .asc
+keybase pgp encrypt chris -i file.txt -o output.asc # custom output
+echo 'secret' | keybase pgp encrypt chris           # stream encryption
+```
+
+### PGP decryption
+
+```sh
+keybase pgp decrypt -i file.asc                 # decrypt to stdout
+keybase pgp decrypt -i file.asc -o file.txt     # decrypt to a file
+cat file.asc | keybase pgp decrypt              # stream decryption
+```
+
+### PGP signing
+
+```sh
+keybase pgp sign -m "Hello"                   # sign a message
+keybase pgp sign --clearsign -m "Hello"       # sign with visible content
+keybase pgp sign -i file.txt --detached       # separate signature
+keybase pgp sign -i file.txt                  # embedded signature
+echo "text" | keybase pgp sign                # stream signing
+```
+
+### PGP verification
+
+```sh
+keybase pgp verify -i file.asc               # verify a self-signed file
+keybase pgp verify -d file.asc -i file.txt   # verify with detached signature
+cat file.asc | keybase pgp verify            # stream verification
+```
+
+## Bitcoin
+
+```sh
+keybase btc 1p90X3byTONYhortonETC   # publish a bitcoin address to your profile
+```
+
+## Assertions (scripting)
+
+Assertions allow conditional encryption based on proof verification — the
+operation only proceeds if **all** specified proofs pass:
+
+```sh
+cat backup.sql | keybase pgp encrypt -o enc_backup.asc \
+  maria_2354@twitter+maria_booyeah@github+maria@keybase
+```
+
+---
+
+## Tor support
+
+> The Keybase **GUI does not support Tor**. For full application
+> anonymity, run inside a [Tails VM](https://tails.boum.org). Tor support
+> is in **alpha and unaudited** — the CLI warns: *"Tor support is in
+> alpha; please be careful and report any issues."*
+
+### Prerequisites
+
+A local Tor SOCKS proxy is required (see the Tor project docs for setup).
+
+### Enabling Tor mode
+
+Temporary (for one running service):
+
+```sh
+keybase ctl stop
+keybase --tor-mode=leaky|strict service
+```
+
+All commands in other terminals route through Tor while the service runs.
+
+Permanent (persisted in config; restart the service, GUI not running):
+
+```sh
+keybase config set tor.mode leaky
+keybase config set tor.mode strict
+```
+
+### Modes
+
+- **Leaky** — all traffic tunnels through Tor; the server still sees your
+  login credentials. Hides your IP from eavesdroppers; does **not**
+  protect against a server breach.
+- **Strict** — withholds user-identifying info from the server; profile
+  sync disabled; prevents correlation of lookups. Some commands are
+  unavailable (e.g. a fresh login). Example warning: *"Can't write
+  tracking statement to server in strict Tor mode."*
+
+### Tor hidden address
+
+The CLI uses Keybase's onion service internally by default, avoiding exit
+nodes:
+
+```
+http://keybase5wmilwokqirssclfnsqrjdsi7jdir5wy7y7iu3tanwmtp6oid.onion
+```
+
+### Limitations
+
+- DNS and HTTP proofs are unreliable over Tor (relay nodes can fabricate
+  responses).
+- Strict mode is currently broken (fix in progress).
+
+---
+
+## Related — the JSON API secretbase drives
+
+The chat/team/wallet **stdin/stdout JSON API** is what this app wraps. It
+is not on `/docs/cli`; reference it separately when touching chat/team
+features:
+
+- `keybase chat api`  — streaming JSON method calls (`list`, `read`,
+  `send`, `edit`, `delete`, `reaction`, `mark`, `searchinbox`, `newconv`,
+  `setstatus`, `pin`, `unpin`, `download`, …). See
+  <https://book.keybase.io/docs/chat/api>.
+- `keybase chat api-listen` — push notifications of new messages.
+- `keybase team api` — team JSON API (`list-self-memberships`,
+  `create-team`, `add-members`, `list-team-memberships`, …). See
+  <https://book.keybase.io/docs/teams/api>.
+- `keybase wallet api` — Stellar wallet JSON API.
+
+In-repo, every API call is built in `adapters/keybase_cli/codec.rs`, run
+over the persistent stream in `adapters/keybase_cli/session.rs` (one-shot
+fallback in there too), and parsed in `adapters/keybase_cli/{mod,json}.rs`.
+`status` / `logout` are not API-mode and run as one-shot `keybase`
+invocations.

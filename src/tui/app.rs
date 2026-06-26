@@ -1,0 +1,692 @@
+//! Global TUI state container.
+//!
+//! `App` owns the entire visible state of the TUI: which screen is
+//! active, which conversation is selected, the search query, the
+//! injected ports, etc. Sub-modules ([`flows`](crate::tui::flows),
+//! [`input`](crate::tui::input), [`view`](crate::tui::view)) read and
+//! mutate `App` through `&mut App`.
+
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::{Duration, Instant};
+
+use crate::domain::{
+    CONVERSATION_FILTERS, Conversation, ConversationFilter, IdentityInfo, InboxHit, LineEditor,
+    LoweredConversation, Message, TeamMembership, fuzzy_score_lowered,
+};
+use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
+use crate::tui::action::{ActionState, CmdEntry};
+use crate::tui::mouse_areas::MouseAreas;
+use crate::tui::screens::{Focus, Screen};
+use crate::tui::theme::{self, Theme};
+use crate::tui::worker::{InFlight, WorkerRequest, WorkerResponse};
+
+/// Maximum number of command-log entries kept in memory.
+pub const CMD_LOG_LIMIT: usize = 50;
+
+/// Number of rows the inbox list reserves before scrolling kicks in —
+/// used by PgUp/PgDn handlers to compute the right step size.
+pub const INBOX_VIEWPORT_ROWS: usize = 20;
+
+/// Step size in rows for PgUp/PgDn navigation.
+pub const PAGE_STEP: usize = 10;
+
+/// Top-level mutable state of the TUI.
+pub struct App {
+    // ── Screen / focus / filter ───────────────────────────────────────────
+    pub screen: Screen,
+    pub focus: Focus,
+    pub active_filter: ConversationFilter,
+
+    // ── Identity (from `keybase status --json`) ───────────────────────────
+    pub identity: IdentityInfo,
+
+    // ── Inbox data ────────────────────────────────────────────────────────
+    /// All conversations returned by `keybase chat api {"method":"list"}`.
+    pub conversations: Vec<Conversation>,
+    /// Pre-lowercased projection kept parallel to `conversations` so
+    /// search doesn't re-allocate on every keystroke.
+    pub conversations_lowered: Vec<LoweredConversation>,
+    /// Indices into `conversations` after filter + search are applied.
+    pub filtered_cache: Vec<usize>,
+    /// Per-filter count of matching conversations. Indexed by
+    /// position inside [`crate::domain::CONVERSATION_FILTERS`].
+    /// Precomputed at load time so the sidebar render path doesn't
+    /// scan `conversations` once per filter per frame.
+    pub filter_counts: [usize; CONVERSATION_FILTERS.len()],
+    /// Selected row inside `filtered_cache`. Reset on filter/search
+    /// changes.
+    pub list_selected: usize,
+    /// First visible row in the list — driven by scrolling.
+    pub list_scroll: usize,
+
+    /// Team memberships (from `keybase team api {"method":"list-self-memberships"}`).
+    pub teams: Vec<TeamMembership>,
+    /// Currently selected row inside [`Self::teams`].
+    pub teams_selected: usize,
+
+    // ── Conversation detail ──────────────────────────────────────────────
+    /// Conversation id currently open on the detail screen. `None`
+    /// while we're on the inbox screen.
+    pub open_conv_id: Option<String>,
+    /// Messages of the open conversation, in chronological order
+    /// (oldest first, latest last — keybase's read response is
+    /// newest-first, the flow reverses it).
+    pub messages: Vec<Message>,
+    /// First visible row in the detail view. The renderer pins the
+    /// "latest" line to the bottom of the panel by default; this
+    /// offset lets the user scroll back to read history.
+    pub messages_scroll: usize,
+    /// Cursor for the next *older* page of messages, supplied by the
+    /// Keybase service in the previous `read` reply. `None` once the
+    /// service signals it has reached the bottom of history.
+    pub messages_next: Option<String>,
+    /// Whether a pagination call is currently in flight — used to
+    /// debounce repeated Up-arrow presses while we wait for the next
+    /// older page to arrive.
+    pub messages_loading_older: bool,
+    /// The maximum bottom-relative scroll offset the view rendered on
+    /// the last frame. The input handler reads it to know when the
+    /// user has reached the top of loaded history (so it can trigger
+    /// a pagination fetch).
+    pub messages_max_back: usize,
+    /// Message id pinned in the open conversation, derived from the
+    /// most recent `Pin` system message in `messages`. `None` when
+    /// the conversation has no pin (or the pin event is older than
+    /// the loaded history).
+    pub pinned_msg_id: Option<u64>,
+
+    // ── Compose ──────────────────────────────────────────────────────────
+    /// Whether the compose pane is open (user is typing a new message).
+    pub compose_open: bool,
+    /// Current draft, held in the shared [`LineEditor`] so every text
+    /// input across the app edits identically (UTF-8-safe cursor,
+    /// mid-string editing).
+    pub compose: LineEditor,
+    /// If `Some`, the compose buffer is editing an existing message
+    /// instead of composing a new one. Submitting fires
+    /// `PendingAction::SaveEdit` against this id.
+    pub edit_target_id: Option<u64>,
+    /// If `Some`, the next send is a threaded reply to this message
+    /// id (the `reply_to` field of `keybase chat api send`). Cleared
+    /// after a successful send and whenever the draft is wiped.
+    pub reply_to_id: Option<u64>,
+
+    // ── Conversation-screen interaction mode ─────────────────────────────
+    /// Currently selected message inside the loaded history. `None`
+    /// when the user is in Compose mode (default). When `Some`, the
+    /// conversation screen is in [`ConvMode::Select`] and single-key
+    /// shortcuts (`e`/`d`/`:`/`p`) trigger message actions.
+    pub selected_msg_idx: Option<usize>,
+    /// Whether the current Select-mode action (react/delete popup) was
+    /// triggered from Compose via an `Alt+` shortcut. When `true`, the
+    /// popup's cancel path returns the user to Compose instead of
+    /// leaving them stuck in Select mode.
+    pub select_from_compose: bool,
+
+    /// Pending reaction draft when the user is typing a reaction emoji
+    /// shortcode. Separate from [`Self::compose`] so the conversation
+    /// message draft is preserved.
+    pub react: LineEditor,
+
+    // ── New-conversation popup ──────────────────────────────────────────
+    /// Comma-separated usernames typed by the user in the Alt+N popup.
+    pub new_conv: LineEditor,
+
+    // ── Server-side search popup ────────────────────────────────────────
+    /// Query box in the Ctrl+G popup.
+    pub search_global_input: LineEditor,
+    /// Hits returned by `searchinbox` for the last query.
+    pub search_global_results: Vec<InboxHit>,
+    /// Selected row inside [`Self::search_global_results`].
+    pub search_global_selected: usize,
+
+    // ── Attachment download popup ───────────────────────────────────────
+    /// Message id of the attachment currently being downloaded
+    /// (matches the row that opened the popup).
+    pub download_msg_id: Option<u64>,
+    /// Destination path being edited in the download popup.
+    pub download: LineEditor,
+
+    // ── Search ────────────────────────────────────────────────────────────
+    /// Incremental inbox filter box.
+    pub search: LineEditor,
+
+    // ── Help overlay ──────────────────────────────────────────────────────
+    /// Screen the help overlay was opened from — used to scope the help
+    /// content and to return there on close.
+    pub help_from: Screen,
+    /// Vertical scroll offset of the help overlay (rows). Clamped by the
+    /// renderer against the real content/viewport overflow.
+    pub help_scroll: u16,
+
+    // ── Confirm overlays (navigable y/n, jewel-style) ─────────────────────
+    /// Whether "confirm" is the highlighted button in the logout
+    /// overlay. Defaults to `false` (cancel highlighted) for the
+    /// destructive action.
+    pub logout_yes: bool,
+    /// Whether "confirm" is highlighted in the delete-message overlay.
+    pub delete_msg_yes: bool,
+
+    // ── Action queue / feedback strip ─────────────────────────────────────
+    pub action_state: ActionState,
+    pub action_tick: u8,
+    /// Caller-side context for the request the worker is currently
+    /// processing. `None` when idle. Set by `flows::*::request_*` and
+    /// cleared by [`crate::tui::flows::apply_response`] once the
+    /// matching response arrives.
+    pub in_flight: Option<InFlight>,
+    pub cmd_log: Vec<CmdEntry>,
+    /// Number of cmd-log lines scrolled UP from the bottom. `0` keeps
+    /// the latest entry pinned to the bottom-visible row; larger
+    /// values walk back through history. Resets to `0` on every new
+    /// `push_cmd` so the user always sees the freshest entry by
+    /// default.
+    pub cmd_log_scroll: usize,
+
+    // ── Settings / theme ──────────────────────────────────────────────────
+    pub settings_cache: UserSettings,
+    pub theme: Theme,
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+    pub should_quit: bool,
+    pub last_activity: Instant,
+    pub start_time: Instant,
+    /// Wall-clock timestamp of the last inbox load — used by the run
+    /// loop's auto-refresh hook.
+    pub last_inbox_load: Instant,
+
+    // ── Mouse ─────────────────────────────────────────────────────────────
+    pub mouse_areas: MouseAreas,
+    /// `(width, height)` of the terminal observed at the top of the
+    /// most recent run-loop iteration. Compared against
+    /// [`MouseAreas::frame_size`] to discard clicks whose
+    /// coordinates predate the latest resize.
+    pub last_terminal_size: (u16, u16),
+
+    // ── Worker channels (keybase lives in another thread) ─────────────────
+    /// Send half — `flows::*::request_*` push [`WorkerRequest`]s here.
+    pub worker_tx: Sender<WorkerRequest>,
+    /// Send half for the **background** lane (idle inbox auto-refresh)
+    /// so it never occupies the user's `in_flight` slot.
+    pub bg_worker_tx: Sender<WorkerRequest>,
+    /// Whether a background (silent) refresh is in flight. Tracked
+    /// separately from `in_flight` so `busy_blocks` never gates input
+    /// because of it.
+    pub bg_inflight: bool,
+    /// When the current user request was started (set by [`Self::begin`]),
+    /// used to time the operation for the command log.
+    pub request_started: Option<Instant>,
+    /// When the current background refresh was started.
+    pub bg_started: Option<Instant>,
+    /// Elapsed time of the just-completed operation, stamped onto the
+    /// next [`Self::push_cmd`] entry. Set by `flows::apply_response`
+    /// right before dispatching the response handler.
+    pub last_op_elapsed: Option<Duration>,
+    /// Receive half — the run loop polls this each tick.
+    pub worker_rx: Receiver<WorkerResponse>,
+
+    // ── Injected ports (synchronous, stay on the render thread) ───────────
+    pub clipboard: Box<dyn ClipboardPort>,
+    pub settings: Box<dyn SettingsPort>,
+}
+
+impl App {
+    /// Builds the initial state. The composition root (`main.rs`) is
+    /// the only intended caller.
+    ///
+    /// `worker_tx` / `worker_rx` are the two halves of the channel
+    /// pair owned by [`crate::tui::worker::WorkerHandle`]. App holds
+    /// the send half (used by `request_*` helpers) and the receive
+    /// half (drained by the run loop).
+    pub fn new(
+        worker_tx: Sender<WorkerRequest>,
+        bg_worker_tx: Sender<WorkerRequest>,
+        worker_rx: Receiver<WorkerResponse>,
+        clipboard: Box<dyn ClipboardPort>,
+        settings: Box<dyn SettingsPort>,
+    ) -> Self {
+        let settings_cache = settings.read();
+        let theme = theme::load(&settings.config_dir());
+        Self {
+            screen: Screen::Splash,
+            focus: Focus::List,
+            active_filter: ConversationFilter::All,
+            identity: IdentityInfo::default(),
+            conversations: Vec::new(),
+            conversations_lowered: Vec::new(),
+            filtered_cache: Vec::new(),
+            filter_counts: [0; CONVERSATION_FILTERS.len()],
+            list_selected: 0,
+            list_scroll: 0,
+            teams: Vec::new(),
+            teams_selected: 0,
+            open_conv_id: None,
+            messages: Vec::new(),
+            messages_scroll: 0,
+            messages_next: None,
+            messages_loading_older: false,
+            messages_max_back: 0,
+            pinned_msg_id: None,
+            compose_open: false,
+            compose: LineEditor::default(),
+            edit_target_id: None,
+            reply_to_id: None,
+            selected_msg_idx: None,
+            select_from_compose: false,
+            react: LineEditor::default(),
+            new_conv: LineEditor::default(),
+            search_global_input: LineEditor::default(),
+            search_global_results: Vec::new(),
+            search_global_selected: 0,
+            download_msg_id: None,
+            download: LineEditor::default(),
+            search: LineEditor::default(),
+            help_from: Screen::Inbox,
+            help_scroll: 0,
+            logout_yes: false,
+            delete_msg_yes: false,
+            action_state: ActionState::Idle,
+            action_tick: 0,
+            in_flight: None,
+            cmd_log: Vec::new(),
+            cmd_log_scroll: 0,
+            settings_cache,
+            theme,
+            should_quit: false,
+            last_activity: Instant::now(),
+            start_time: Instant::now(),
+            last_inbox_load: Instant::now(),
+            mouse_areas: MouseAreas::default(),
+            last_terminal_size: (0, 0),
+            worker_tx,
+            bg_worker_tx,
+            bg_inflight: false,
+            request_started: None,
+            bg_started: None,
+            last_op_elapsed: None,
+            worker_rx,
+            clipboard,
+            settings,
+        }
+    }
+
+    /// Convenience: whether the worker is currently processing a
+    /// request. Equivalent to `self.in_flight.is_some()`.
+    pub fn is_busy(&self) -> bool {
+        self.in_flight.is_some()
+    }
+
+    /// Starts a worker request: stamps `in_flight` with `slot` and
+    /// returns `true`. Refuses (returns `false`, leaving the current
+    /// request untouched) when one is already in flight — the
+    /// single-in-flight invariant the dispatcher relies on.
+    ///
+    /// Input is already gated while busy (`input::common::busy_blocks`),
+    /// but `begin` is the belt-and-suspenders guard against a
+    /// *programmatic* double-send (e.g. an auto-refresh racing an open)
+    /// silently overwriting `in_flight` and desynchronising the
+    /// `in_flight` ↔ response ordering — which surfaced as a "dispatch
+    /// mismatch". Every `request_*` flow uses this instead of assigning
+    /// `in_flight` directly.
+    pub fn begin(&mut self, slot: InFlight) -> bool {
+        if self.in_flight.is_some() {
+            self.push_cmd("worker request", false, "busy — request ignored");
+            return false;
+        }
+        self.in_flight = Some(slot);
+        self.request_started = Some(Instant::now());
+        true
+    }
+
+    /// Replaces the action state and resets the spinner tick counter so
+    /// the next animation frame starts from zero.
+    pub fn set_action(&mut self, state: ActionState) {
+        self.action_state = state;
+        self.action_tick = 0;
+    }
+
+    /// Increments the spinner animation tick. Wraps modulo 4 so the
+    /// renderer can index a 4-frame braille spinner without doing the
+    /// modulo itself.
+    pub fn tick_action(&mut self) {
+        self.action_tick = (self.action_tick + 1) % 4;
+    }
+
+    /// Pushes a new entry to the command log, trimming to
+    /// [`CMD_LOG_LIMIT`] from the front. Resets [`Self::cmd_log_scroll`]
+    /// so the user always sees the freshest entry after every action.
+    ///
+    /// Each entry is also mirrored to `~/.secretbase.log` when the
+    /// `SECRETBASE_DEBUG=1` env var is set, giving the user a
+    /// post-crash audit trail without changing the in-memory ring
+    /// buffer semantics. The file write is a no-op when the env var
+    /// is unset, so production runs pay nothing.
+    pub fn push_cmd(&mut self, cmd: impl Into<String>, ok: bool, detail: impl Into<String>) {
+        let cmd = cmd.into();
+        let detail = detail.into();
+        crate::tui::debug_log::log(&format!(
+            "cmd {} {cmd} | {detail}",
+            if ok { "ok" } else { "ERR" }
+        ));
+        let duration = self.last_op_elapsed.take();
+        self.cmd_log.push(CmdEntry {
+            cmd,
+            ok,
+            detail,
+            duration,
+        });
+        let over = self.cmd_log.len().saturating_sub(CMD_LOG_LIMIT);
+        if over > 0 {
+            self.cmd_log.drain(..over);
+        }
+        self.cmd_log_scroll = 0;
+    }
+
+    /// Updates `last_activity` to "now" — called on every keypress and
+    /// mouse event so any future auto-lock / inactivity timeout has a
+    /// fresh baseline.
+    pub fn reset_activity(&mut self) {
+        self.last_activity = Instant::now();
+    }
+
+    /// Rebuilds [`Self::conversations_lowered`] *and*
+    /// [`Self::filter_counts`] from [`Self::conversations`]. Called
+    /// once after every load — both caches feed the hot
+    /// rendering/search paths and stay valid as long as
+    /// `conversations` isn't mutated outside this function.
+    pub fn rebuild_lowered(&mut self) {
+        let me_owned = self.identity.username.clone();
+        let me = if me_owned.is_empty() {
+            None
+        } else {
+            Some(me_owned.as_str())
+        };
+        self.conversations_lowered = self
+            .conversations
+            .iter()
+            .map(|c| LoweredConversation::from(c, me))
+            .collect();
+
+        // Per-filter totals (5 filters × N convs = one O(N) pass each
+        // — vs an O(F·N) scan at render time).
+        let mut counts = [0usize; CONVERSATION_FILTERS.len()];
+        for (idx, f) in CONVERSATION_FILTERS.iter().enumerate() {
+            counts[idx] = self.conversations.iter().filter(|c| f.matches(c)).count();
+        }
+        self.filter_counts = counts;
+    }
+
+    /// Recomputes [`Self::pinned_msg_id`] by scanning the loaded
+    /// history for the most recent `Pin` system message. Called once
+    /// after every load — pinning/unpinning emits a system message
+    /// itself, so a fresh read is enough to keep the indicator
+    /// accurate.
+    pub fn rebuild_pinned(&mut self) {
+        use crate::domain::MessageContent;
+        // The first `Pin` event walking newest → oldest is
+        // authoritative. A `target_id == 0` event (which Keybase uses
+        // for "pin cleared") wins over older "pin set" events.
+        self.pinned_msg_id = None;
+        for m in self.messages.iter().rev() {
+            if let MessageContent::Pin { target_id } = &m.content {
+                self.pinned_msg_id = if *target_id == 0 {
+                    None
+                } else {
+                    Some(*target_id)
+                };
+                return;
+            }
+        }
+    }
+
+    /// Clamps [`Self::list_selected`] into the bounds of
+    /// [`Self::filtered_cache`]. Idempotent — when state is already
+    /// synced (the common case post-[`rebuild_filter`]) this is a
+    /// no-op.
+    ///
+    /// Called defensively from the inbox renderer so a code path
+    /// that mutates `conversations` *without* refreshing the filter
+    /// (e.g. an isolated `unread = false` flip from
+    /// `handle_mark_read_response`) cannot leave the cursor pointing
+    /// past the end of the filtered list. The render used to clamp
+    /// inline but discarded the result, which meant the indicator
+    /// strip ("N of M") could show `81 of 5` until something else
+    /// triggered a rebuild. Now both stay consistent.
+    pub fn clamp_list_selected(&mut self) {
+        if self.filtered_cache.is_empty() {
+            self.list_selected = 0;
+        } else if self.list_selected >= self.filtered_cache.len() {
+            self.list_selected = self.filtered_cache.len() - 1;
+        }
+    }
+
+    /// Rebuilds [`Self::filtered_cache`] from the current filter +
+    /// search query.
+    pub fn rebuild_filter(&mut self) {
+        let query_lc = self.search.text().to_lowercase();
+        let mut indices: Vec<usize> = Vec::new();
+        for (idx, conv) in self.conversations.iter().enumerate() {
+            if !self.active_filter.matches(conv) {
+                continue;
+            }
+            if !query_lc.is_empty() {
+                let l = &self.conversations_lowered[idx];
+                if fuzzy_score_lowered(l, &query_lc) == 0 {
+                    continue;
+                }
+            }
+            indices.push(idx);
+        }
+        // Most-recent first — `active_at_ms` is monotonically growing.
+        indices.sort_by_key(|&i| std::cmp::Reverse(self.conversations[i].active_at_ms));
+        self.filtered_cache = indices;
+        if self.list_selected >= self.filtered_cache.len() {
+            self.list_selected = self.filtered_cache.len().saturating_sub(1);
+        }
+    }
+
+    /// Convenience: returns the currently selected conversation, if
+    /// the list is non-empty.
+    pub fn selected_conversation(&self) -> Option<&Conversation> {
+        self.filtered_cache
+            .get(self.list_selected)
+            .and_then(|&i| self.conversations.get(i))
+    }
+
+    /// Counts how many conversations match a given filter. Reads from
+    /// [`Self::filter_counts`] which is precomputed at load time so
+    /// the sidebar renderer pays O(1) per filter per frame.
+    pub fn count_for(&self, filter: &ConversationFilter) -> usize {
+        CONVERSATION_FILTERS
+            .iter()
+            .position(|f| f == filter)
+            .and_then(|idx| self.filter_counts.get(idx).copied())
+            .unwrap_or(0)
+    }
+
+    /// Total number of conversations flagged as unread. Surfaced in
+    /// the status panel of every screen so the user always knows if
+    /// there is something to attend to.
+    pub fn unread_total(&self) -> usize {
+        self.conversations.iter().filter(|c| c.unread).count()
+    }
+
+    /// Clears the compose buffer and resets the cursor. Called after
+    /// a successful send and whenever the compose pane is dismissed.
+    /// Also drops the in-flight `reply_to_id` (the reply context is
+    /// tied to the draft).
+    pub fn compose_clear(&mut self) {
+        self.compose.clear();
+        self.reply_to_id = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::mpsc::channel;
+
+    use super::*;
+    use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
+
+    struct FakeClipboard;
+    impl ClipboardPort for FakeClipboard {
+        fn write(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct FakeSettings;
+    impl SettingsPort for FakeSettings {
+        fn read(&self) -> UserSettings {
+            UserSettings::default()
+        }
+        fn write_auto_mark_read(&self, _: bool) {}
+        fn write_clipboard_clear_secs(&self, _: u64) {}
+        fn config_dir(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
+    }
+
+    /// Builds an [`App`] with dangling worker channels — the tests in
+    /// this module only exercise pure state helpers (`compose_*`,
+    /// `rebuild_*`, …) and never send a [`WorkerRequest`]. The flow
+    /// tests that drive the worker live in `flows/chat/tests.rs`.
+    fn fresh_app() -> App {
+        let (req_tx, _req_rx) = channel::<WorkerRequest>();
+        let (bg_tx, _bg_rx) = channel::<WorkerRequest>();
+        let (_resp_tx, resp_rx) = channel::<WorkerResponse>();
+        App::new(
+            req_tx,
+            bg_tx,
+            resp_rx,
+            Box::new(FakeClipboard),
+            Box::new(FakeSettings),
+        )
+    }
+
+    #[test]
+    fn compose_insert_advances_cursor() {
+        let mut app = fresh_app();
+        app.compose.insert('h');
+        app.compose.insert('i');
+        assert_eq!(app.compose.text(), "hi");
+        assert_eq!(app.compose.cursor(), 2);
+    }
+
+    #[test]
+    fn compose_insert_in_middle() {
+        let mut app = fresh_app();
+        app.compose.insert('a');
+        app.compose.insert('c');
+        app.compose.left();
+        app.compose.insert('b');
+        assert_eq!(app.compose.text(), "abc");
+        assert_eq!(app.compose.cursor(), 2);
+    }
+
+    #[test]
+    fn compose_backspace_removes_left_of_cursor() {
+        let mut app = fresh_app();
+        app.compose.insert('h');
+        app.compose.insert('i');
+        app.compose.backspace();
+        assert_eq!(app.compose.text(), "h");
+        assert_eq!(app.compose.cursor(), 1);
+    }
+
+    #[test]
+    fn compose_backspace_at_start_is_noop() {
+        let mut app = fresh_app();
+        app.compose.backspace();
+        assert_eq!(app.compose.text(), "");
+        assert_eq!(app.compose.cursor(), 0);
+    }
+
+    #[test]
+    fn compose_home_end_jumps() {
+        let mut app = fresh_app();
+        for c in "hello".chars() {
+            app.compose.insert(c);
+        }
+        app.compose.home();
+        assert_eq!(app.compose.cursor(), 0);
+        app.compose.end();
+        assert_eq!(app.compose.cursor(), 5);
+    }
+
+    #[test]
+    fn clamp_list_selected_persists_clamp_when_stale() {
+        let mut app = fresh_app();
+        // Simulate: filter just shrank from 100 entries to 3, but
+        // list_selected was pointing to row 80 before the shrink.
+        // Without persistence the indicator would have read
+        // "81 of 3" and the next move-up would have misbehaved.
+        app.filtered_cache = vec![0, 1, 2];
+        app.list_selected = 80;
+        app.clamp_list_selected();
+        assert_eq!(
+            app.list_selected, 2,
+            "clamp must persist to last valid index"
+        );
+    }
+
+    #[test]
+    fn clamp_list_selected_zeroes_when_filter_is_empty() {
+        let mut app = fresh_app();
+        app.filtered_cache.clear();
+        app.list_selected = 42;
+        app.clamp_list_selected();
+        assert_eq!(app.list_selected, 0, "empty filter → cursor parks at 0");
+    }
+
+    #[test]
+    fn clamp_list_selected_is_a_noop_when_in_range() {
+        let mut app = fresh_app();
+        app.filtered_cache = vec![0, 1, 2, 3, 4];
+        app.list_selected = 2;
+        app.clamp_list_selected();
+        assert_eq!(app.list_selected, 2, "in-range index untouched");
+    }
+
+    #[test]
+    fn compose_handles_multibyte_characters() {
+        let mut app = fresh_app();
+        // 'á' is 2 bytes; the editor keeps the cursor on a char boundary.
+        app.compose.insert('á');
+        app.compose.insert('!');
+        assert_eq!(app.compose.text(), "á!");
+        app.compose.left();
+        app.compose.backspace();
+        assert_eq!(app.compose.text(), "!");
+    }
+
+    #[test]
+    fn compose_clear_resets_state() {
+        let mut app = fresh_app();
+        app.compose.set("draft");
+        app.reply_to_id = Some(7);
+        app.compose_clear();
+        assert_eq!(app.compose.text(), "");
+        assert_eq!(app.compose.cursor(), 0);
+        assert_eq!(app.reply_to_id, None);
+    }
+
+    #[test]
+    fn begin_enforces_single_in_flight() {
+        let mut app = fresh_app();
+        // First request starts and claims the slot.
+        assert!(app.begin(InFlight::LoadMessages));
+        assert!(app.is_busy());
+        // A second request while one is in flight is refused, and the
+        // original slot is left untouched — this is what prevents the
+        // `in_flight` ↔ response desync that surfaced as a "dispatch
+        // mismatch" when two requests raced.
+        assert!(!app.begin(InFlight::LoadInbox));
+        assert!(matches!(app.in_flight, Some(InFlight::LoadMessages)));
+        // Once the slot is freed (response handled), a new request runs.
+        app.in_flight = None;
+        assert!(app.begin(InFlight::LoadInbox));
+        assert!(matches!(app.in_flight, Some(InFlight::LoadInbox)));
+    }
+}

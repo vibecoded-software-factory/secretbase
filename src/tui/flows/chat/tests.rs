@@ -1,0 +1,2109 @@
+//! Tests for the chat flow surface.
+//!
+//! Each test drives the request/response cycle end-to-end:
+//!
+//! 1. Build an `App` whose worker thread holds a [`MockKeybase`].
+//! 2. Call a `request_*` function. The mock records the call and
+//!    queues a (pre-baked) response.
+//! 3. Call [`pump_until_idle`] (or [`pump_one`] when an intermediate
+//!    state assertion is needed). Each `recv` dispatches through
+//!    [`apply_response`].
+//! 4. Assert app state and / or mock-recorded calls.
+
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use zeroize::Zeroizing;
+
+use crate::domain::{
+    AttachmentInfo, Channel, Conversation, IdentityInfo, InboxHit, MemberStatus, MembersType,
+    Message, MessageContent, TeamMembership, TopicType,
+};
+use crate::ports::KeybaseError;
+use crate::ports::keybase::{
+    KeybasePort, ListConversationsOk, ListTeamsOk, ParallelSessionData, ReadChannel,
+};
+use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
+use crate::tui::action::ActionState;
+use crate::tui::app::App;
+use crate::tui::flows::{apply_response, chat::*};
+use crate::tui::screens::Screen;
+use crate::tui::worker::{InFlight, WorkerHandle};
+
+// ── Mocks ─────────────────────────────────────────────────────────────
+
+/// Recording state shared between the test and the
+/// worker-thread-owned [`MockKeybase`]. `Arc<Mutex<>>` because the
+/// mock has to be `Send` to cross into the worker.
+#[derive(Default)]
+struct MockState {
+    // Pre-baked responses.
+    conversations: Vec<Conversation>,
+    /// Diagnostics returned alongside `conversations` to simulate a
+    /// partial parse failure in the adapter.
+    conversations_skipped: Vec<String>,
+    messages: Vec<Message>,
+    messages_next: Option<String>,
+    teams: Vec<TeamMembership>,
+    /// Diagnostics returned alongside `teams` (partial parse failure).
+    teams_skipped: Vec<String>,
+    search_hits: Vec<InboxHit>,
+    status: IdentityInfo,
+    new_conv_id: String,
+    // Call recording.
+    sent: Vec<(String, String, Option<u64>)>,
+    edits: Vec<(u64, String)>,
+    deletes: Vec<u64>,
+    reactions: Vec<(u64, String)>,
+    new_convs: Vec<String>,
+    statuses: Vec<(String, String)>,
+    pins: Vec<u64>,
+    unpins: usize,
+    downloads: Vec<(u64, String)>,
+    mark_reads: Vec<u64>,
+    read_calls: Vec<Option<String>>,
+    /// Next adapter call returning a Result returns this error then
+    /// clears the slot.
+    fail_next: Option<KeybaseError>,
+}
+
+#[derive(Default, Clone)]
+struct MockKeybase(Arc<Mutex<MockState>>);
+
+impl MockKeybase {
+    fn st(&self) -> std::sync::MutexGuard<'_, MockState> {
+        self.0.lock().unwrap()
+    }
+}
+
+impl KeybasePort for MockKeybase {
+    fn status(&mut self) -> Result<IdentityInfo, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(s.status.clone())
+    }
+    fn logout(&mut self) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(())
+    }
+    fn list_conversations(&mut self) -> Result<ListConversationsOk, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(ListConversationsOk {
+            conversations: s.conversations.clone(),
+            skipped: s.conversations_skipped.clone(),
+        })
+    }
+    fn read_messages(
+        &mut self,
+        _channel: &ReadChannel,
+        _num: u32,
+        _peek: bool,
+        next: Option<&str>,
+    ) -> Result<(Vec<Message>, Option<String>), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.read_calls.push(next.map(str::to_string));
+        Ok((s.messages.clone(), s.messages_next.clone()))
+    }
+    fn read_conversation_json(
+        &mut self,
+        _: &ReadChannel,
+        _: u32,
+    ) -> Result<Zeroizing<String>, KeybaseError> {
+        Ok(Zeroizing::new(String::new()))
+    }
+    fn mark_read(&mut self, _: &ReadChannel, id: u64) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.mark_reads.push(id);
+        Ok(())
+    }
+    fn search_inbox(&mut self, _: &str, _: u32) -> Result<Zeroizing<String>, KeybaseError> {
+        Ok(Zeroizing::new(String::new()))
+    }
+    fn search_inbox_hits(&mut self, _: &str, _: u32) -> Result<Vec<InboxHit>, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(s.search_hits.clone())
+    }
+    fn send_message(
+        &mut self,
+        channel: &ReadChannel,
+        body: &str,
+        reply_to: Option<u64>,
+    ) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.sent
+            .push((channel.name.clone(), body.to_string(), reply_to));
+        Ok(())
+    }
+    fn edit_message(&mut self, _: &ReadChannel, id: u64, body: &str) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.edits.push((id, body.to_string()));
+        Ok(())
+    }
+    fn delete_message(&mut self, _: &ReadChannel, id: u64) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.deletes.push(id);
+        Ok(())
+    }
+    fn react(&mut self, _: &ReadChannel, id: u64, body: &str) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.reactions.push((id, body.to_string()));
+        Ok(())
+    }
+    fn new_conversation(&mut self, channel: &ReadChannel) -> Result<String, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.new_convs.push(channel.name.clone());
+        Ok(s.new_conv_id.clone())
+    }
+    fn set_conversation_status(
+        &mut self,
+        channel: &ReadChannel,
+        status: &str,
+    ) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.statuses.push((channel.name.clone(), status.to_string()));
+        Ok(())
+    }
+    fn pin_message(&mut self, _: &ReadChannel, id: u64) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.pins.push(id);
+        Ok(())
+    }
+    fn unpin_message(&mut self, _: &ReadChannel) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.unpins += 1;
+        Ok(())
+    }
+    fn download_attachment(
+        &mut self,
+        _: &ReadChannel,
+        id: u64,
+        output: &str,
+    ) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.downloads.push((id, output.to_string()));
+        Ok(())
+    }
+    fn list_self_memberships(&mut self) -> Result<ListTeamsOk, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(ListTeamsOk {
+            teams: s.teams.clone(),
+            skipped: s.teams_skipped.clone(),
+        })
+    }
+    fn create_team(&mut self, _: &str) -> Result<(), KeybaseError> {
+        Ok(())
+    }
+    fn leave_team(&mut self, _: &str, _: bool) -> Result<(), KeybaseError> {
+        Ok(())
+    }
+    fn parallel_session_data(&mut self) -> ParallelSessionData {
+        let s = self.0.lock().unwrap();
+        ParallelSessionData {
+            teams: Ok(ListTeamsOk {
+                teams: s.teams.clone(),
+                skipped: s.teams_skipped.clone(),
+            }),
+        }
+    }
+}
+
+struct FakeClipboard;
+impl ClipboardPort for FakeClipboard {
+    fn write(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+struct FakeSettings;
+impl SettingsPort for FakeSettings {
+    fn read(&self) -> UserSettings {
+        UserSettings::default()
+    }
+    fn write_auto_mark_read(&self, _: bool) {}
+    fn write_clipboard_clear_secs(&self, _: u64) {}
+    fn config_dir(&self) -> PathBuf {
+        PathBuf::from(".")
+    }
+}
+
+// ── Test rig ───────────────────────────────────────────────────────────
+
+/// Bundle returned by [`build_app`] — owns the worker handle so it
+/// stays alive for the test scope and is dropped (joined) at the end.
+struct Rig {
+    app: App,
+    mock: MockKeybase,
+    /// Kept in scope to reap the worker thread on drop.
+    _worker: WorkerHandle,
+}
+
+/// Builds a fresh [`App`] backed by a worker thread that owns the
+/// [`MockKeybase`]. Returns a [`Rig`] holding both ends so tests
+/// can poke the mock state and drive the worker.
+fn build_rig() -> Rig {
+    let mock = MockKeybase::default();
+    let port: Box<dyn KeybasePort + Send> = Box::new(mock.clone());
+    let mut worker = WorkerHandle::spawn(port);
+    let tx = worker.tx();
+    let bg_tx = worker.spawn_extra(Box::new(mock.clone()));
+    let rx = worker.take_rx();
+    let app = App::new(
+        tx,
+        bg_tx,
+        rx,
+        Box::new(FakeClipboard),
+        Box::new(FakeSettings),
+    );
+    Rig {
+        app,
+        mock,
+        _worker: worker,
+    }
+}
+
+/// Drains one worker response (blocks if none has arrived yet) and
+/// dispatches it through [`apply_response`]. Use when you need to
+/// inspect intermediate state between two chained requests.
+fn pump_one(app: &mut App) {
+    let resp = app
+        .worker_rx
+        .recv()
+        .expect("worker thread died before response");
+    apply_response(app, resp);
+}
+
+/// Loops [`pump_one`] until the in-flight slot is empty. Handles
+/// chained requests (e.g. send-message → load-messages) by recursing
+/// into each follow-up response.
+fn pump_until_idle(app: &mut App) {
+    while app.in_flight.is_some() {
+        pump_one(app);
+    }
+}
+
+fn conv(id: &str, name: &str, members: MembersType) -> Conversation {
+    Conversation {
+        id: id.into(),
+        channel: Channel {
+            name: name.into(),
+            members_type: members,
+            topic_type: TopicType::Chat,
+            topic_name: None,
+            public: false,
+        },
+        is_default_conv: true,
+        unread: false,
+        active_at: 0,
+        active_at_ms: 0,
+        member_status: MemberStatus::Active,
+        creator_info: None,
+    }
+}
+
+fn text_msg(id: u64, sender: &str, body: &str) -> Message {
+    Message {
+        id,
+        sender: sender.into(),
+        device: "test".into(),
+        sent_at: 0,
+        sent_at_ms: 0,
+        content: MessageContent::Text(body.into()),
+        reactions: Vec::new(),
+    }
+}
+
+fn set_identity(app: &mut App, username: &str) {
+    let mut info = IdentityInfo::default();
+    info.username = username.into();
+    info.logged_in = true;
+    app.identity = info;
+}
+
+/// Pre-loads the inbox synchronously (via `request_load_inbox` +
+/// `pump_until_idle`) and points `open_conv_id` at `target`.
+fn preload_inbox(app: &mut App, mock: &MockKeybase, convs: Vec<Conversation>, target: &str) {
+    mock.st().conversations = convs;
+    request_load_inbox(app);
+    pump_until_idle(app);
+    app.open_conv_id = Some(target.into());
+}
+
+// ── do_load_inbox → request_load_inbox ───────────────────────────────
+
+#[test]
+fn load_inbox_populates_conversations_and_rebuilds_filter() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![
+        conv("c1", "alice,bob", MembersType::ImpTeamNative),
+        conv("c2", "team1", MembersType::Team),
+    ];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.conversations.len(), 2);
+    assert_eq!(rig.app.filtered_cache.len(), 2);
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+}
+
+#[test]
+fn load_inbox_surfaces_errors() {
+    let mut rig = build_rig();
+    rig.mock.st().fail_next = Some(KeybaseError::api_message("api error"));
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert!(rig.app.conversations.is_empty());
+    assert!(
+        matches!(&rig.app.action_state, ActionState::Error(s) if s == "api error"),
+        "got {:?}",
+        rig.app.action_state
+    );
+}
+
+#[test]
+fn silent_load_inbox_leaves_action_state_idle_on_success() {
+    // Auto-refresh contract: a successful silent refresh must NOT
+    // flash a "Loaded N" banner — the user is reading the inbox and
+    // does not need to be interrupted every `inbox_refresh_secs`.
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox_silent(&mut rig.app);
+    // Silent refresh runs on the background lane (bg_inflight, not the
+    // user's in_flight slot), so drain its single response directly.
+    assert!(rig.app.bg_inflight);
+    pump_one(&mut rig.app);
+    assert!(!rig.app.bg_inflight);
+    assert!(matches!(rig.app.action_state, ActionState::Idle));
+    assert_eq!(rig.app.conversations.len(), 1);
+    // cmd_log entry is written either way — the user can still
+    // audit the refresh history if curious.
+    assert!(
+        rig.app
+            .cmd_log
+            .iter()
+            .any(|e| e.ok && e.cmd == "keybase chat api list"),
+        "successful refresh must leave a cmd_log entry"
+    );
+}
+
+#[test]
+fn silent_load_inbox_still_flashes_error_on_failure() {
+    // The other half of the contract: silent ≠ swallow. A network
+    // blip surfaces an Error banner so the user notices a wedged
+    // refresh rather than slowly accumulating a stale inbox.
+    let mut rig = build_rig();
+    rig.mock.st().fail_next = Some(KeybaseError::api_message("net down"));
+    request_load_inbox_silent(&mut rig.app);
+    pump_one(&mut rig.app);
+    assert!(!rig.app.bg_inflight);
+    match &rig.app.action_state {
+        ActionState::Error(s) => assert_eq!(s, "net down"),
+        other => panic!("expected Error, got {other:?}"),
+    }
+}
+
+#[test]
+fn load_inbox_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
+    let mut rig = build_rig();
+    // Two healthy rows + a synthetic "skipped" diagnostic — what
+    // the adapter would emit if one row failed to decode.
+    rig.mock.st().conversations = vec![
+        conv("c1", "alice,bob", MembersType::ImpTeamNative),
+        conv("c2", "team1", MembersType::Team),
+    ];
+    rig.mock.st().conversations_skipped = vec!["conversation #2: missing id".to_string()];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Good rows must load — the bad one must not block them.
+    assert_eq!(rig.app.conversations.len(), 2);
+    assert_eq!(rig.app.filtered_cache.len(), 2);
+    // The feedback strip stays Done (load succeeded) but mentions
+    // the count of skipped rows.
+    match &rig.app.action_state {
+        ActionState::Done(s) => assert!(
+            s.contains("1 skipped"),
+            "feedback should mention skipped count, got: {s}"
+        ),
+        other => panic!("expected Done, got {other:?}"),
+    }
+    // The cmd log must contain the per-row diagnostic so the user
+    // can see *what* failed.
+    let log_has_diag = rig
+        .app
+        .cmd_log
+        .iter()
+        .any(|e| !e.ok && e.detail.contains("conversation #2"));
+    assert!(
+        log_has_diag,
+        "expected diag in cmd_log: {:?}",
+        rig.app.cmd_log
+    );
+}
+
+// ── do_load_messages → request_load_messages ─────────────────────────
+
+#[test]
+fn load_messages_reverses_to_chronological_and_pins_to_bottom() {
+    let mut rig = build_rig();
+    rig.mock.st().messages = vec![
+        text_msg(3, "me", "third"),
+        text_msg(2, "me", "second"),
+        text_msg(1, "me", "first"),
+    ];
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.messages.len(), 3);
+    assert_eq!(rig.app.messages[0].id, 1);
+    assert_eq!(rig.app.messages[2].id, 3);
+    assert_eq!(rig.app.messages_scroll, 0);
+}
+
+#[test]
+fn load_messages_remembers_next_cursor() {
+    let mut rig = build_rig();
+    rig.mock.st().messages = vec![text_msg(1, "me", "x")];
+    rig.mock.st().messages_next = Some("WX==".into());
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.messages_next.as_deref(), Some("WX=="));
+}
+
+#[test]
+fn load_messages_without_open_conv_id_errors() {
+    let mut rig = build_rig();
+    request_load_messages(&mut rig.app);
+    // No worker request was queued; nothing to pump.
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+// ── do_load_older_messages → request_load_older_messages ─────────────
+
+#[test]
+fn load_older_messages_prepends_in_chronological_order() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(4, "me", "fourth"), text_msg(5, "me", "fifth")];
+    rig.app.messages_next = Some("CURSOR-A".into());
+
+    rig.mock.st().messages = vec![
+        text_msg(3, "me", "third"),
+        text_msg(2, "me", "second"),
+        text_msg(1, "me", "first"),
+    ];
+    rig.mock.st().messages_next = Some("CURSOR-B".into());
+
+    request_load_older_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+
+    let ids: Vec<u64> = rig.app.messages.iter().map(|m| m.id).collect();
+    assert_eq!(ids, vec![1, 2, 3, 4, 5], "got {ids:?}");
+    assert_eq!(rig.app.messages_next.as_deref(), Some("CURSOR-B"));
+    assert!(!rig.app.messages_loading_older);
+    // The adapter must have been called with the original cursor.
+    assert_eq!(
+        rig.mock.st().read_calls.last().cloned(),
+        Some(Some("CURSOR-A".into()))
+    );
+}
+
+#[test]
+fn load_older_messages_no_op_when_cursor_is_none() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(1, "me", "x")];
+    rig.app.messages_next = None;
+    request_load_older_messages(&mut rig.app);
+    // No worker request queued — pump must not block.
+    assert!(rig.app.in_flight.is_none());
+    assert_eq!(rig.app.messages.len(), 1, "messages must not change");
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+}
+
+// ── do_send_message → request_send_message ───────────────────────────
+
+#[test]
+fn send_message_rejects_empty_buffer() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.compose.clear();
+    request_send_message(&mut rig.app);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.mock.st().sent.is_empty());
+}
+
+#[test]
+fn send_message_failure_preserves_draft_and_reply_context() {
+    // Regression guard: a transient network failure must not eat the
+    // user's typed message. They retry by hitting Enter again. The
+    // sync code (pre-worker-thread refactor) had this property; the
+    // async port lost it briefly because the buffer was cleared
+    // before the worker call, then was restored to clear-on-success-
+    // only.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.reply_to_id = Some(42);
+    rig.app.compose.set("important draft");
+    rig.mock.st().fail_next = Some(KeybaseError::api_message("network unreachable"));
+    request_send_message(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Draft + reply context preserved so the user can retry.
+    assert_eq!(rig.app.compose.text(), "important draft");
+    assert_eq!(rig.app.reply_to_id, Some(42));
+    // Error visible on the feedback strip.
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+#[test]
+fn send_message_clears_buffer_records_call_and_queues_reload() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.compose.set("hola");
+    request_send_message(&mut rig.app);
+    // After the send completes the handler chains a load-messages.
+    // pump_one ⇒ send-response applied; in_flight should now hold
+    // LoadMessages.
+    pump_one(&mut rig.app);
+    assert!(rig.app.compose.is_empty());
+    assert!(matches!(rig.app.in_flight, Some(InFlight::LoadMessages)));
+    let st = rig.mock.st();
+    assert_eq!(st.sent.len(), 1);
+    assert_eq!(st.sent[0].1, "hola");
+}
+
+// ── do_save_edit → request_save_edit ─────────────────────────────────
+
+#[test]
+fn save_edit_requires_target_id() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.compose.set("x");
+    rig.app.edit_target_id = None;
+    request_save_edit(&mut rig.app);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.mock.st().edits.is_empty());
+}
+
+#[test]
+fn save_edit_failure_preserves_buffer_and_target() {
+    // Symmetry with `send_message_failure_preserves_draft_*`:
+    // a failed edit must keep `compose_buffer` and `edit_target_id`
+    // intact so the user can retry without re-typing the body or
+    // re-selecting the target message.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.compose.set("corrected body");
+    rig.app.edit_target_id = Some(99);
+    rig.mock.st().fail_next = Some(KeybaseError::api_message("server rejected"));
+    request_save_edit(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.compose.text(), "corrected body");
+    assert_eq!(rig.app.edit_target_id, Some(99));
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+#[test]
+fn save_edit_calls_adapter_clears_buffer_and_target() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.compose.set("fixed");
+    rig.app.edit_target_id = Some(42);
+    request_save_edit(&mut rig.app);
+    pump_one(&mut rig.app);
+    assert!(rig.app.compose.is_empty());
+    assert!(rig.app.edit_target_id.is_none());
+    let st = rig.mock.st();
+    assert_eq!(st.edits, vec![(42, "fixed".to_string())]);
+    drop(st);
+    assert!(matches!(rig.app.in_flight, Some(InFlight::LoadMessages)));
+}
+
+// ── do_delete_selected_message → request_delete_selected_message ─────
+
+#[test]
+fn delete_selected_calls_adapter_with_correct_id() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(7, "me", "doomed")];
+    rig.app.selected_msg_idx = Some(0);
+    request_delete_selected_message(&mut rig.app);
+    pump_one(&mut rig.app);
+    assert_eq!(rig.mock.st().deletes, vec![7]);
+    assert!(rig.app.selected_msg_idx.is_none());
+}
+
+// ── do_send_reaction → request_send_reaction ─────────────────────────
+
+#[test]
+fn react_rejects_empty_body() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(5, "me", "x")];
+    rig.app.selected_msg_idx = Some(0);
+    rig.app.react.clear();
+    request_send_reaction(&mut rig.app);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.mock.st().reactions.is_empty());
+}
+
+#[test]
+fn react_failure_preserves_react_input_and_selection() {
+    // Same symmetry: a failed reaction keeps `react_input` and
+    // `selected_msg_idx` so the user can retry. Returning to the
+    // Conversation screen would silently lose the typed shortcode.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(5, "me", "x")];
+    rig.app.selected_msg_idx = Some(0);
+    rig.app.react.set(":fire:");
+    rig.app.screen = Screen::React;
+    rig.mock.st().fail_next = Some(KeybaseError::api_message("reaction not allowed"));
+    request_send_reaction(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Inputs preserved.
+    assert_eq!(rig.app.react.text(), ":fire:");
+    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+#[test]
+fn react_sends_with_correct_msg_id_and_body() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(5, "me", "x")];
+    rig.app.selected_msg_idx = Some(0);
+    rig.app.react.set(":+1:");
+    request_send_reaction(&mut rig.app);
+    pump_one(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(st.reactions, vec![(5, ":+1:".to_string())]);
+}
+
+// ── mute / unmute ─────────────────────────────────────────────────────
+
+#[test]
+fn mute_sends_status_muted() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    request_mute_conversation(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(
+        st.statuses,
+        vec![("alice".to_string(), "muted".to_string())]
+    );
+}
+
+#[test]
+fn unmute_sends_status_unfiled() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    request_unmute_conversation(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(
+        st.statuses,
+        vec![("alice".to_string(), "unfiled".to_string())]
+    );
+}
+
+// ── do_create_new_conversation → request_create_new_conversation ─────
+
+#[test]
+fn new_conversation_inserts_own_username() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.new_conv.set("bob, charlie");
+    request_create_new_conversation(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(st.new_convs, vec!["alice,bob,charlie".to_string()]);
+}
+
+#[test]
+fn new_conversation_rejects_empty_input() {
+    let mut rig = build_rig();
+    rig.app.new_conv.set("   ");
+    request_create_new_conversation(&mut rig.app);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.mock.st().new_convs.is_empty());
+}
+
+#[test]
+fn new_conversation_rejects_invalid_usernames_before_dispatch() {
+    // Garbage in the username field used to reach the worker and
+    // come back with a cryptic server error. Now we filter it
+    // client-side and surface a clean message.
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.new_conv.set("bob, not.a.user, ; rm -rf /");
+    request_create_new_conversation(&mut rig.app);
+    assert!(rig.app.in_flight.is_none(), "must not queue a worker call");
+    match &rig.app.action_state {
+        ActionState::Error(s) => {
+            assert!(s.starts_with("Invalid username(s):"), "got: {s}");
+            assert!(s.contains("not.a.user"));
+            assert!(s.contains("; rm -rf /"));
+        }
+        other => panic!("expected Error, got {other:?}"),
+    }
+    assert!(rig.mock.st().new_convs.is_empty());
+}
+
+#[test]
+fn new_conversation_accepts_proof_identity() {
+    // `alice@twitter`-style proof identities must pass validation
+    // without round-tripping a Keybase error.
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.new_conv.set("bob@twitter, charlie@reddit");
+    request_create_new_conversation(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(st.new_convs.len(), 1);
+    assert_eq!(st.new_convs[0], "alice,bob@twitter,charlie@reddit");
+}
+
+// ── do_search_inbox_remote → request_search_inbox_remote ─────────────
+
+#[test]
+fn search_remote_rejects_empty_query() {
+    let mut rig = build_rig();
+    rig.app.search_global_input.clear();
+    request_search_inbox_remote(&mut rig.app);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.app.search_global_results.is_empty());
+}
+
+#[test]
+fn search_remote_populates_results() {
+    let mut rig = build_rig();
+    rig.mock.st().search_hits = vec![
+        InboxHit {
+            conv_id: "c1".into(),
+            conv_name: "alice".into(),
+            message_id: 1,
+            sender: "alice".into(),
+            body_summary: "hola".into(),
+        },
+        InboxHit {
+            conv_id: "c2".into(),
+            conv_name: "bob".into(),
+            message_id: 2,
+            sender: "bob".into(),
+            body_summary: "chau".into(),
+        },
+    ];
+    rig.app.search_global_input.set("hola");
+    request_search_inbox_remote(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.search_global_results.len(), 2);
+    assert_eq!(rig.app.search_global_selected, 0);
+}
+
+// ── open_selected_search_result ───────────────────────────────────────
+
+#[test]
+fn open_search_result_jumps_to_conversation() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    rig.app.search_global_results = vec![InboxHit {
+        conv_id: "c1".into(),
+        conv_name: "alice".into(),
+        message_id: 1,
+        sender: "alice".into(),
+        body_summary: "x".into(),
+    }];
+    rig.app.search_global_selected = 0;
+    open_selected_search_result(&mut rig.app);
+    assert_eq!(rig.app.screen, Screen::Conversation);
+    assert_eq!(rig.app.open_conv_id.as_deref(), Some("c1"));
+    // The open chains a request_load_messages call.
+    assert!(matches!(rig.app.in_flight, Some(InFlight::LoadMessages)));
+}
+
+#[test]
+fn open_search_result_errors_when_conv_not_in_cache() {
+    let mut rig = build_rig();
+    rig.app.search_global_results = vec![InboxHit {
+        conv_id: "nope".into(),
+        conv_name: "?".into(),
+        message_id: 0,
+        sender: "?".into(),
+        body_summary: "?".into(),
+    }];
+    open_selected_search_result(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert_ne!(rig.app.screen, Screen::Conversation);
+}
+
+// ── pin / unpin ───────────────────────────────────────────────────────
+
+#[test]
+fn pin_uses_selected_message_id() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(99, "me", "important")];
+    rig.app.selected_msg_idx = Some(0);
+    request_pin_selected_message(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.mock.st().pins, vec![99]);
+}
+
+#[test]
+fn unpin_calls_adapter_once() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    request_unpin_conversation(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.mock.st().unpins, 1);
+}
+
+// ── filter cycling ────────────────────────────────────────────────────
+
+#[test]
+fn filter_cycle_next_wraps() {
+    let mut rig = build_rig();
+    use crate::domain::{CONVERSATION_FILTERS, ConversationFilter};
+    let last = CONVERSATION_FILTERS[CONVERSATION_FILTERS.len() - 1];
+    rig.app.active_filter = last;
+    cycle_filter_next(&mut rig.app);
+    assert_eq!(rig.app.active_filter, ConversationFilter::All);
+}
+
+#[test]
+fn filter_cycle_prev_wraps() {
+    let mut rig = build_rig();
+    use crate::domain::{CONVERSATION_FILTERS, ConversationFilter};
+    rig.app.active_filter = ConversationFilter::All;
+    cycle_filter_prev(&mut rig.app);
+    assert_eq!(
+        rig.app.active_filter,
+        CONVERSATION_FILTERS[CONVERSATION_FILTERS.len() - 1]
+    );
+}
+
+// ── search query helpers ──────────────────────────────────────────────
+
+#[test]
+fn search_push_pop_clear_round_trip() {
+    let mut rig = build_rig();
+    search_push(&mut rig.app, 'a');
+    search_push(&mut rig.app, 'b');
+    assert_eq!(rig.app.search.text(), "ab");
+    search_pop(&mut rig.app);
+    assert_eq!(rig.app.search.text(), "a");
+    search_clear(&mut rig.app);
+    assert!(rig.app.search.is_empty());
+}
+
+// ── select mode ───────────────────────────────────────────────────────
+
+#[test]
+fn enter_select_anchors_to_last_message() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![
+        text_msg(1, "me", "a"),
+        text_msg(2, "me", "b"),
+        text_msg(3, "me", "c"),
+    ];
+    enter_select_mode(&mut rig.app);
+    assert_eq!(rig.app.selected_msg_idx, Some(2));
+    assert!(!rig.app.compose_open);
+}
+
+#[test]
+fn enter_select_errors_on_empty_history() {
+    let mut rig = build_rig();
+    rig.app.messages.clear();
+    enter_select_mode(&mut rig.app);
+    assert!(rig.app.selected_msg_idx.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+#[test]
+fn select_move_up_clamps_at_zero() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
+    rig.app.selected_msg_idx = Some(0);
+    select_move_up(&mut rig.app);
+    assert_eq!(rig.app.selected_msg_idx, Some(0));
+}
+
+#[test]
+fn select_move_down_clamps_at_last() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
+    rig.app.selected_msg_idx = Some(1);
+    select_move_down(&mut rig.app);
+    assert_eq!(rig.app.selected_msg_idx, Some(1));
+}
+
+#[test]
+fn leave_select_restores_compose_focus() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![text_msg(1, "me", "x")];
+    enter_select_mode(&mut rig.app);
+    leave_select_mode(&mut rig.app);
+    assert!(rig.app.selected_msg_idx.is_none());
+    assert!(rig.app.compose_open);
+}
+
+// ── message-action permission gates ───────────────────────────────────
+
+#[test]
+fn open_edit_refuses_non_own_message() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.messages = vec![text_msg(1, "bob", "yours")];
+    rig.app.selected_msg_idx = Some(0);
+    open_edit_for_selected(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.app.edit_target_id.is_none());
+}
+
+#[test]
+fn open_edit_loads_body_into_compose_buffer() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.messages = vec![text_msg(1, "alice", "hola mundo")];
+    rig.app.selected_msg_idx = Some(0);
+    open_edit_for_selected(&mut rig.app);
+    assert_eq!(rig.app.edit_target_id, Some(1));
+    assert_eq!(rig.app.compose.text(), "hola mundo");
+    assert!(rig.app.compose_open);
+    assert!(rig.app.selected_msg_idx.is_none());
+}
+
+#[test]
+fn open_delete_refuses_non_own_message() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.messages = vec![text_msg(1, "bob", "yours")];
+    rig.app.selected_msg_idx = Some(0);
+    open_delete_for_selected(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert_ne!(rig.app.screen, Screen::ConfirmDeleteMessage);
+}
+
+#[test]
+fn cancel_edit_clears_target_and_buffer() {
+    let mut rig = build_rig();
+    rig.app.compose.set("draft");
+    rig.app.edit_target_id = Some(7);
+    cancel_edit(&mut rig.app);
+    assert!(rig.app.compose.is_empty());
+    assert!(rig.app.edit_target_id.is_none());
+}
+
+// ── escape_conversation semantics ─────────────────────────────────────
+
+#[test]
+fn escape_clears_non_empty_draft_first() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Conversation;
+    rig.app.compose.set("draft");
+    escape_conversation(&mut rig.app);
+    assert!(rig.app.compose.is_empty());
+    assert_eq!(rig.app.screen, Screen::Conversation);
+}
+
+#[test]
+fn escape_on_empty_draft_closes_conversation() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Conversation;
+    rig.app.compose.clear();
+    escape_conversation(&mut rig.app);
+    assert_eq!(rig.app.screen, Screen::Inbox);
+}
+
+// ── pin tracking ──────────────────────────────────────────────────────
+
+#[test]
+fn rebuild_pinned_finds_latest_pin_in_history() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![
+        text_msg(1, "alice", "first"),
+        Message {
+            id: 2,
+            sender: "bob".into(),
+            device: "d".into(),
+            sent_at: 0,
+            sent_at_ms: 0,
+            content: MessageContent::Pin { target_id: 1 },
+            reactions: Vec::new(),
+        },
+        text_msg(3, "alice", "later"),
+    ];
+    rig.app.rebuild_pinned();
+    assert_eq!(rig.app.pinned_msg_id, Some(1));
+}
+
+#[test]
+fn rebuild_pinned_clears_when_target_zero() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![
+        Message {
+            id: 1,
+            sender: "alice".into(),
+            device: "d".into(),
+            sent_at: 0,
+            sent_at_ms: 0,
+            content: MessageContent::Pin { target_id: 42 },
+            reactions: Vec::new(),
+        },
+        Message {
+            id: 2,
+            sender: "alice".into(),
+            device: "d".into(),
+            sent_at: 0,
+            sent_at_ms: 0,
+            content: MessageContent::Pin { target_id: 0 },
+            reactions: Vec::new(),
+        },
+    ];
+    rig.app.rebuild_pinned();
+    assert_eq!(rig.app.pinned_msg_id, None);
+}
+
+#[test]
+fn rebuild_pinned_yields_none_when_no_pin_in_history() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![text_msg(1, "alice", "x")];
+    rig.app.rebuild_pinned();
+    assert_eq!(rig.app.pinned_msg_id, None);
+}
+
+// ── teams ─────────────────────────────────────────────────────────────
+
+#[test]
+fn do_load_teams_populates_and_clamps_selection() {
+    use crate::tui::flows::teams::{open_teams, request_load_teams};
+    let mut rig = build_rig();
+    rig.mock.st().teams = vec![
+        TeamMembership {
+            name: "phoenix".into(),
+            is_implicit_team: false,
+            member_count: 3,
+            role: crate::domain::TeamRole::Admin,
+        },
+        TeamMembership {
+            name: "phoenix.bots".into(),
+            is_implicit_team: false,
+            member_count: 1,
+            role: crate::domain::TeamRole::Owner,
+        },
+    ];
+    rig.app.teams_selected = 99;
+    request_load_teams(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.teams.len(), 2);
+    assert_eq!(rig.app.teams_selected, 1, "must clamp to last loaded row");
+    open_teams(&mut rig.app); // sanity — toggles screen and queues a fresh load
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.screen, Screen::Teams);
+    assert_eq!(rig.app.teams_selected, 0);
+}
+
+#[test]
+fn load_teams_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
+    use crate::tui::flows::teams::request_load_teams;
+    let mut rig = build_rig();
+    rig.mock.st().teams = vec![TeamMembership {
+        name: "phoenix".into(),
+        is_implicit_team: false,
+        member_count: 3,
+        role: crate::domain::TeamRole::Admin,
+    }];
+    rig.mock.st().teams_skipped = vec!["team #4: unknown role".to_string()];
+    request_load_teams(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.teams.len(), 1);
+    match &rig.app.action_state {
+        ActionState::Done(s) => assert!(s.contains("1 skipped"), "got: {s}"),
+        other => panic!("expected Done, got {other:?}"),
+    }
+    let log_has_diag = rig
+        .app
+        .cmd_log
+        .iter()
+        .any(|e| !e.ok && e.detail.contains("team #4"));
+    assert!(log_has_diag);
+}
+
+// ── Threaded replies ──────────────────────────────────────────────────
+
+#[test]
+fn start_reply_sets_reply_to_id_and_clears_buffer() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.messages = vec![text_msg(42, "bob", "original")];
+    rig.app.selected_msg_idx = Some(0);
+    rig.app.compose.set("old draft");
+    start_reply_for_selected(&mut rig.app);
+    assert_eq!(rig.app.reply_to_id, Some(42));
+    assert!(rig.app.compose.is_empty());
+    assert!(rig.app.selected_msg_idx.is_none());
+    assert!(rig.app.compose_open);
+}
+
+#[test]
+fn start_reply_cancels_pending_edit() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![text_msg(10, "alice", "x")];
+    rig.app.selected_msg_idx = Some(0);
+    rig.app.edit_target_id = Some(99);
+    start_reply_for_selected(&mut rig.app);
+    assert!(rig.app.edit_target_id.is_none(), "edit must be cancelled");
+    assert_eq!(rig.app.reply_to_id, Some(10));
+}
+
+#[test]
+fn send_passes_reply_to_through_to_adapter() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.reply_to_id = Some(7);
+    rig.app.compose.set("replying");
+    request_send_message(&mut rig.app);
+    pump_one(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(st.sent.len(), 1);
+    assert_eq!(st.sent[0].2, Some(7), "reply_to should be threaded");
+    drop(st);
+    // After a successful send the reply context must clear — the
+    // `compose_clear` inside `request_send_message` already nulls it
+    // before the worker even sees the call.
+    assert!(rig.app.reply_to_id.is_none());
+}
+
+#[test]
+fn compose_clear_also_clears_reply_context() {
+    let mut rig = build_rig();
+    rig.app.reply_to_id = Some(1);
+    rig.app.compose.set("x");
+    rig.app.compose_clear();
+    assert!(rig.app.compose.is_empty());
+    assert!(rig.app.reply_to_id.is_none());
+}
+
+// ── Attachment download ───────────────────────────────────────────────
+
+fn attachment_msg(id: u64, sender: &str, filename: &str, size: u64) -> Message {
+    Message {
+        id,
+        sender: sender.into(),
+        device: "test".into(),
+        sent_at: 0,
+        sent_at_ms: 0,
+        content: MessageContent::Attachment(AttachmentInfo {
+            title: String::new(),
+            filename: filename.into(),
+            size,
+            mime_type: "application/octet-stream".into(),
+            uploaded: true,
+        }),
+        reactions: Vec::new(),
+    }
+}
+
+#[test]
+fn open_download_requires_attachment_message() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![text_msg(1, "alice", "not an attachment")];
+    rig.app.selected_msg_idx = Some(0);
+    open_download_for_selected(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.app.download_msg_id.is_none());
+}
+
+#[test]
+fn open_download_prefills_path_with_home_downloads() {
+    let mut rig = build_rig();
+    rig.app.messages = vec![attachment_msg(99, "bob", "secret.txt", 1024)];
+    rig.app.selected_msg_idx = Some(0);
+    open_download_for_selected(&mut rig.app);
+    assert_eq!(rig.app.download_msg_id, Some(99));
+    assert!(rig.app.download.text().ends_with("/Downloads/secret.txt"));
+    assert_eq!(rig.app.screen, Screen::DownloadAttachment);
+}
+
+#[test]
+fn do_download_attachment_invokes_adapter_with_id_and_path() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.download_msg_id = Some(42);
+    rig.app.download.set("/tmp/out.bin");
+    request_download_attachment(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(st.downloads, vec![(42, "/tmp/out.bin".to_string())]);
+    drop(st);
+    assert!(
+        rig.app.download_msg_id.is_none(),
+        "popup must close on success"
+    );
+    assert_eq!(rig.app.screen, Screen::Conversation);
+}
+
+#[test]
+fn do_download_rejects_empty_path() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.download_msg_id = Some(1);
+    rig.app.download.set("   ");
+    request_download_attachment(&mut rig.app);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert!(rig.mock.st().downloads.is_empty());
+}
+
+// ── Unread counter ────────────────────────────────────────────────────
+
+#[test]
+fn unread_total_counts_only_unread_conversations() {
+    let mut rig = build_rig();
+    let mut c1 = conv("a", "alice", MembersType::ImpTeamNative);
+    c1.unread = true;
+    let c2 = conv("b", "bob", MembersType::ImpTeamNative);
+    let mut c3 = conv("c", "carol", MembersType::Team);
+    c3.unread = true;
+    rig.app.conversations = vec![c1, c2, c3];
+    assert_eq!(rig.app.unread_total(), 2);
+}
+
+// ── Mark-as-read up-to-latest ────────────────────────────────────────
+
+#[test]
+fn mark_read_uses_latest_loaded_message_id_when_conv_is_open() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(10, "alice", "old"), text_msg(11, "alice", "newer")];
+    request_mark_read(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(st.mark_reads, vec![11]);
+}
+
+#[test]
+fn mark_read_falls_back_to_zero_when_no_messages_loaded() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.open_conv_id = None;
+    request_mark_read(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let st = rig.mock.st();
+    assert_eq!(st.mark_reads, vec![0]);
+}
+
+// ── Render perf smoke (manual: `cargo test -- --ignored`) ──────────
+
+/// Runs the full TUI render `iterations` times against an in-memory
+/// `TestBackend` and returns the wall-clock duration of each frame.
+///
+/// Used by the `render_perf_smoke_*` tests below. Lives behind
+/// `#[ignore]` so `cargo test` stays under a second on CI; run
+/// explicitly with `cargo test --release -- --ignored render_perf
+/// --nocapture` to see the timings.
+fn run_render_iterations(app: &mut App, iterations: usize) -> Vec<std::time::Duration> {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    let backend = TestBackend::new(120, 40);
+    let mut terminal = Terminal::new(backend).expect("test backend init");
+    let mut times = Vec::with_capacity(iterations);
+    for _ in 0..iterations {
+        let start = std::time::Instant::now();
+        terminal
+            .draw(|frame| crate::tui::view::draw(frame, app))
+            .expect("draw");
+        times.push(start.elapsed());
+    }
+    times
+}
+
+fn print_timings(label: &str, times: &[std::time::Duration]) {
+    let total: std::time::Duration = times.iter().sum();
+    let avg = total / times.len() as u32;
+    let mut sorted = times.to_vec();
+    sorted.sort();
+    let p50 = sorted[sorted.len() / 2];
+    let p99 = sorted[sorted.len() * 99 / 100];
+    let max = sorted.last().copied().unwrap_or_default();
+    println!("{label}: avg={avg:?} p50={p50:?} p99={p99:?} max={max:?}");
+}
+
+#[test]
+#[ignore = "perf smoke — run manually with `--ignored --nocapture`"]
+fn render_perf_smoke_inbox_500_conversations() {
+    let mut rig = build_rig();
+    let convs: Vec<Conversation> = (0..500)
+        .map(|i| {
+            // Two-letter id to anchor inbox lookups; the long-form
+            // name exercises the label rendering that does most of
+            // the per-row allocation.
+            let mut c = conv(
+                &format!("conv-{i:04}"),
+                &format!("user_{i}_with_a_longish_name"),
+                MembersType::ImpTeamNative,
+            );
+            c.unread = i % 7 == 0;
+            c
+        })
+        .collect();
+    rig.mock.st().conversations = convs;
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    rig.app.screen = Screen::Inbox;
+
+    let times = run_render_iterations(&mut rig.app, 100);
+    print_timings("inbox 500-conv", &times);
+
+    // Generous upper bound — debug builds, single 120x40 frame
+    // touching 500 conversations should be well under 100ms even
+    // on slow hardware. A regression that breaks this implies
+    // something quadratic crept into the render path.
+    let worst = times.iter().max().copied().unwrap_or_default();
+    assert!(
+        worst < std::time::Duration::from_millis(100),
+        "worst inbox frame: {worst:?}"
+    );
+}
+
+#[test]
+#[ignore = "perf smoke — run manually with `--ignored --nocapture`"]
+fn render_perf_smoke_conversation_50_messages() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice,bob", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let msgs: Vec<Message> = (0..50)
+        .map(|i| {
+            text_msg(
+                i,
+                if i % 2 == 0 { "alice" } else { "bob" },
+                "a message body of reasonable length to exercise the wrapper",
+            )
+        })
+        .collect();
+    rig.app.messages = msgs;
+    rig.app.screen = Screen::Conversation;
+
+    let times = run_render_iterations(&mut rig.app, 100);
+    print_timings("conv 50-msg", &times);
+
+    let worst = times.iter().max().copied().unwrap_or_default();
+    assert!(
+        worst < std::time::Duration::from_millis(100),
+        "worst conv frame: {worst:?}"
+    );
+}
+
+// ── apply_response defensive branches ────────────────────────────────
+
+// ── Input handler bindings ────────────────────────────────────────────
+//
+// Anchor the most frequently-used keybindings so a stray rebind shows
+// up as a failing test rather than as a confused user. We exercise the
+// public `handle_events` entry point with a synthetic `KeyEvent` and
+// assert the observable state mutation (focus, screen, in_flight, …).
+// Bindings that just call into already-tested flows
+// (`request_load_inbox`, `request_save_edit`, …) are anchored by their
+// resulting `in_flight` slot rather than re-asserting the downstream
+// effects.
+
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+/// Builds a `KeyEvent` with a `Press` kind — the only kind the
+/// dispatcher honours.
+fn key(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
+    KeyEvent::new(code, mods)
+}
+
+fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+    crate::tui::input::handle_events(app, Event::Key(key(code, mods)));
+}
+
+#[test]
+fn input_ctrl_c_quits_from_inbox() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    press(&mut rig.app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+    assert!(rig.app.should_quit);
+}
+
+#[test]
+fn input_ctrl_c_quits_from_conversation() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Conversation;
+    press(&mut rig.app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+    assert!(rig.app.should_quit);
+}
+
+#[test]
+fn input_f1_toggles_help_overlay() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.screen = Screen::Inbox;
+    press(&mut rig.app, KeyCode::F(1), KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Help);
+    press(&mut rig.app, KeyCode::F(1), KeyModifiers::NONE);
+    // post_help_screen routes back to Inbox when logged-in + no
+    // conversation open.
+    assert_eq!(rig.app.screen, Screen::Inbox);
+}
+
+#[test]
+fn input_tab_steps_forward_through_non_search_focuses() {
+    // Tab advances FOCUS_ORDER one step except when focus is
+    // Search — there Tab is swallowed by the search-input handler
+    // (the user must Esc / Enter out of search before tabbing on).
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+
+    // FOCUS_ORDER = [Search, Filters, List, CmdLog].
+    rig.app.focus = Focus::Filters;
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::List);
+
+    rig.app.focus = Focus::List;
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::CmdLog);
+
+    rig.app.focus = Focus::CmdLog;
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::Search, "wraps around");
+}
+
+#[test]
+fn input_tab_from_search_cycles_focus() {
+    // Tab is a global focus-cycle and works even from the search box
+    // (it can't be confused with text input), so the user can leave
+    // search with one keystroke. FOCUS_ORDER = [Search, Filters, …].
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Search;
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::Filters);
+}
+
+#[test]
+fn input_slash_jumps_to_search_focus() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::List;
+    press(&mut rig.app, KeyCode::Char('/'), KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::Search);
+}
+
+#[test]
+fn input_f5_on_inbox_queues_load_inbox() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    press(&mut rig.app, KeyCode::F(5), KeyModifiers::NONE);
+    assert!(matches!(rig.app.in_flight, Some(InFlight::LoadInbox)));
+}
+
+#[test]
+fn input_alt_r_on_inbox_queues_load_inbox() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    press(&mut rig.app, KeyCode::Char('r'), KeyModifiers::ALT);
+    assert!(matches!(rig.app.in_flight, Some(InFlight::LoadInbox)));
+}
+
+#[test]
+fn input_alt_m_on_inbox_queues_mark_read() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    rig.app.screen = Screen::Inbox;
+    press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::ALT);
+    assert!(matches!(rig.app.in_flight, Some(InFlight::MarkRead { .. })));
+}
+
+#[test]
+fn input_shift_l_opens_confirm_logout() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    // Capital L: most terminals report Char('L') with SHIFT mod —
+    // the handler matches on the Char so the mod doesn't matter.
+    press(&mut rig.app, KeyCode::Char('L'), KeyModifiers::SHIFT);
+    assert_eq!(rig.app.screen, Screen::ConfirmLogout);
+}
+
+#[test]
+fn input_confirm_logout_y_queues_logout_from_inbox() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::ConfirmLogout;
+    press(&mut rig.app, KeyCode::Char('y'), KeyModifiers::NONE);
+    // The confirm queues the logout but returns to the inbox; only
+    // `handle_logout_response` moves to Login, and only on success, so a
+    // failed logout can't strand the user on Login while still signed in.
+    assert_eq!(rig.app.screen, Screen::Inbox);
+    assert!(matches!(rig.app.in_flight, Some(InFlight::Logout)));
+}
+
+#[test]
+fn input_confirm_logout_n_cancels() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::ConfirmLogout;
+    press(&mut rig.app, KeyCode::Char('n'), KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Inbox);
+    assert!(rig.app.in_flight.is_none());
+}
+
+#[test]
+fn input_enter_on_list_opens_selected_conversation() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = crate::tui::screens::Focus::List;
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Conversation);
+    assert_eq!(rig.app.open_conv_id.as_deref(), Some("c1"));
+}
+
+#[test]
+fn input_q_on_inbox_does_not_quit() {
+    // Only Ctrl+C quits (per UX.md). Bare 'q' must be free for
+    // type-to-search and must NOT exit the app.
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    press(&mut rig.app, KeyCode::Char('q'), KeyModifiers::NONE);
+    assert!(!rig.app.should_quit);
+}
+
+#[test]
+fn input_conversation_enter_with_buffer_sends() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Conversation;
+    rig.app.compose_open = true;
+    rig.app.compose.set("hello");
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(matches!(
+        rig.app.in_flight,
+        Some(InFlight::SendMessage { .. })
+    ));
+}
+
+#[test]
+fn input_conversation_enter_with_empty_buffer_errors() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Conversation;
+    rig.app.compose_open = true;
+    rig.app.compose.clear();
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+#[test]
+fn input_login_r_retries_status_check() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+    press(&mut rig.app, KeyCode::Char('r'), KeyModifiers::NONE);
+    assert!(matches!(rig.app.in_flight, Some(InFlight::CheckStatus)));
+}
+
+#[test]
+fn input_login_q_quits() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+    press(&mut rig.app, KeyCode::Char('q'), KeyModifiers::NONE);
+    assert!(rig.app.should_quit);
+}
+
+#[test]
+fn input_esc_on_new_conv_popup_closes_it() {
+    let mut rig = build_rig();
+    rig.app.screen = Screen::NewConversation;
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Inbox);
+}
+
+#[test]
+fn input_key_release_events_are_ignored() {
+    // The dispatcher honours only `Press` events. A Release for
+    // Ctrl+C must NOT trip the quit handler.
+    use crossterm::event::KeyEventKind;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    let release = KeyEvent {
+        code: KeyCode::Char('c'),
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Release,
+        state: crossterm::event::KeyEventState::NONE,
+    };
+    crate::tui::input::handle_events(&mut rig.app, Event::Key(release));
+    assert!(!rig.app.should_quit);
+}
+
+// ── Mouse hit-test staleness ──────────────────────────────────────────
+
+#[test]
+fn mouse_handler_rejects_clicks_against_stale_rects_after_resize() {
+    // Race: user clicks on the inbox List panel, terminal is resized
+    // before the run loop processes the click, and the in-buffer
+    // Mouse event arrives before the Resize event. The rects in
+    // `app.mouse_areas` reflect the OLD frame; the click coordinates
+    // are in the NEW grid. Without the staleness check, the click
+    // would land in the wrong panel.
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
+
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = crate::tui::screens::Focus::Filters;
+    // Frame was drawn against a 120x40 terminal — the List panel
+    // sat at (40..120, 5..30).
+    rig.app.mouse_areas.frame_size = (120, 40);
+    rig.app.mouse_areas.list = Rect {
+        x: 40,
+        y: 5,
+        width: 80,
+        height: 25,
+    };
+    // But the terminal has just been resized to 80x30 — the click
+    // we're about to inject was emitted at coords valid in the NEW
+    // grid only.
+    rig.app.last_terminal_size = (80, 30);
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 60,
+            row: 10,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        },
+    );
+
+    // Focus must NOT have flipped to List based on stale rects.
+    assert_eq!(rig.app.focus, crate::tui::screens::Focus::Filters);
+}
+
+#[test]
+fn mouse_handler_honors_clicks_when_rects_are_fresh() {
+    // Sanity contrast: same click, same rect, but the frame_size
+    // matches last_terminal_size — the click is honored.
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
+
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = crate::tui::screens::Focus::Filters;
+    rig.app.mouse_areas.frame_size = (120, 40);
+    rig.app.mouse_areas.list = Rect {
+        x: 40,
+        y: 5,
+        width: 80,
+        height: 25,
+    };
+    rig.app.last_terminal_size = (120, 40);
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 60,
+            row: 10,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        },
+    );
+
+    assert_eq!(rig.app.focus, crate::tui::screens::Focus::List);
+}
+
+#[test]
+fn apply_response_drops_message_when_no_in_flight_slot() {
+    // A response arriving without a matching in-flight context is
+    // a worker/main-thread disagreement that should NEVER happen
+    // in normal operation — but the dispatcher must not panic, and
+    // must leave a breadcrumb the user can audit.
+    let mut rig = build_rig();
+    assert!(rig.app.in_flight.is_none());
+    apply_response(
+        &mut rig.app,
+        crate::tui::worker::WorkerResponse::Logout(Ok(())),
+    );
+    // No state change beyond the cmd_log warning.
+    assert!(rig.app.in_flight.is_none());
+    let logged = rig.app.cmd_log.iter().any(|e| {
+        !e.ok && e.cmd == "worker response" && e.detail.contains("without an in-flight slot")
+    });
+    assert!(logged, "cmd_log: {:?}", rig.app.cmd_log);
+}
+
+#[test]
+fn apply_response_surfaces_dispatch_mismatch_to_user() {
+    // Slot says CheckStatus, response says Logout — disagreement
+    // that should never happen but we surface as a hard error
+    // rather than silently dropping or hanging on the spinner
+    // forever.
+    let mut rig = build_rig();
+    rig.app.in_flight = Some(InFlight::CheckStatus);
+    apply_response(
+        &mut rig.app,
+        crate::tui::worker::WorkerResponse::Logout(Ok(())),
+    );
+    match &rig.app.action_state {
+        ActionState::Error(s) => assert_eq!(s, "internal worker dispatch mismatch"),
+        other => panic!("expected Error, got {other:?}"),
+    }
+    // The slot must be cleared so the next request can run.
+    assert!(rig.app.in_flight.is_none());
+    let logged = rig
+        .app
+        .cmd_log
+        .iter()
+        .any(|e| !e.ok && e.detail.contains("dispatch mismatch"));
+    assert!(logged);
+}
+
+// ── Path-traversal hardening of attachment filenames ─────────────────
+
+use super::safe_attachment_basename;
+
+#[test]
+fn safe_basename_preserves_simple_filename() {
+    assert_eq!(safe_attachment_basename("photo.png", 1), "photo.png");
+    assert_eq!(safe_attachment_basename("a b c.txt", 2), "a b c.txt");
+    // Dots inside the filename are fine — only the path-traversal
+    // segments are rejected.
+    assert_eq!(
+        safe_attachment_basename("archive.tar.gz", 3),
+        "archive.tar.gz"
+    );
+}
+
+#[test]
+fn safe_basename_strips_unix_path_components() {
+    assert_eq!(safe_attachment_basename("/etc/passwd", 1), "passwd");
+    assert_eq!(
+        safe_attachment_basename("../../.ssh/authorized_keys", 1),
+        "authorized_keys"
+    );
+    assert_eq!(safe_attachment_basename("a/b/c/d.bin", 1), "d.bin");
+}
+
+#[test]
+fn safe_basename_strips_windows_path_components() {
+    assert_eq!(
+        safe_attachment_basename("C:\\Windows\\System32\\drivers\\etc\\hosts", 1),
+        "hosts"
+    );
+    assert_eq!(
+        safe_attachment_basename("..\\..\\Windows\\notepad.exe", 1),
+        "notepad.exe"
+    );
+    // Mixed separators — the rsplit picks whichever comes last.
+    assert_eq!(safe_attachment_basename("a/b\\c.txt", 1), "c.txt");
+}
+
+#[test]
+fn safe_basename_falls_back_for_empty_or_dot_inputs() {
+    assert_eq!(safe_attachment_basename("", 7), "attachment-7.bin");
+    assert_eq!(safe_attachment_basename(".", 7), "attachment-7.bin");
+    assert_eq!(safe_attachment_basename("..", 7), "attachment-7.bin");
+    // Trailing-slash inputs reduce to "" after rsplit → fallback.
+    assert_eq!(safe_attachment_basename("../", 9), "attachment-9.bin");
+    assert_eq!(safe_attachment_basename("foo/", 9), "attachment-9.bin");
+}
+
+#[test]
+fn safe_basename_strips_control_chars_and_nuls() {
+    // NUL inside the filename is removed; what remains is the visible
+    // basename.
+    assert_eq!(safe_attachment_basename("foo\0bar.txt", 1), "foobar.txt");
+    // Newline injection (could otherwise confuse logs) is dropped.
+    assert_eq!(
+        safe_attachment_basename("rogue\nname.txt", 1),
+        "roguename.txt"
+    );
+    // Carriage return + tab — both stripped.
+    assert_eq!(safe_attachment_basename("a\r\tb.png", 1), "ab.png");
+}
+
+#[test]
+fn safe_basename_handles_only_control_chars() {
+    // A filename made entirely of control chars boils down to empty
+    // → fallback.
+    assert_eq!(
+        safe_attachment_basename("\0\n\t\r", 42),
+        "attachment-42.bin"
+    );
+}
+
+#[test]
+fn open_download_pre_fills_safe_basename_for_malicious_filename() {
+    let mut rig = build_rig();
+    // Simulate a malicious sender embedding a path traversal in the
+    // attachment filename.
+    rig.app.messages = vec![attachment_msg(
+        77,
+        "mallory",
+        "../../.ssh/authorized_keys",
+        16,
+    )];
+    rig.app.selected_msg_idx = Some(0);
+    open_download_for_selected(&mut rig.app);
+    // The pre-filled path must land inside ~/Downloads — no `..`
+    // segment between Downloads and the final basename.
+    assert!(
+        rig.app
+            .download
+            .text()
+            .ends_with("/Downloads/authorized_keys"),
+        "unexpected path: {}",
+        rig.app.download.text()
+    );
+}
+
+// ── read_channel_from_conv ────────────────────────────────────────────
+
+#[test]
+fn read_channel_maps_members_type_to_keybase_string() {
+    let team = conv("c1", "phoenix", MembersType::Team);
+    let mut team = team;
+    team.channel.topic_name = Some("general".into());
+    let ch = read_channel_from_conv(&team).expect("known variant");
+    assert_eq!(ch.name, "phoenix");
+    assert_eq!(ch.members_type, "team");
+    assert_eq!(ch.topic_name.as_deref(), Some("general"));
+
+    let dm = conv("c2", "alice,bob", MembersType::ImpTeamNative);
+    let ch = read_channel_from_conv(&dm).expect("known variant");
+    assert_eq!(ch.members_type, "impteamnative");
+    assert!(ch.topic_name.is_none());
+}
+
+#[test]
+fn read_channel_covers_every_known_members_type() {
+    // Anchor the mapping so a future enum variant added without a
+    // matching arm here trips this test rather than silently
+    // routing to an unrelated channel.
+    for (variant, expected) in [
+        (MembersType::ImpTeamNative, "impteamnative"),
+        (MembersType::ImpTeamUpgrade, "impteamupgrade"),
+        (MembersType::Team, "team"),
+        (MembersType::Kbfs, "kbfs"),
+    ] {
+        let c = conv("x", "name", variant);
+        let ch = read_channel_from_conv(&c).expect("known variant should map");
+        assert_eq!(ch.members_type, expected, "variant {variant:?}");
+    }
+}
+
+#[test]
+fn read_channel_rejects_unknown_members_type() {
+    use crate::tui::flows::chat::UNKNOWN_MEMBERS_TYPE_ERR;
+    let mystery = conv("xx", "futureconv", MembersType::Unknown);
+    let err = read_channel_from_conv(&mystery).expect_err("Unknown must error");
+    assert_eq!(err, UNKNOWN_MEMBERS_TYPE_ERR);
+}
+
+#[test]
+fn request_mark_read_surfaces_unknown_members_type() {
+    // Integration check: a request_* path receiving an Unknown
+    // conversation must NOT route to "impteamnative" and must NOT
+    // dispatch a worker call. The error lands on the feedback
+    // strip and command log.
+    use crate::tui::flows::chat::UNKNOWN_MEMBERS_TYPE_ERR;
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "futureconv", MembersType::Unknown)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Now try to mark it read.
+    request_mark_read(&mut rig.app);
+    // No worker call was queued.
+    assert!(rig.app.in_flight.is_none());
+    match &rig.app.action_state {
+        ActionState::Error(s) => assert_eq!(s, UNKNOWN_MEMBERS_TYPE_ERR),
+        other => panic!("expected Error, got {other:?}"),
+    }
+    // Mock must NOT have received a mark_read.
+    assert!(rig.mock.st().mark_reads.is_empty());
+}

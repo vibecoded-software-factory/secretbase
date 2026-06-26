@@ -1,0 +1,155 @@
+//! Per-screen Ratatui renderers.
+//!
+//! `draw` is the single entry point called from the run loop. It draws
+//! the active base screen and overlays any popup on top, mirroring
+//! jewel's layout system (`split_main` stack + `titled_block`).
+
+pub mod action;
+pub mod conversation;
+pub mod help;
+pub mod inbox;
+pub mod login;
+pub mod logo;
+pub mod new_conversation;
+pub mod popups;
+pub mod search_global;
+pub mod splash;
+pub mod starfield;
+pub mod teams;
+pub mod widgets;
+
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Paragraph};
+
+use crate::tui::app::App;
+use crate::tui::screens::Screen;
+
+/// Minimum terminal size before the TUI falls back to a "resize me"
+/// notice. identity(3) + search(3) + body(5) + cmdlog(6) + status(1).
+pub const MIN_W: u16 = 70;
+pub const MIN_H: u16 = 18;
+
+/// Per-frame entry point.
+pub fn draw(frame: &mut Frame, app: &mut App) {
+    let area = frame.area();
+    // Reset hit-test rects every frame; per-screen draws populate the
+    // slots they care about. Stamp the size so the input layer can
+    // drop clicks whose coordinates predate a resize.
+    app.mouse_areas.reset(area.width, area.height);
+
+    if area.width < MIN_W || area.height < MIN_H {
+        draw_too_small(frame, area);
+        return;
+    }
+
+    // Pick the base (non-overlay) screen to render underneath any popup.
+    let base = match app.screen {
+        Screen::ConfirmLogout | Screen::NewConversation | Screen::SearchGlobal => Screen::Inbox,
+        Screen::ConfirmDeleteMessage | Screen::React | Screen::DownloadAttachment => {
+            Screen::Conversation
+        }
+        // Help is scoped to (and renders over) the screen it was opened
+        // from — use `help_from`, not an open-conversation heuristic, so
+        // e.g. Teams isn't drawn as Inbox underneath.
+        Screen::Help => app.help_from,
+        other => other,
+    };
+    draw_screen(frame, app, base);
+
+    match app.screen {
+        Screen::Help => help::draw(frame, app),
+        Screen::ConfirmLogout => widgets::draw_confirm_popup(
+            frame,
+            frame.area(),
+            &app.theme,
+            " Log out of Keybase? ",
+            vec![Line::from(Span::styled(
+                "This ends your TUI session (runs `keybase logout`).",
+                Style::default().fg(app.theme.dim),
+            ))],
+            app.logout_yes,
+        ),
+        Screen::ConfirmDeleteMessage => {
+            let label = app
+                .selected_msg_idx
+                .and_then(|i| app.messages.get(i))
+                .map(|m| format!("msg #{} by {}", m.id, m.sender))
+                .unwrap_or_else(|| "(none)".to_string());
+            widgets::draw_confirm_popup(
+                frame,
+                frame.area(),
+                &app.theme,
+                " Delete this message? ",
+                vec![Line::from(Span::styled(
+                    label,
+                    Style::default().fg(app.theme.dim),
+                ))],
+                app.delete_msg_yes,
+            );
+        }
+        Screen::NewConversation => new_conversation::draw(frame, app),
+        Screen::SearchGlobal => search_global::draw(frame, app),
+        Screen::React => popups::react_input(frame, app),
+        Screen::DownloadAttachment => popups::download_attachment(frame, app),
+        _ => {}
+    }
+}
+
+/// Renders a single non-overlay base screen.
+fn draw_screen(frame: &mut Frame, app: &mut App, screen: Screen) {
+    match screen {
+        Screen::Splash => splash::draw(frame, app),
+        Screen::Login => login::draw(frame, app),
+        Screen::Inbox => inbox::draw(frame, app),
+        Screen::Teams => teams::draw(frame, app),
+        Screen::Conversation => conversation::draw(frame, app),
+        // Overlays are never a base screen — fall back to the inbox.
+        _ => inbox::draw(frame, app),
+    }
+}
+
+fn draw_too_small(frame: &mut Frame, area: Rect) {
+    let p = Paragraph::new(Span::styled(
+        format!("Terminal too small — resize to at least {MIN_W}×{MIN_H}"),
+        Style::default().add_modifier(Modifier::BOLD),
+    ))
+    .alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(p, area);
+}
+
+/// Splits a vertical area into the standard signed-in stack:
+/// `identity` · `header` (3) · `body` (fills) · `cmdlog` (6) ·
+/// `status` (1). `identity_content_rows` comes from
+/// [`widgets::identity_content_rows`]; +2 for the block borders.
+pub fn split_main(area: Rect, identity_content_rows: u16) -> [Rect; 5] {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(identity_content_rows + 2),
+            Constraint::Length(3),
+            Constraint::Min(5),
+            Constraint::Length(6),
+            Constraint::Length(1),
+        ])
+        .split(area);
+    [chunks[0], chunks[1], chunks[2], chunks[3], chunks[4]]
+}
+
+/// Common bordered block with a stylised title — accent + bold when
+/// focused, else the inactive tint.
+pub fn titled_block<'a>(title: &'a str, focused: bool, app: &'a App) -> Block<'a> {
+    let style = if focused {
+        Style::default()
+            .fg(app.theme.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(app.theme.inactive)
+    };
+    Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled(title.to_string(), style))
+        .border_style(style)
+}
