@@ -7,10 +7,12 @@ binary, so every feature maps to a `keybase` command. When in doubt
 about exact syntax/flags, confirm against `keybase help <cmd>` on a real
 install — the built-in help is the authoritative source.
 
-> The page itself covers account / identity / device / crypto commands
-> plus Tor. The **JSON API** that secretbase actually drives
-> (`keybase chat api`, `keybase team api`, `keybase wallet api`) lives on
-> separate pages — see **Related** at the bottom.
+> The website page (`/docs/cli`) covers only account / identity / device /
+> crypto / Tor — it has **no chat content**, and the chat doc pages 403 the
+> fetcher. **For chat/team, the authoritative source is the keybase
+> `client` GitHub repo** (`go/client/chat_api_doc.go` + `cmd_chat_*.go`),
+> read via `gh api`. The verified chat reference is in **Related** at the
+> bottom.
 
 ---
 
@@ -226,24 +228,65 @@ http://keybase5wmilwokqirssclfnsqrjdsi7jdir5wy7y7iu3tanwmtp6oid.onion
 
 ---
 
-## Related — the JSON API secretbase drives
+## Related — the chat JSON API secretbase drives (verified from source)
 
-The chat/team/wallet **stdin/stdout JSON API** is what this app wraps. It
-is not on `/docs/cli`; reference it separately when touching chat/team
-features:
+The chat/team/wallet **stdin/stdout JSON API** is what this app wraps.
+Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
+(fetch via `gh api repos/keybase/client/contents/go/client/chat_api_doc.go
+-H "Accept: application/vnd.github.raw"`).
 
-- `keybase chat api`  — streaming JSON method calls (`list`, `read`,
-  `send`, `edit`, `delete`, `reaction`, `mark`, `searchinbox`, `newconv`,
-  `setstatus`, `pin`, `unpin`, `download`, …). See
-  <https://book.keybase.io/docs/chat/api>.
-  - `setstatus` `{"channel":…,"status":…}` status values:
-    `unfiled` · `favorite` · `ignored` · `blocked` · `muted` · `reported`.
-    Used for mute/unmute (`muted`/`unfiled`) and **ignore** (`ignored`);
-    `blocked`/`reported` apply to DMs.
+### `keybase chat api` methods (verbatim from `chat_api_doc.go`)
+
+`list` · `read` · `get` · `send` · `delete` (one message by `message_id`)
+· `edit` · `reaction` · `attach` · `download` · `mark` · `setstatus` ·
+`searchinbox` · `searchregexp` · `newconv` · `listconvsonname` · `join` ·
+`leave` · `addtochannel` · `removefromchannel` · `loadflip` ·
+`getunfurlsettings` · `setunfurlsettings` · `advertisecommands` ·
+`clearcommands` · `listcommands` · `pin` · `unpin` · `getdeviceinfo` ·
+`getresetconvmembers` · `addresetconvmember` · `listmembers` ·
+`emojiadd` · `emojiaddalias` · `emojiremove` · `emojilist`.
+
+- `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
+  read), `unread_only`.
+- `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented
+  option to include ignored/blocked conversations** — the inbox `list`
+  excludes them, so an ignored conv cannot be reached from `list` alone.
+- `setstatus` `{"channel":…,"status":…}` — status enum
+  `chat1.ConversationStatus`: `unfiled` · `favorite` · `ignored` ·
+  `blocked` · `muted` · `reported`. (We use `muted`/`unfiled` for
+  mute/unmute and `ignored`/`unfiled` for ignore/un-ignore.)
+- **No bulk "delete conversation/history" method exists in the api** —
+  `delete` is per-message. Bulk delete is a CLI subcommand (below).
+
+### `keybase chat` CLI subcommands (verified from `cmd_chat_*.go`)
+
+These are NOT api-mode (run as one-shot `keybase chat <sub>` spawns):
+
+- **`hide [conversation]`** (`cmd_chat_hide.go`) — *"Hide or block a
+  conversation."* Default → status `IGNORED`; `--block` → `BLOCKED`;
+  `--unhide` → `UNFILED`. (Same effect as api `setstatus`.) Non-interactive.
+- **`delete-history [conversation] --age=<2h|3d|1w>`**
+  (`cmd_chat_delete_history.go`) — permanently deletes message history for
+  everyone. **Prompts interactively** ("Permanently delete ALL chat history
+  of […]? Hit Enter to confirm, or Ctrl-C to cancel"); **no force flag**.
+  `--age` limits to messages older than the interval. ⚠️ We spawn with
+  stdin nulled, so the prompt must be handled (pipe newline, or use a TTY)
+  — verify before wiring.
+- **`archive [conversation] [-o <dir>] [--compress]`**
+  (`cmd_chat_archive.go`) — **exports** all messages of the conversation(s)
+  to a file/backup on disk (async job: `archive-list` / `archive-delete` /
+  `archive-pause` / `archive-resume`). It does **NOT** remove the conv from
+  the inbox or change its status.
+- Other relevant subcommands present: `createchannel`, `delete-channel`,
+  `addtochannel`, `conv-info`, `mute`, `report`, `download`, `upload`,
+  emoji*, `default-channels`.
+
+### Other JSON APIs
+
 - `keybase chat api-listen` — push notifications of new messages.
 - `keybase team api` — team JSON API (`list-self-memberships`,
-  `create-team`, `add-members`, `list-team-memberships`, …). See
-  <https://book.keybase.io/docs/teams/api>.
+  `create-team`, `add-members`, `list-team-memberships`, …). Verify against
+  `go/client/cmd_team_api.go` / the team api doc in source.
 - `keybase wallet api` — Stellar wallet JSON API.
 
 In-repo, every API call is built in `adapters/keybase_cli/codec.rs`, run
