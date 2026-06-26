@@ -145,12 +145,24 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 ("Alt+M", "mark as read"),
                 ("Alt+R / F5", "refresh inbox"),
                 ("Alt+U / Alt+O", "mute / unmute"),
-                ("Alt+I", "ignore (hide from inbox)"),
+                ("Alt+I", "ignore conversation"),
                 ("Alt+T", "teams"),
                 ("Ctrl+G", "global search"),
                 ("Shift+L", "logout"),
             ] {
                 lines.push(help_line(k, d, t));
+            }
+            // Explain ignore — its semantics aren't obvious from the
+            // one-liner, and it can't currently be undone from the app.
+            let note = Style::default().fg(t.dim);
+            for n in [
+                "",
+                "  Ignore hides the conversation from the inbox.",
+                "  Keybase brings it back automatically on the",
+                "  next message in that chat. (Mute, Alt+U, keeps",
+                "  it visible but silent — and is easy to undo.)",
+            ] {
+                lines.push(Line::from(Span::styled(n.to_string(), note)));
             }
         }
     }

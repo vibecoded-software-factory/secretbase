@@ -45,7 +45,7 @@ pub enum Screen {
 pub enum Focus {
     /// Search / filter box.
     Search,
-    /// Sidebar filter list (All/Unread/DMs/Teams/Archived).
+    /// Sidebar filter list (All/Unread/DMs/Teams).
     Filters,
     /// Main conversation list.
     List,
