@@ -13,9 +13,23 @@ and flags there before designing or wiring anything.
 **Cite the command up front.** Before implementing a feature, state which
 `CLI.md` command / JSON-API method it maps to (e.g. *"new-channel → covered
 by `keybase chat api {"method":"newconv"}` per CLI.md"*). If the feature
-needs a command/flag not in `CLI.md`, say so, confirm against
-`keybase help <cmd>` (the authoritative source), and add it to `CLI.md` in
-the same change.
+needs a command/flag not in `CLI.md`, say so, verify it, and add it to
+`CLI.md` in the same change.
+
+**Authoritative source = the keybase `client` GitHub repo, NOT the
+website.** `book.keybase.io/docs/cli` has *no* chat content, and the chat
+doc pages (`/docs/chat/api`, …) return HTTP 403 to the fetcher — do not
+rely on them. Verify against the source in `keybase/client` via `gh api`:
+
+- **chat-api methods** are documented verbatim in
+  `go/client/chat_api_doc.go` (every `{"method": …}` with options).
+- each **CLI subcommand** is `go/client/cmd_chat_<name>.go` (read its
+  `Usage`, `Flags`, `ParseArgv`, and any interactive `Prompt`).
+- the `setstatus`/`hide` status enum is `chat1.ConversationStatus`.
+
+Fetch with: `gh api repos/keybase/client/contents/go/client/<file> -H
+"Accept: application/vnd.github.raw"`. (Or `keybase help <cmd>` on a real
+install.)
 
 ## UX/UI — read `UX.md` first (hard rule)
 
