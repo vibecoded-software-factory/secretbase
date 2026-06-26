@@ -22,7 +22,7 @@ End-to-end feature working: **chat inbox list** (read-only).
 
 * `keybase status --json` on boot to detect the session.
 * `keybase chat api {"method":"list"}` to load conversations.
-* Sidebar filters (All / Unread / DMs / Teams / Archived).
+* Sidebar filters (All / Unread / DMs / Teams).
 * Local fuzzy search (channel name, topic name, creator).
 * Mark conversation as read (`m`).
 * Copy conversation label to clipboard (`y`).
@@ -136,7 +136,7 @@ src/
 │   ├── message.rs          # Message + MessageContent variants
 │   ├── team.rs             # TeamMembership, TeamRole
 │   ├── identity.rs         # IdentityInfo (keybase status)
-│   ├── filter.rs           # ConversationFilter (All/Unread/DMs/Teams/Archived)
+│   ├── filter.rs           # ConversationFilter (All/Unread/DMs/Teams)
 │   ├── search.rs           # Fuzzy ranking
 │   └── validation.rs       # username validators
 ├── ports/                  # trait abstractions

@@ -13,13 +13,11 @@ pub enum ConversationFilter {
     Dms,
     /// Conversations inside an explicit team.
     Teams,
-    /// Member-status != Active (left, removed, reset, preview).
-    Archived,
 }
 
 /// Ordered set of all filters — drives sidebar rendering and arrow-key
 /// cycling.
-pub type ConversationFilters = [ConversationFilter; 5];
+pub type ConversationFilters = [ConversationFilter; 4];
 
 /// Filters in display order. The sidebar renders them top-to-bottom in
 /// this exact sequence.
@@ -28,7 +26,6 @@ pub const CONVERSATION_FILTERS: ConversationFilters = [
     ConversationFilter::Unread,
     ConversationFilter::Dms,
     ConversationFilter::Teams,
-    ConversationFilter::Archived,
 ];
 
 impl ConversationFilter {
@@ -39,7 +36,6 @@ impl ConversationFilter {
             ConversationFilter::Unread => "Unread",
             ConversationFilter::Dms => "DMs",
             ConversationFilter::Teams => "Teams",
-            ConversationFilter::Archived => "Archived",
         }
     }
 
@@ -51,7 +47,6 @@ impl ConversationFilter {
             ConversationFilter::Unread => active && conv.unread,
             ConversationFilter::Dms => active && conv.channel.members_type.is_dm(),
             ConversationFilter::Teams => active && conv.channel.members_type.is_team(),
-            ConversationFilter::Archived => !active,
         }
     }
 }
@@ -112,13 +107,5 @@ mod tests {
         let c2 = conv(MembersType::ImpTeamNative, MemberStatus::Active, false);
         assert!(ConversationFilter::Teams.matches(&c1));
         assert!(!ConversationFilter::Teams.matches(&c2));
-    }
-
-    #[test]
-    fn archived_filter_matches_inactive_member_status() {
-        let c1 = conv(MembersType::Team, MemberStatus::Left, false);
-        let c2 = conv(MembersType::Team, MemberStatus::Active, false);
-        assert!(ConversationFilter::Archived.matches(&c1));
-        assert!(!ConversationFilter::Archived.matches(&c2));
     }
 }

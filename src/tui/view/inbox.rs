@@ -118,7 +118,6 @@ fn filter_icon_and_color(
         ConversationFilter::Unread => ("● ", t.conv_unread),
         ConversationFilter::Dms => ("󰭹 ", t.conv_dm),
         ConversationFilter::Teams => ("󰀎 ", t.conv_team),
-        ConversationFilter::Archived => ("\u{f187} ", t.dim),
     }
 }
 
