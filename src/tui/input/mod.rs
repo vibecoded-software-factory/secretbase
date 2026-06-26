@@ -94,6 +94,24 @@ fn handle_key(app: &mut App, key: KeyEvent) {
                 ConfirmInput::Ignore => {}
             }
         }
+        Screen::ConfirmConvAction => {
+            use common::ConfirmInput;
+            match common::confirm_key(key) {
+                ConfirmInput::Commit => flows::chat::confirm_conv_action(app),
+                ConfirmInput::Cancel => flows::chat::cancel_conv_action(app),
+                ConfirmInput::Activate => {
+                    if app.conv_action_yes {
+                        flows::chat::confirm_conv_action(app);
+                    } else {
+                        flows::chat::cancel_conv_action(app);
+                    }
+                }
+                ConfirmInput::Yes => app.conv_action_yes = true,
+                ConfirmInput::No => app.conv_action_yes = false,
+                ConfirmInput::Toggle => app.conv_action_yes = !app.conv_action_yes,
+                ConfirmInput::Ignore => {}
+            }
+        }
         Screen::NewConversation => popups::new_conversation(app, key),
         Screen::SearchGlobal => popups::search_global(app, key),
         Screen::ConfirmDeleteMessage => popups::confirm_delete_message(app, key),

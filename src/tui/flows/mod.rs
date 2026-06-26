@@ -113,12 +113,9 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         (InFlight::NewConversation, WorkerResponse::NewConversation(r)) => {
             chat::handle_new_conversation_response(app, r);
         }
-        // ── Mute / unmute ─────────────────────────────────────────
-        (InFlight::MuteConversation, WorkerResponse::SetConvStatus(r)) => {
-            chat::handle_set_conv_status_response(app, r, "Muted", "muted");
-        }
-        (InFlight::UnmuteConversation, WorkerResponse::SetConvStatus(r)) => {
-            chat::handle_set_conv_status_response(app, r, "Unmuted", "unfiled");
+        // ── Conversation status (mute/unmute/ignore/block/…) ──────
+        (InFlight::SetConvStatus { done_label }, WorkerResponse::SetConvStatus(r)) => {
+            chat::handle_set_conv_status_response(app, r, &done_label);
         }
         // ── Pin / unpin ───────────────────────────────────────────
         (InFlight::PinMessage { message_id }, WorkerResponse::PinMessage(r)) => {

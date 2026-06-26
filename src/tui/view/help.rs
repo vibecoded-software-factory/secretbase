@@ -1,5 +1,5 @@
 //! Help popup — a scrollable overlay scoped to the screen it was opened
-//! from (`App::help_from`). Mirrors jewel/bytewarden's context-aware help.
+//! from (`App::help_from`). Mirrors jewel's context-aware help.
 
 use ratatui::{
     Frame,
@@ -145,6 +145,7 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 ("Alt+M", "mark as read"),
                 ("Alt+R / F5", "refresh inbox"),
                 ("Alt+U / Alt+O", "mute / unmute"),
+                ("Alt+I", "ignore (hide from inbox)"),
                 ("Alt+T", "teams"),
                 ("Ctrl+G", "global search"),
                 ("Shift+L", "logout"),

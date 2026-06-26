@@ -62,7 +62,7 @@ impl LoweredConversation {
 /// The query is lowercased once by the caller for efficiency — pass it
 /// in already-normalised. Higher scores rank higher.
 ///
-/// Weighting roughly mirrors bytewarden's vault item scoring:
+/// Weighting:
 ///   * channel name match → 100
 ///   * topic name match    →  60
 ///   * creator match       →  20

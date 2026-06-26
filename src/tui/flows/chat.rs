@@ -18,7 +18,7 @@ use crate::domain::{InboxHit, Message};
 use crate::ports::KeybaseError;
 use crate::ports::keybase::{ListConversationsOk, ReadChannel};
 use crate::tui::action::ActionState;
-use crate::tui::app::App;
+use crate::tui::app::{App, ConvAction};
 use crate::tui::worker::{InFlight, WorkerRequest};
 
 /// Number of messages fetched per page. Sized so most chats fit
@@ -1203,14 +1203,46 @@ pub fn handle_send_message_response(
 // ── Mute / unmute ────────────────────────────────────────────────────
 
 pub fn request_mute_conversation(app: &mut App) {
-    set_conv_status_request(app, "muted", true);
+    set_conv_status_request(app, "muted", "Muting…", "Muted");
 }
 
 pub fn request_unmute_conversation(app: &mut App) {
-    set_conv_status_request(app, "unfiled", false);
+    set_conv_status_request(app, "unfiled", "Unmuting…", "Unmuted");
 }
 
-fn set_conv_status_request(app: &mut App, status: &str, muting: bool) {
+// ── Conversation actions (confirm popup → setstatus) ─────────────────
+
+/// Opens the confirm popup for a [`ConvAction`] on the selected
+/// conversation. No-op (with feedback) when nothing is selected.
+pub fn open_conv_action(app: &mut App, action: ConvAction) {
+    if app.selected_conversation().is_none() {
+        app.set_action(ActionState::Error("No conversation selected".into()));
+        return;
+    }
+    app.pending_conv_action = Some(action);
+    app.conv_action_yes = false;
+    app.screen = crate::tui::screens::Screen::ConfirmConvAction;
+}
+
+/// Cancels a pending conversation action and returns to the inbox.
+pub fn cancel_conv_action(app: &mut App) {
+    app.pending_conv_action = None;
+    app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+/// Commits the pending conversation action: issues its `setstatus`
+/// call and returns to the inbox.
+pub fn confirm_conv_action(app: &mut App) {
+    let Some(action) = app.pending_conv_action.take() else {
+        app.screen = crate::tui::screens::Screen::Inbox;
+        return;
+    };
+    app.screen = crate::tui::screens::Screen::Inbox;
+    set_conv_status_request(app, action.status(), action.running(), action.done());
+}
+
+/// Shared `setstatus` request builder for every status verb.
+fn set_conv_status_request(app: &mut App, status: &str, running: &str, done: &str) {
     let Some(conv) = app.selected_conversation() else {
         app.set_action(ActionState::Error("No conversation selected".into()));
         return;
@@ -1219,16 +1251,12 @@ fn set_conv_status_request(app: &mut App, status: &str, muting: bool) {
     let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
         return;
     };
-    if !app.begin(if muting {
-        InFlight::MuteConversation
-    } else {
-        InFlight::UnmuteConversation
+    if !app.begin(InFlight::SetConvStatus {
+        done_label: done.to_string(),
     }) {
         return;
     }
-    app.set_action(ActionState::Running(
-        if muting { "Muting…" } else { "Unmuting…" }.into(),
-    ));
+    app.set_action(ActionState::Running(running.to_string()));
     let _ = app.worker_tx.send(WorkerRequest::SetConvStatus {
         channel,
         status: status.to_string(),
@@ -1239,16 +1267,14 @@ pub fn handle_set_conv_status_response(
     app: &mut App,
     result: Result<(), KeybaseError>,
     done_label: &str,
-    status: &str,
 ) {
     match result {
         Ok(()) => {
             app.set_action(ActionState::Done(done_label.into()));
-            app.push_cmd(
-                "keybase chat api setstatus",
-                true,
-                format!("status: {status}"),
-            );
+            app.push_cmd("keybase chat api setstatus", true, done_label.to_string());
+            // The flipped status (ignored/blocked/…) changes inbox
+            // membership and counts — refresh so the row leaves the view.
+            request_load_inbox_silent(app);
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));

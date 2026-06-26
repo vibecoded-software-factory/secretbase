@@ -57,6 +57,10 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             crate::tui::flows::teams::open_teams(app);
             return;
         }
+        KeyCode::Char('i') | KeyCode::Char('I') if alt => {
+            chat::open_conv_action(app, crate::tui::app::ConvAction::Ignore);
+            return;
+        }
         KeyCode::Tab => {
             app.focus = common::cycle_focus(&FOCUS_ORDER, app.focus, true);
             return;

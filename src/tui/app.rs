@@ -30,6 +30,48 @@ pub const INBOX_VIEWPORT_ROWS: usize = 20;
 /// Step size in rows for PgUp/PgDn navigation.
 pub const PAGE_STEP: usize = 10;
 
+/// A status-changing action on a single conversation, shown behind the
+/// shared y/n confirm popup ([`Screen::ConfirmConvAction`]). Each maps to
+/// a `keybase chat api {"method":"setstatus"}` status value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConvAction {
+    /// Hide from the inbox until a new message arrives (`ignored`).
+    Ignore,
+}
+
+impl ConvAction {
+    /// The keybase `setstatus` value.
+    pub fn status(self) -> &'static str {
+        match self {
+            ConvAction::Ignore => "ignored",
+        }
+    }
+    /// Spinner label while the call runs.
+    pub fn running(self) -> &'static str {
+        match self {
+            ConvAction::Ignore => "Ignoring…",
+        }
+    }
+    /// Feedback label on success.
+    pub fn done(self) -> &'static str {
+        match self {
+            ConvAction::Ignore => "Ignored",
+        }
+    }
+    /// Confirm-popup title.
+    pub fn title(self) -> &'static str {
+        match self {
+            ConvAction::Ignore => " Ignore conversation? ",
+        }
+    }
+    /// One-line description of the effect, shown in the confirm popup.
+    pub fn note(self) -> &'static str {
+        match self {
+            ConvAction::Ignore => "Hides it from the inbox until a new message arrives.",
+        }
+    }
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -166,6 +208,10 @@ pub struct App {
     pub logout_yes: bool,
     /// Whether "confirm" is highlighted in the delete-message overlay.
     pub delete_msg_yes: bool,
+    /// Pending conversation action awaiting confirmation (ignore/…).
+    pub pending_conv_action: Option<ConvAction>,
+    /// Whether "confirm" is highlighted in the conversation-action overlay.
+    pub conv_action_yes: bool,
 
     // ── Action queue / feedback strip ─────────────────────────────────────
     pub action_state: ActionState,
@@ -285,6 +331,8 @@ impl App {
             help_scroll: 0,
             logout_yes: false,
             delete_msg_yes: false,
+            pending_conv_action: None,
+            conv_action_yes: false,
             action_state: ActionState::Idle,
             action_tick: 0,
             in_flight: None,

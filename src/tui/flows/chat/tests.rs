@@ -1722,6 +1722,51 @@ fn input_confirm_logout_n_cancels() {
 }
 
 #[test]
+fn ignore_conversation_confirm_flow() {
+    use crate::tui::app::ConvAction;
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    rig.app.list_selected = 0;
+
+    // Opening the action stages it behind the confirm popup.
+    open_conv_action(&mut rig.app, ConvAction::Ignore);
+    assert_eq!(rig.app.screen, Screen::ConfirmConvAction);
+    assert_eq!(rig.app.pending_conv_action, Some(ConvAction::Ignore));
+    assert!(rig.app.in_flight.is_none(), "must not fire before confirm");
+
+    // Confirming issues the setstatus call and returns to the inbox.
+    confirm_conv_action(&mut rig.app);
+    assert_eq!(rig.app.screen, Screen::Inbox);
+    assert!(rig.app.pending_conv_action.is_none());
+    assert!(matches!(
+        rig.app.in_flight,
+        Some(InFlight::SetConvStatus { .. })
+    ));
+    pump_until_idle(&mut rig.app);
+    match &rig.app.action_state {
+        ActionState::Done(s) => assert_eq!(s, "Ignored"),
+        other => panic!("expected Done(Ignored), got {other:?}"),
+    }
+}
+
+#[test]
+fn ignore_conversation_cancel_does_nothing() {
+    use crate::tui::app::ConvAction;
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    rig.app.list_selected = 0;
+    open_conv_action(&mut rig.app, ConvAction::Ignore);
+    cancel_conv_action(&mut rig.app);
+    assert_eq!(rig.app.screen, Screen::Inbox);
+    assert!(rig.app.pending_conv_action.is_none());
+    assert!(rig.app.in_flight.is_none());
+}
+
+#[test]
 fn input_enter_on_list_opens_selected_conversation() {
     let mut rig = build_rig();
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];

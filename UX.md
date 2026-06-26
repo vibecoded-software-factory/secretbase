@@ -130,12 +130,17 @@ Popups are centered and **always drawn over their base screen** by
 `view::mod::draw` (inbox under logout/new-conv/global-search; conversation
 under react/delete/download).
 
-- **Confirmations** (`ConfirmLogout`, `ConfirmDeleteMessage`) render through
-  `widgets::draw_confirm_popup` (centered, double border): `←/→` (or
-  `Tab`/`h`/`l`) move between **confirm/cancel**, `Enter` activates the
-  highlighted one, `y`/`n`/`Esc` are shortcuts. **Default highlight = cancel**
-  for the destructive action (`logout_yes` / `delete_msg_yes` default
-  `false`). Classified by `input::common::confirm_key`/`ConfirmInput`.
+- **Confirmations** (`ConfirmLogout`, `ConfirmDeleteMessage`,
+  `ConfirmConvAction`) render through `widgets::draw_confirm_popup`
+  (centered, double border): `←/→` (or `Tab`/`h`/`l`) move between
+  **confirm/cancel**, `Enter` activates the highlighted one, `y`/`n`/`Esc`
+  are shortcuts. **Default highlight = cancel** for the destructive action
+  (`logout_yes` / `delete_msg_yes` / `conv_action_yes` default `false`).
+  Classified by `input::common::confirm_key`/`ConfirmInput`.
+  `ConfirmConvAction` is the generic home for per-conversation status
+  actions (`App::ConvAction`: ignore/…) — each variant supplies its own
+  title/note and maps to a `setstatus` value, so adding one is a single
+  enum arm.
 - **Input popups** (`NewConversation`, `React`, `DownloadAttachment`,
   `SearchGlobal`): a centered box with an `editor_spans` field and
   self-contained `Enter: … | Esc: cancel` instructions. Keys route through
@@ -170,8 +175,9 @@ filter box, `input::common::search_key`/`SearchAction`. Rendering is always
 - `j/k` + `↑/↓` navigate · `PgUp/PgDn` page · `g/G` top/bottom ·
   `Enter`/`l` open.
 - **Actions use the `Alt+<letter>` convention**: `Alt+N` new conversation,
-  `Alt+C` copy, `Alt+M` mark read, `Alt+U`/`Alt+O` mute/unmute, `Alt+T`
-  teams, `Ctrl+G` global search, `Shift+L` logout. In the conversation,
+  `Alt+C` copy, `Alt+M` mark read, `Alt+U`/`Alt+O` mute/unmute, `Alt+I`
+  ignore, `Alt+T` teams, `Ctrl+G` global search, `Shift+L` logout. In the
+  conversation,
   `Alt+V` select mode, `Alt+E`/`Alt+D` edit/delete own, `Alt+J`/`Alt+P`
   react/pin. The footer shows only a few; the full per-screen list lives in
   the help popup and the `README.md` tables — **keep both in sync**.
@@ -194,8 +200,8 @@ colors — use these.**
    screen = `split_main`.
 2. **Fix the class, not the instance** — when you change one screen, change
    every screen with the same pattern (and update this file).
-3. **Every change stays coherent** with the rest of the UI — and with jewel
-   and bytewarden, which share these components. If you diverge, update the
-   spec here first and apply it everywhere.
+3. **Every change stays coherent** with the rest of the UI — and with jewel,
+   which shares these components. If you diverge, update the spec here first
+   and apply it everywhere.
 4. **No decorative noise on working screens** — the figlet + starfield belong
    to splash/login only. Screen identity comes from the bordered block titles.
