@@ -3,11 +3,10 @@
 A terminal user interface (TUI) for the [Keybase CLI](https://book.keybase.io/docs/cli),
 written in Rust on top of [Ratatui](https://ratatui.rs/).
 
-The project follows the same hexagonal architecture as its sibling
-[`bytewarden`](../bytewarden) (which wraps the Bitwarden CLI): pure
-domain types in the core, ports as trait abstractions, adapters as the
-only layer allowed to spawn subprocesses or touch the filesystem, and a
-driving TUI adapter on top.
+The project follows a hexagonal architecture: pure domain types in the
+core, ports as trait abstractions, adapters as the only layer allowed to
+spawn subprocesses or touch the filesystem, and a driving TUI adapter on
+top.
 
 ```text
  main ──► tui ──► flows ──► ports ◄── adapters
@@ -75,6 +74,7 @@ tables.
 | `Alt+M`                 | Mark as read |
 | `Alt+R` / `F5`          | Refresh inbox |
 | `Alt+U` / `Alt+O`       | Mute / unmute |
+| `Alt+I`                 | Ignore conversation (hide from inbox) |
 | `Alt+T`                 | Teams |
 | `Ctrl+G`                | Global search |
 | `Shift+L`               | Logout (confirmation) |

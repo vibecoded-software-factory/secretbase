@@ -206,8 +206,11 @@ pub enum InFlight {
         body: String,
     },
     NewConversation,
-    MuteConversation,
-    UnmuteConversation,
+    /// Any `setstatus` call (mute / unmute / ignore / block / report /
+    /// favorite). `done_label` is the feedback shown on success.
+    SetConvStatus {
+        done_label: String,
+    },
     PinMessage {
         message_id: u64,
     },

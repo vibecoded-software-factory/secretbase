@@ -47,7 +47,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // Pick the base (non-overlay) screen to render underneath any popup.
     let base = match app.screen {
-        Screen::ConfirmLogout | Screen::NewConversation | Screen::SearchGlobal => Screen::Inbox,
+        Screen::ConfirmLogout
+        | Screen::ConfirmConvAction
+        | Screen::NewConversation
+        | Screen::SearchGlobal => Screen::Inbox,
         Screen::ConfirmDeleteMessage | Screen::React | Screen::DownloadAttachment => {
             Screen::Conversation
         }
@@ -89,6 +92,39 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 ))],
                 app.delete_msg_yes,
             );
+        }
+        Screen::ConfirmConvAction => {
+            if let Some(action) = app.pending_conv_action {
+                let label = app
+                    .selected_conversation()
+                    .and_then(|c| {
+                        app.conversations
+                            .iter()
+                            .position(|x| x.id == c.id)
+                            .and_then(|i| app.conversations_lowered.get(i))
+                    })
+                    .map(|l| l.display_label.clone())
+                    .unwrap_or_else(|| "(conversation)".to_string());
+                widgets::draw_confirm_popup(
+                    frame,
+                    frame.area(),
+                    &app.theme,
+                    action.title(),
+                    vec![
+                        Line::from(Span::styled(
+                            label,
+                            Style::default()
+                                .fg(app.theme.foreground)
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                        )),
+                        Line::from(Span::styled(
+                            action.note(),
+                            Style::default().fg(app.theme.dim),
+                        )),
+                    ],
+                    app.conv_action_yes,
+                );
+            }
         }
         Screen::NewConversation => new_conversation::draw(frame, app),
         Screen::SearchGlobal => search_global::draw(frame, app),

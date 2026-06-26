@@ -12,8 +12,8 @@
 //! query), so the buffer should not linger on the heap after the editor
 //! is dropped. This restores — and extends — the hygiene the
 //! `compose`/`new-conversation` drafts had before they moved onto the
-//! shared editor. (jewel/bytewarden don't need this and keep theirs
-//! plain — not every decision applies to all three apps equally.)
+//! shared editor. (jewel doesn't need this and keeps its editor
+//! plain — not every decision applies to every app equally.)
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

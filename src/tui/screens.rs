@@ -21,6 +21,8 @@ pub enum Screen {
     Help,
     /// Confirm-logout popup overlay.
     ConfirmLogout,
+    /// Confirm a status action (ignore/…) on the selected conversation.
+    ConfirmConvAction,
     /// New-conversation popup (Alt+N) — input for comma-separated
     /// usernames.
     NewConversation,

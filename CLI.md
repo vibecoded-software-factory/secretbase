@@ -236,6 +236,10 @@ features:
   `send`, `edit`, `delete`, `reaction`, `mark`, `searchinbox`, `newconv`,
   `setstatus`, `pin`, `unpin`, `download`, …). See
   <https://book.keybase.io/docs/chat/api>.
+  - `setstatus` `{"channel":…,"status":…}` status values:
+    `unfiled` · `favorite` · `ignored` · `blocked` · `muted` · `reported`.
+    Used for mute/unmute (`muted`/`unfiled`) and **ignore** (`ignored`);
+    `blocked`/`reported` apply to DMs.
 - `keybase chat api-listen` — push notifications of new messages.
 - `keybase team api` — team JSON API (`list-self-memberships`,
   `create-team`, `add-members`, `list-team-memberships`, …). See

@@ -580,8 +580,8 @@ impl KeybasePort for KeybaseCliAdapter {
     }
 
     fn parallel_session_data(&mut self) -> ParallelSessionData {
-        // Sequential by default — the bytewarden adapter only goes
-        // parallel because each `bw` call pays a heavy Node cold-start.
+        // Sequential by default — parallelism only pays off when each
+        // call carries a heavy per-spawn cost (e.g. a Node cold-start).
         // `keybase` is a single Go binary talking to a long-running
         // service so the spawn overhead is tiny; the sequential
         // baseline is fast enough.
