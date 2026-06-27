@@ -125,9 +125,10 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::styled(banner, Style::default().fg(t.conv_unread)));
     }
 
-    let title = format!("Conversation · {} msgs", app.messages.len());
+    // The message count lives on the Messages panel's border, so the
+    // header stays a plain "Conversation" (no duplicate count).
     frame.render_widget(
-        Paragraph::new(Line::from(spans)).block(titled_block(&title, true, app)),
+        Paragraph::new(Line::from(spans)).block(titled_block("Conversation", true, app)),
         area,
     );
 }
@@ -240,26 +241,31 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
+    // Count + scroll position live in the bottom-right border (dim), the
+    // same place every other list panel shows its count — the title stays
+    // a plain "Messages". (Pagination means there's no true total, so this
+    // is loaded-count + scroll position, not an "X of Y".)
+    let n = app.messages.len();
     let counter = if app.messages_loading_older {
-        format!("{} msgs — loading older…", app.messages.len())
+        format!("{n} msgs · loading older…")
     } else if max_back == 0 {
-        format!("{} msgs", app.messages.len())
+        format!("{n} msgs")
     } else if effective_back == 0 {
-        format!("{} msgs — bottom", app.messages.len())
+        format!("{n} msgs · bottom")
     } else if app.messages_next.is_some() && effective_back == max_back {
-        format!("{} msgs — top (more above)", app.messages.len())
+        format!("{n} msgs · top")
     } else {
-        format!("{} msgs — ↑{}", app.messages.len(), effective_back)
+        format!("{n} msgs · ↑{effective_back}")
     };
 
-    let title = format!("Messages · {counter}");
     // Ratatui scroll is u16; saturate so a very long history can't wrap
     // the offset to a tiny value via a truncating cast.
     let scroll_u16 = scroll_y.min(u16::MAX as usize) as u16;
+    let dim = app.theme.dim;
+    let block = titled_block("Messages", false, app)
+        .title_bottom(Line::from(Span::styled(counter, Style::default().fg(dim))).right_aligned());
     frame.render_widget(
-        Paragraph::new(lines)
-            .scroll((scroll_u16, 0))
-            .block(titled_block(&title, false, app)),
+        Paragraph::new(lines).scroll((scroll_u16, 0)).block(block),
         area,
     );
 
