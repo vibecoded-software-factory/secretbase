@@ -351,7 +351,10 @@ pub fn draw_search_box(
     } else {
         Line::from(editor_spans(editor, focused, &app.theme))
     };
-    let p = Paragraph::new(line).block(titled_block(title, focused, app));
+    // `[/]` panel tag — the search box is the `/` target, mirroring the
+    // numbered list-section borders.
+    let title = format!("─[/]-{title}");
+    let p = Paragraph::new(line).block(titled_block(&title, focused, app));
     frame.render_widget(p, area);
 }
 
@@ -390,7 +393,7 @@ pub fn editor_spans(editor: &LineEditor, focused: bool, theme: &Theme) -> Vec<Sp
 /// the input handler can use a `usize::MAX` "jump to oldest" sentinel
 /// without the title showing a 20-digit number or the scroll getting
 /// stuck above the bottom.
-pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool) {
+pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool, panel: u8) {
     // Inner height = block area minus the two borders.
     let visible_rows = (area.height as usize).saturating_sub(2);
     let total = app.cmd_log.len();
@@ -403,7 +406,8 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool)
     } else {
         format!(" ↑{scroll}")
     };
-    let title = format!("Command log{scroll_tag}");
+    // `[panel]` numbered border tag, matching the other list sections.
+    let title = format!("─[{panel}]-Command log{scroll_tag}");
     let block = titled_block(&title, focused, app);
     let inner = block.inner(area);
     frame.render_widget(block, area);

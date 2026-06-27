@@ -71,6 +71,13 @@ not focus targets). Conventions:
 
 ## Lists & tables — the single pattern
 
+**Numbered section borders.** Each list section carries a `─[N]-` tag woven into
+its top border — the shared convention across the three TUIs. The inbox numbers
+its panels `─[/]-Search`, `─[1]-Filters`, `─[2]-Inbox`, `─[3]-Command log`; Teams
+uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
+itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
+call site.
+
 **All multi-column lists render through `widgets::list_table(...)`.** It owns:
 header row (dim + bold), bordered titled block, `▶ ` selection symbol,
 `selected_bg` + bold row highlight, `column_spacing(2)`, and **persisted

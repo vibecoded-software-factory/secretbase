@@ -31,7 +31,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_identity_bar(frame, app, chunks[0]);
     render_list(frame, app, chunks[1]);
-    draw_cmd_log(frame, app, chunks[2], false);
+    draw_cmd_log(frame, app, chunks[2], false, 2);
     draw_status_strip(
         frame,
         app,
@@ -74,7 +74,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         })
         .collect();
 
-    let title = list_title("Teams", total, total);
+    let title = format!("─[1]-{}", list_title("Teams", total, total));
     // Size the name column to the visible rows and keep the only
     // stretching `Min` on the LAST column, so slack lands on the right
     // instead of pushing the trailing columns away (the "gap" bug).

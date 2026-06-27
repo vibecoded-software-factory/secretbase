@@ -34,7 +34,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     render_filters(frame, app, filters_area);
     render_list(frame, app, list_area);
     let cmdlog_focused = app.focus == Focus::CmdLog;
-    draw_cmd_log(frame, app, cmdlog, cmdlog_focused);
+    draw_cmd_log(frame, app, cmdlog, cmdlog_focused, 3);
     let hint = footer_hint(app);
     draw_status_strip(frame, app, status, hint);
 
@@ -54,7 +54,8 @@ fn footer_hint(app: &App) -> &'static str {
 }
 
 fn render_search(frame: &mut Frame, app: &App, area: Rect) {
-    let title = format!("[/] Search · {} results", app.filtered_cache.len());
+    // draw_search_box prepends the `─[/]-` panel tag itself.
+    let title = format!("Search · {} results", app.filtered_cache.len());
     draw_search_box(
         frame,
         app,
@@ -96,7 +97,7 @@ fn render_filters(frame: &mut Frame, app: &mut App, area: Rect) {
         frame,
         &t,
         area,
-        "Filters",
+        "─[1]-Filters",
         app.focus == Focus::Filters,
         &["Filter", "#"],
         // Only the LAST column may stretch (`Min`); a `Min` on the label
@@ -168,7 +169,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let title = list_title("Inbox", shown, total);
+    let title = format!("─[2]-{}", list_title("Inbox", shown, total));
     let mut scroll = app.list_scroll;
     list_table(
         frame,
