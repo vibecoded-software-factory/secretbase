@@ -53,23 +53,24 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
     let editing = app.edit_target_id.is_some();
     let replying = app.reply_to_id;
 
-    // Split off a small right-hand column for the borderless emoji buttons
-    // (⏎ send / 📎 attach), vertically centred in the compose row.
-    let cols = Layout::horizontal([Constraint::Min(10), Constraint::Length(8)]).split(area);
+    // Right-hand column for the compose buttons, rendered as padded "pills"
+    // (` ⏎ ` / ` 📎 `) — the same idiom as the confirm-popup buttons — and
+    // vertically centred. The focused one gets a highlight background.
+    let cols = Layout::horizontal([Constraint::Min(10), Constraint::Length(10)]).split(area);
     let input_area = cols[0];
     let btn_area = cols[1];
     let btn_y = btn_area.y + btn_area.height / 2; // middle row
-    // Layout of the buttons row: " ⏎   📎 " → ⏎ at +1 (1 cell), 📎 at +5 (2).
+    // Row: ` ⏎ `(3) + `  `(2) + ` 📎 `(4). The rects cover the whole pill.
     app.mouse_areas.compose_send = Rect {
-        x: btn_area.x + 1,
+        x: btn_area.x,
         y: btn_y,
-        width: 1,
+        width: 3,
         height: 1,
     };
     app.mouse_areas.compose_attach = Rect {
         x: btn_area.x + 5,
         y: btn_y,
-        width: 2,
+        width: 4,
         height: 1,
     };
 
@@ -101,8 +102,9 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
         input_area,
     );
 
-    // Borderless emoji buttons; the focused one gets a highlight background.
-    let btn_style = |focused: bool| {
+    // Pill buttons: padded label with a highlight background when focused
+    // (matches `widgets::draw_confirm_popup`).
+    let pill = |focused: bool| {
         if focused {
             Style::default()
                 .fg(t.accent)
@@ -113,10 +115,9 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     };
     let buttons = Line::from(vec![
-        Span::raw(" "),
-        Span::styled("⏎", btn_style(app.compose_focus == ComposeFocus::Send)),
-        Span::raw("   "),
-        Span::styled("📎", btn_style(app.compose_focus == ComposeFocus::Attach)),
+        Span::styled(" ⏎ ", pill(app.compose_focus == ComposeFocus::Send)),
+        Span::raw("  "),
+        Span::styled(" 📎 ", pill(app.compose_focus == ComposeFocus::Attach)),
     ]);
     frame.render_widget(
         Paragraph::new(buttons),
