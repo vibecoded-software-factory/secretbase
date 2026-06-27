@@ -10,8 +10,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    CONVERSATION_FILTERS, ChatEvent, Conversation, ConversationFilter, IdentityInfo, InboxHit,
-    LineEditor, LoweredConversation, Message, TeamMembership, fuzzy_score_lowered,
+    CONVERSATION_FILTERS, ChatEvent, Conversation, ConversationFilter, Emoji, IdentityInfo,
+    InboxHit, LineEditor, LoweredConversation, Message, TeamMembership, fuzzy_score_lowered,
 };
 use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
@@ -249,10 +249,20 @@ pub struct App {
     /// leaving them stuck in Select mode.
     pub select_from_compose: bool,
 
-    /// Pending reaction draft when the user is typing a reaction emoji
-    /// shortcode. Separate from [`Self::compose`] so the conversation
-    /// message draft is preserved.
+    /// Search query in the reaction picker — also doubles as a custom
+    /// `:shortcode:` if it matches no listed emoji. Separate from
+    /// [`Self::compose`] so the message draft is preserved.
     pub react: LineEditor,
+    /// Selected row in the reaction picker (indexes the *filtered* emoji
+    /// list — see [`Self::filtered_emoji_indices`]).
+    pub react_selected: usize,
+    /// Sendable emojis from `emojilist`, fetched once and cached for the
+    /// reaction picker.
+    pub emojis: Vec<Emoji>,
+    /// Whether [`Self::emojis`] has been loaded (so we fetch only once).
+    pub emojis_loaded: bool,
+    /// Whether an `emojilist` fetch is in flight (de-dupes the request).
+    pub emojis_loading: bool,
 
     // ── New-conversation popup ──────────────────────────────────────────
     /// Comma-separated usernames typed by the user in the Alt+N popup.
@@ -430,6 +440,10 @@ impl App {
             selected_msg_idx: None,
             select_from_compose: false,
             react: LineEditor::default(),
+            react_selected: 0,
+            emojis: Vec::new(),
+            emojis_loaded: false,
+            emojis_loading: false,
             new_conv: LineEditor::default(),
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
@@ -471,6 +485,18 @@ impl App {
             clipboard,
             settings,
         }
+    }
+
+    /// Indices into [`Self::emojis`] matching the reaction-picker query
+    /// (case-insensitive substring on the alias; all when empty).
+    pub fn filtered_emoji_indices(&self) -> Vec<usize> {
+        let q = self.react.text().trim().to_lowercase();
+        self.emojis
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| q.is_empty() || e.alias.to_lowercase().contains(&q))
+            .map(|(i, _)| i)
+            .collect()
     }
 
     /// Opens the Settings overlay over the current screen. Stashes the

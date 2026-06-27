@@ -1089,7 +1089,45 @@ pub fn open_react_for_selected(app: &mut App) {
         return;
     }
     app.react.clear();
+    app.react_selected = 0;
     app.screen = crate::tui::screens::Screen::React;
+    // Lazily fetch the sendable-emoji catalogue the first time the picker
+    // opens; it stays cached for the rest of the session.
+    if !app.emojis_loaded {
+        request_emojis(app);
+    }
+}
+
+/// Fetches the emoji catalogue for the reaction picker, once. Runs on the
+/// background lane (no `in_flight` ticket) so it never blocks input — the
+/// picker is usable as a custom-shortcode entry while it loads. Guarded by
+/// `emojis_loading`/`emojis_loaded` so it fires at most once.
+pub fn request_emojis(app: &mut App) {
+    if app.emojis_loaded || app.emojis_loading {
+        return;
+    }
+    app.emojis_loading = true;
+    let _ = app.bg_worker_tx.send(WorkerRequest::ListEmojis);
+}
+
+pub fn handle_emojis_response(
+    app: &mut App,
+    result: Result<Vec<crate::domain::Emoji>, KeybaseError>,
+) {
+    app.emojis_loading = false;
+    match result {
+        Ok(emojis) => {
+            let n = emojis.len();
+            app.emojis = emojis;
+            app.emojis_loaded = true;
+            app.push_cmd("keybase chat api emojilist", true, format!("{n} emojis"));
+        }
+        Err(e) => {
+            // Non-fatal: the picker still works as a custom-shortcode entry,
+            // and we can retry on the next open (loaded stays false).
+            app.push_cmd("keybase chat api emojilist", false, e.to_string());
+        }
+    }
 }
 
 pub fn close_react(app: &mut App) {
@@ -1105,7 +1143,16 @@ pub fn close_react(app: &mut App) {
 }
 
 pub fn request_send_reaction(app: &mut App) {
-    let body = app.react.text().trim().to_string();
+    // Prefer the highlighted emoji from the picker; fall back to the typed
+    // text as a literal custom `:shortcode:` when nothing matches the query.
+    let filtered = app.filtered_emoji_indices();
+    let body = match filtered
+        .get(app.react_selected)
+        .or_else(|| filtered.first())
+    {
+        Some(&ei) => format!(":{}:", app.emojis[ei].alias),
+        None => app.react.text().trim().to_string(),
+    };
     if body.is_empty() {
         app.set_action(ActionState::Error("Reaction is empty".into()));
         return;

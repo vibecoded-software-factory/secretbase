@@ -79,6 +79,9 @@ pub fn handle_status_response(
             if is_boot {
                 if logged_in {
                     app.screen = Screen::Inbox;
+                    // Warm the reaction-picker emoji cache in the background
+                    // so the first react is instant.
+                    chat::request_emojis(app);
                     // Chain the initial inbox load through the worker.
                     chat::request_load_inbox(app);
                     // request_load_inbox set the action strip already.

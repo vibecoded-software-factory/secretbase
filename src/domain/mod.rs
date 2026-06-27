@@ -16,6 +16,7 @@
 pub mod chat_event;
 pub mod conversation;
 pub mod duration;
+pub mod emoji;
 pub mod filter;
 pub mod identity;
 pub mod inbox_hit;
@@ -30,6 +31,7 @@ pub use conversation::{
     Channel, Conversation, MemberStatus, MembersType, TopicType, conversation_label,
 };
 pub use duration::format_duration;
+pub use emoji::Emoji;
 pub use filter::{CONVERSATION_FILTERS, ConversationFilter, ConversationFilters};
 pub use identity::IdentityInfo;
 pub use inbox_hit::InboxHit;

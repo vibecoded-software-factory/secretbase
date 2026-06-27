@@ -61,6 +61,12 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
             chat::handle_load_inbox_response(app, r, true);
             return;
         }
+        // Background emoji-catalogue fetch for the reaction picker — also
+        // routed by variant (no `in_flight` ticket).
+        WorkerResponse::Emojis(r) => {
+            chat::handle_emojis_response(app, r);
+            return;
+        }
         other => other,
     };
 

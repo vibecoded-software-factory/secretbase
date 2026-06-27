@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use zeroize::Zeroizing;
 
 use crate::domain::{
-    AttachmentInfo, Channel, Conversation, IdentityInfo, InboxHit, MemberStatus, MembersType,
-    Message, MessageContent, TeamMembership, TopicType,
+    AttachmentInfo, Channel, Conversation, Emoji, IdentityInfo, InboxHit, MemberStatus,
+    MembersType, Message, MessageContent, TeamMembership, TopicType,
 };
 use crate::ports::KeybaseError;
 use crate::ports::keybase::{
@@ -61,6 +61,7 @@ struct MockState {
     unpins: usize,
     downloads: Vec<(u64, String)>,
     uploads: Vec<(String, String)>,
+    emojis: Vec<Emoji>,
     mark_reads: Vec<u64>,
     read_calls: Vec<Option<String>>,
     /// Next adapter call returning a Result returns this error then
@@ -191,6 +192,13 @@ impl KeybasePort for MockKeybase {
         }
         s.uploads.push((filename.to_string(), title.to_string()));
         Ok(())
+    }
+    fn list_emojis(&mut self) -> Result<Vec<Emoji>, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(s.emojis.clone())
     }
     fn new_conversation(&mut self, channel: &ReadChannel) -> Result<String, KeybaseError> {
         let mut s = self.0.lock().unwrap();

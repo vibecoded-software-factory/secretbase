@@ -2,7 +2,7 @@
 
 use zeroize::Zeroizing;
 
-use crate::domain::{Conversation, IdentityInfo, InboxHit, Message, TeamMembership};
+use crate::domain::{Conversation, Emoji, IdentityInfo, InboxHit, Message, TeamMembership};
 use crate::ports::error::KeybaseError;
 
 /// Successful outcome of [`KeybasePort::list_conversations`].
@@ -262,6 +262,10 @@ pub trait KeybasePort {
         filename: &str,
         title: &str,
     ) -> Result<(), KeybaseError>;
+
+    /// `{"method":"emojilist"}` — the emojis the user can send (stock +
+    /// the team's custom ones), for the reaction picker.
+    fn list_emojis(&mut self) -> Result<Vec<Emoji>, KeybaseError>;
 
     // ── Teams ─────────────────────────────────────────────────────────────
 

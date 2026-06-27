@@ -76,8 +76,25 @@ pub fn react(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => chat::close_react(app),
         KeyCode::Enter => chat::request_send_reaction(app),
+        KeyCode::Up => react_move(app, -1),
+        KeyCode::Down => react_move(app, 1),
         _ => {
+            // Typing edits the search query; reset the highlight to the top
+            // match whenever the query actually changes.
+            let before = app.react.text().to_string();
             common::route_line_editor(&mut app.react, key);
+            if app.react.text() != before {
+                app.react_selected = 0;
+            }
         }
     }
+}
+
+fn react_move(app: &mut App, delta: isize) {
+    let len = app.filtered_emoji_indices().len();
+    if len == 0 {
+        return;
+    }
+    let last = (len - 1) as isize;
+    app.react_selected = ((app.react_selected as isize + delta).clamp(0, last)) as usize;
 }

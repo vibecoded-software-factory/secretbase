@@ -39,7 +39,7 @@ use std::panic::AssertUnwindSafe;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread::JoinHandle;
 
-use crate::domain::{IdentityInfo, InboxHit, Message};
+use crate::domain::{Emoji, IdentityInfo, InboxHit, Message};
 use crate::ports::keybase::{ListConversationsOk, ListTeamsOk, ReadChannel};
 use crate::ports::{KeybaseError, KeybasePort};
 
@@ -143,6 +143,7 @@ pub enum WorkerRequest {
         filename: String,
         title: String,
     },
+    ListEmojis,
     ListSelfMemberships,
     /// Terminates the worker. Sent automatically on drop of
     /// [`WorkerHandle`].
@@ -174,6 +175,7 @@ pub enum WorkerResponse {
     UnpinMessage(Result<(), KeybaseError>),
     DownloadAttachment(Result<(), KeybaseError>),
     UploadAttachment(Result<(), KeybaseError>),
+    Emojis(Result<Vec<Emoji>, KeybaseError>),
     ListSelfMemberships(Result<ListTeamsOk, KeybaseError>),
 }
 
@@ -228,6 +230,7 @@ pub enum InFlight {
     UploadAttachment {
         filename: String,
     },
+    LoadEmojis,
     LoadTeams,
 }
 
@@ -432,6 +435,9 @@ mod tests {
         ) -> Result<(), KeybaseError> {
             Ok(())
         }
+        fn list_emojis(&mut self) -> Result<Vec<crate::domain::Emoji>, KeybaseError> {
+            Ok(Vec::new())
+        }
         fn list_self_memberships(&mut self) -> Result<ListTeamsOk, KeybaseError> {
             Ok(ListTeamsOk {
                 teams: Vec::<TeamMembership>::new(),
@@ -524,6 +530,7 @@ mod tests {
                 Self::UnpinMessage(r) => write!(f, "UnpinMessage({r:?})"),
                 Self::DownloadAttachment(r) => write!(f, "DownloadAttachment({r:?})"),
                 Self::UploadAttachment(r) => write!(f, "UploadAttachment({r:?})"),
+                Self::Emojis(_) => f.write_str("Emojis(..)"),
                 Self::ListSelfMemberships(_) => f.write_str("ListSelfMemberships(..)"),
             }
         }
@@ -619,6 +626,9 @@ fn run_worker(
             } => WorkerResponse::UploadAttachment(run_caught(|| {
                 keybase.upload_attachment(&channel, &filename, &title)
             })),
+            WorkerRequest::ListEmojis => {
+                WorkerResponse::Emojis(run_caught(|| keybase.list_emojis()))
+            }
             WorkerRequest::ListSelfMemberships => {
                 WorkerResponse::ListSelfMemberships(run_caught(|| keybase.list_self_memberships()))
             }

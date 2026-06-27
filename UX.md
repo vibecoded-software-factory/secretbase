@@ -68,6 +68,11 @@ on their own:
   render **collapsed** beneath their target message (via the message's
   `reactions` field); the standalone reaction events are dropped from the
   stream so they don't show as stray `reacted :emoji: on msg #N` lines.
+  **Adding** a reaction (`Alt+J`, or `:` in select-mode) opens a searchable
+  **reaction picker** (`Screen::React`): a `/`-style query over the cached
+  `emojilist` catalogue (fetched once, warmed at boot), an arrow-navigable
+  list of `glyph :alias:`, `Enter` to react, and a custom-`:shortcode:`
+  fallback when nothing matches — so you never have to recall a shortcode.
 - **Sending** — the message echoes instantly the moment `Enter` is pressed,
   as an optimistic **outbox** bubble below the history (`App::outbox`, kept
   separate from `messages` so a re-read can't drop it). It carries a state:

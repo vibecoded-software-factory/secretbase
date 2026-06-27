@@ -75,8 +75,8 @@ use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
 use crate::domain::{
-    AttachmentInfo, Conversation, IdentityInfo, Message, MessageContent, Reaction, SystemInfo,
-    SystemKind, TeamMembership, team_role_name,
+    AttachmentInfo, Conversation, Emoji, IdentityInfo, Message, MessageContent, Reaction,
+    SystemInfo, SystemKind, TeamMembership, team_role_name,
 };
 use crate::ports::KeybaseError;
 use crate::ports::keybase::{
@@ -500,6 +500,11 @@ impl KeybasePort for KeybaseCliAdapter {
         Ok(())
     }
 
+    fn list_emojis(&mut self) -> Result<Vec<Emoji>, KeybaseError> {
+        let reply = self.chat_api(&request_no_params("emojilist"), QUICK_OP_TIMEOUT)?;
+        Ok(parse_emojis(&reply))
+    }
+
     fn new_conversation(&mut self, channel: &ReadChannel) -> Result<String, KeybaseError> {
         let req = request_with_options("newconv", json!({ "channel": channel_object(channel) }));
         let reply = self.chat_api(&req, QUICK_OP_TIMEOUT)?;
@@ -626,6 +631,42 @@ impl KeybasePort for KeybaseCliAdapter {
 /// [`MessageContent::Unknown`] so the view layer can render a useful
 /// placeholder with the original type name — only structural
 /// invariants (id) gate the `None` return.
+/// Flattens an `emojilist` reply (`result.emojis[].emojis[]`) into a
+/// de-duplicated `Vec<Emoji>`. Stock emojis carry a unicode glyph in
+/// `remoteSource.stockalias.text`; custom (image-hosted) ones don't render
+/// in a terminal, so they fall back to `:alias:`.
+fn parse_emojis(reply: &Value) -> Vec<Emoji> {
+    let mut out: Vec<Emoji> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let Some(groups) = reply.pointer("/result/emojis").and_then(Value::as_array) else {
+        return out;
+    };
+    for group in groups {
+        let Some(list) = group.get("emojis").and_then(Value::as_array) else {
+            continue;
+        };
+        for e in list {
+            let Some(alias) = e.get("alias").and_then(Value::as_str) else {
+                continue;
+            };
+            if !seen.insert(alias.to_string()) {
+                continue;
+            }
+            let display = e
+                .pointer("/remoteSource/stockalias/text")
+                .and_then(Value::as_str)
+                .or_else(|| e.pointer("/source/str").and_then(Value::as_str))
+                .map(str::to_string)
+                .unwrap_or_else(|| format!(":{alias}:"));
+            out.push(Emoji {
+                alias: alias.to_string(),
+                display,
+            });
+        }
+    }
+    out
+}
+
 pub(crate) fn parse_message(msg: &Value) -> Option<Message> {
     let id = msg.pointer("/id").and_then(Value::as_u64)?;
     let sender = msg
@@ -1248,6 +1289,32 @@ mod parse_array_tests {
 mod content_parse_tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn parse_emojis_flattens_groups_dedups_and_picks_unicode_or_alias() {
+        let reply = json!({"result": {"emojis": [
+            {"name": "Smileys", "emojis": [
+                {"alias": "+1", "remoteSource": {"stockalias": {"text": "👍"}}},
+                {"alias": "+1", "remoteSource": {"stockalias": {"text": "👍"}}}
+            ]},
+            {"name": "Team", "emojis": [
+                {"alias": "partyparrot", "remoteSource": {"message": {}}}
+            ]}
+        ]}});
+        let out = parse_emojis(&reply);
+        assert_eq!(out.len(), 2, "the duplicate +1 is dropped");
+        assert_eq!(out[0].alias, "+1");
+        assert_eq!(out[0].display, "👍");
+        // Custom (image-hosted) emoji can't render → falls back to :alias:.
+        assert_eq!(out[1].alias, "partyparrot");
+        assert_eq!(out[1].display, ":partyparrot:");
+    }
+
+    #[test]
+    fn parse_emojis_returns_empty_when_shape_missing() {
+        assert!(parse_emojis(&json!({})).is_empty());
+        assert!(parse_emojis(&json!({"result": {}})).is_empty());
+    }
 
     // ── parse_content variants ──────────────────────────────────
 
