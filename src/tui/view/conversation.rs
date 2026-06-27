@@ -245,17 +245,29 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // same place every other list panel shows its count — the title stays
     // a plain "Messages". (Pagination means there's no true total, so this
     // is loaded-count + scroll position, not an "X of Y".)
+    // `n msgs` = messages currently loaded (paginated; older ones load on
+    // scroll-up). The word reports where the viewport sits — no raw line
+    // offset, which mixed units (lines vs messages) and read as confusing.
     let n = app.messages.len();
     let counter = if app.messages_loading_older {
         format!("{n} msgs · loading older…")
     } else if max_back == 0 {
+        // Everything fits — no scrollback.
         format!("{n} msgs")
     } else if effective_back == 0 {
-        format!("{n} msgs · bottom")
-    } else if app.messages_next.is_some() && effective_back == max_back {
-        format!("{n} msgs · top")
+        // Pinned to the newest message.
+        format!("{n} msgs · latest")
+    } else if effective_back == max_back {
+        // Top of what's loaded: more history on the server, or the very
+        // start of the conversation.
+        if app.messages_next.is_some() {
+            format!("{n} msgs · ↑ more above")
+        } else {
+            format!("{n} msgs · oldest")
+        }
     } else {
-        format!("{n} msgs · ↑{effective_back}")
+        // Scrolled up into older messages, mid-history.
+        format!("{n} msgs · ↑ older")
     };
 
     // Ratatui scroll is u16; saturate so a very long history can't wrap
