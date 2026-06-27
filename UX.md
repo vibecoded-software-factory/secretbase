@@ -24,7 +24,12 @@ change.
 The router `view::mod::draw` picks a base screen per `Screen`, then overlays
 any popup on top (popups draw the base screen underneath first). The
 terminal floor is **70×18** (`view::mod::MIN_W`/`MIN_H`); below it every
-screen is replaced by a centered "resize me" message.
+screen is replaced by the centered "terminal too small" notice
+(`view::mod::draw_too_small`). That notice is **shared verbatim with jewel and
+bytewarden**: three vertically-centered lines — an `error`-colored bold
+`Terminal too small` title, a `dim` `Resize to at least {MIN_W}×{MIN_H}
+(currently {w}×{h})` line, and a `dim` `Ctrl+C to quit` hint. Only the
+`MIN_W`/`MIN_H` floor differs per app (it tracks each layout's real minimum).
 
 Every signed-in screen is built from the same vertical stack via
 `view::mod::split_main(area, identity_content_rows)` →

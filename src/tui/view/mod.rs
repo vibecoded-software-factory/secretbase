@@ -41,7 +41,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     app.mouse_areas.reset(area.width, area.height);
 
     if area.width < MIN_W || area.height < MIN_H {
-        draw_too_small(frame, area);
+        draw_too_small(frame, area, &app.theme);
         return;
     }
 
@@ -147,13 +147,39 @@ fn draw_screen(frame: &mut Frame, app: &mut App, screen: Screen) {
     }
 }
 
-fn draw_too_small(frame: &mut Frame, area: Rect) {
-    let p = Paragraph::new(Span::styled(
-        format!("Terminal too small — resize to at least {MIN_W}×{MIN_H}"),
-        Style::default().add_modifier(Modifier::BOLD),
+/// Renders the centred "terminal too small" notice — the only thing we
+/// draw below [`MIN_W`]/[`MIN_H`]. Shared design with bytewarden and
+/// jewel: an accent-error title, a dim line stating the required and
+/// current size, and a `Ctrl+C to quit` hint, vertically centred.
+fn draw_too_small(frame: &mut Frame, area: Rect, theme: &crate::tui::theme::Theme) {
+    let header = Line::from(Span::styled(
+        "Terminal too small",
+        Style::default()
+            .fg(theme.error)
+            .add_modifier(Modifier::BOLD),
     ))
     .alignment(ratatui::layout::Alignment::Center);
-    frame.render_widget(p, area);
+    let detail = Line::from(Span::styled(
+        format!(
+            "Resize to at least {}×{} (currently {}×{})",
+            MIN_W, MIN_H, area.width, area.height,
+        ),
+        Style::default().fg(theme.dim),
+    ))
+    .alignment(ratatui::layout::Alignment::Center);
+    let hint = Line::from(Span::styled(
+        "Ctrl+C to quit",
+        Style::default().fg(theme.dim),
+    ))
+    .alignment(ratatui::layout::Alignment::Center);
+    // Vertically centre: pad the top so the header lands mid-screen even
+    // on a very short terminal.
+    let blanks = (area.height as usize).saturating_sub(3) / 2;
+    let mut lines: Vec<Line> = (0..blanks).map(|_| Line::from("")).collect();
+    lines.push(header);
+    lines.push(detail);
+    lines.push(hint);
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 /// Splits a vertical area into the standard signed-in stack:
