@@ -127,6 +127,10 @@ fn render_filter_group(
         .iter()
         .position(|f| *f == app.active_filter)
         .unwrap_or(usize::MAX);
+    // Only the panel holding the active filter lights up (border + row), so
+    // navigating ↑/↓ across the boundary moves the focus between panels
+    // instead of lighting both at once.
+    let focused = app.focus == Focus::Filters && selected != usize::MAX;
 
     let mut scroll = 0usize;
     list_table(
@@ -134,7 +138,7 @@ fn render_filter_group(
         t,
         area,
         title,
-        app.focus == Focus::Filters,
+        focused,
         &["Filter", "#"],
         // Only the LAST column may stretch (`Min`); a `Min` on the label
         // (non-final) column would shove the count to the far right with
