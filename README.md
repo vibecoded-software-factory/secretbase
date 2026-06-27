@@ -89,9 +89,7 @@ In the **Filters** panel, `↑` / `↓` change the active filter.
 | `Enter`                 | Send / save edit |
 | `↑` / `↓` · `PgUp` / `PgDn` | Scroll history |
 | `←` / `→` · `Home` / `End`  | Compose cursor |
-| `Alt+V`                 | Select mode |
-| `Alt+E` / `Alt+D`       | Edit / delete last own message |
-| `Alt+J` / `Alt+P`       | React / pin last message |
+| `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
 | `Alt+U`                 | Unpin channel |
 | `Alt+R`                 | Resend failed message |
 | `Alt+A`                 | Attach a file (opens the file picker) |

@@ -83,35 +83,9 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Char('r') if ctrl => chat::request_load_messages(app),
         KeyCode::Char('y') if ctrl => chat::do_copy_conversation_label(app),
 
-        // ── Alt shortcuts — one-shot actions on the "latest of mine".
-        // These transiently select a message; `select_from_compose`
-        // marks the action as Compose-initiated so its popup's cancel
-        // path returns to Compose instead of stranding the user in
-        // Select mode.
-        KeyCode::Char('e') | KeyCode::Char('E') if alt => {
-            app.select_from_compose = true;
-            select_my_latest_message(app);
-            chat::open_edit_for_selected(app); // edit goes straight to Compose
-            app.select_from_compose = false;
-        }
-        KeyCode::Char('d') | KeyCode::Char('D') if alt => {
-            app.select_from_compose = true;
-            select_my_latest_message(app);
-            chat::open_delete_for_selected(app);
-        }
-        KeyCode::Char('j') | KeyCode::Char('J') if alt => {
-            app.select_from_compose = true;
-            select_latest_message(app);
-            chat::open_react_for_selected(app);
-        }
-        KeyCode::Char('p') | KeyCode::Char('P') if alt => {
-            select_latest_message(app);
-            chat::request_pin_selected_message(app);
-            // Pin has no popup; return to Compose immediately so the
-            // next keystroke isn't routed to Select mode (the reload in
-            // handle_pin_response also clears this).
-            app.selected_msg_idx = None;
-        }
+        // ── Alt shortcuts ──────────────────────────────────────────────
+        // Per-message actions (edit / delete / react / pin / reply) live in
+        // Select mode (Alt+V) — Compose stays for composing only.
         KeyCode::Char('u') | KeyCode::Char('U') if alt => chat::request_unpin_conversation(app),
         KeyCode::Char('v') | KeyCode::Char('V') if alt => chat::enter_select_mode(app),
         KeyCode::Char('r') | KeyCode::Char('R') if alt => chat::request_resend_message(app),
@@ -144,21 +118,5 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Char('r') => chat::start_reply_for_selected(app),
         KeyCode::Char('s') => chat::open_download_for_selected(app),
         _ => {}
-    }
-}
-
-fn select_my_latest_message(app: &mut App) {
-    let me = app.identity.username.clone();
-    if me.is_empty() {
-        return;
-    }
-    if let Some(i) = app.messages.iter().rposition(|m| m.sender == me) {
-        app.selected_msg_idx = Some(i);
-    }
-}
-
-fn select_latest_message(app: &mut App) {
-    if !app.messages.is_empty() {
-        app.selected_msg_idx = Some(app.messages.len() - 1);
     }
 }
