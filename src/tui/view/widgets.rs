@@ -97,10 +97,25 @@ pub fn list_table(
     } else {
         Style::default().fg(theme.inactive)
     };
-    let block = Block::default()
+    // The `subject · X of Y` count goes in the bottom-right border (dim),
+    // leaving the top title as the section name + its `─[N]-` tag.
+    let (top_title, count) = match title.split_once(" · ") {
+        Some((t, c)) => (t, c),
+        None => (title, ""),
+    };
+    let mut block = Block::default()
         .borders(Borders::ALL)
-        .title(Span::styled(title.to_string(), border_style))
+        .title(Span::styled(top_title.to_string(), border_style))
         .border_style(border_style);
+    if !count.is_empty() {
+        block = block.title_bottom(
+            Line::from(Span::styled(
+                count.to_string(),
+                Style::default().fg(theme.dim),
+            ))
+            .right_aligned(),
+        );
+    }
     let table = Table::new(rows, widths.to_vec())
         .header(header)
         .column_spacing(2)
