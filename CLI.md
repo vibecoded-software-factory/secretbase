@@ -259,6 +259,12 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   secretbase merges it with a bundled curated standard set
   (`domain::emoji::standard`) to power the reaction picker. Fetched once,
   warmed at boot, cached.
+- `searchinbox` — result shape is `result.results.hits[]`, each
+  `{convID, convName, hits:[{hitMessage.valid{messageID, senderUsername,
+  bodySummary, …}}]}`. **Gotcha: `convID` here is standard-base64, whereas
+  `list` returns the conversation id as lowercase hex** — secretbase
+  decodes it to hex when parsing so a search hit re-keys into the cached
+  inbox (open-from-search).
 - `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
   read), `unread_only`.
 - `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented

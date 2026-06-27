@@ -143,11 +143,15 @@ pub trait KeybasePort {
             return Ok(out);
         };
         for conv in conv_hits {
-            let conv_id = conv
+            // `searchinbox` returns the conversation id base64-encoded,
+            // whereas `list` returns it as lowercase hex — normalise to hex
+            // so hits re-key into the cached inbox (open-from-search).
+            let raw_conv_id = conv
                 .get("convID")
                 .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_string();
+                .unwrap_or_default();
+            let conv_id =
+                base64_conv_id_to_hex(raw_conv_id).unwrap_or_else(|| raw_conv_id.to_string());
             let conv_name = conv
                 .get("convName")
                 .and_then(serde_json::Value::as_str)
@@ -317,4 +321,61 @@ pub struct ReadChannel {
     /// Sub-channel inside a team (e.g. `general`). Required for team
     /// conversations.
     pub topic_name: Option<String>,
+}
+
+/// Decodes a standard-base64 conversation id (as `searchinbox` returns it)
+/// to the lowercase hex form `list` uses. Returns `None` on any non-base64
+/// input so the caller can fall back to the raw string.
+fn base64_conv_id_to_hex(s: &str) -> Option<String> {
+    fn sextet(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let s = s.trim_end_matches('=');
+    if s.is_empty() {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(s.len() * 3 / 4);
+    let mut buf = 0u32;
+    let mut bits = 0u32;
+    for &c in s.as_bytes() {
+        buf = (buf << 6) | sextet(c)? as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push((buf >> bits) as u8);
+        }
+    }
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(hex, "{b:02x}");
+    }
+    Some(hex)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::base64_conv_id_to_hex;
+
+    #[test]
+    fn base64_conv_id_decodes_to_list_hex() {
+        // Real pair observed from `searchinbox` (base64) vs `list` (hex).
+        assert_eq!(
+            base64_conv_id_to_hex("AABi56bFVVvd3i3UnNPWSU6Zd19TSrVsSVZLwoktPgM=").as_deref(),
+            Some("000062e7a6c5555bddde2dd49cd3d6494e99775f534ab56c49564bc2892d3e03"),
+        );
+    }
+
+    #[test]
+    fn base64_conv_id_rejects_garbage() {
+        assert_eq!(base64_conv_id_to_hex(""), None);
+        assert_eq!(base64_conv_id_to_hex("not valid!!"), None);
+    }
 }
