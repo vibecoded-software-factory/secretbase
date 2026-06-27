@@ -445,7 +445,10 @@ impl App {
             select_from_compose: false,
             react: LineEditor::default(),
             react_selected: 0,
-            emojis: Vec::new(),
+            // Seed the bundled standard set so the picker has content and
+            // reactions resolve to glyphs immediately; the emojilist fetch
+            // merges the team's custom emojis on top.
+            emojis: crate::domain::emoji::standard(),
             emojis_loaded: false,
             emojis_loading: false,
             emoji_uses: HashMap::new(),

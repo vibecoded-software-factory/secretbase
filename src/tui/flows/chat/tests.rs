@@ -819,7 +819,7 @@ fn delete_selected_calls_adapter_with_correct_id() {
 // ── do_send_reaction → request_send_reaction ─────────────────────────
 
 #[test]
-fn react_rejects_empty_body() {
+fn react_with_empty_query_sends_the_highlighted_emoji() {
     let mut rig = build_rig();
     preload_inbox(
         &mut rig.app,
@@ -830,10 +830,13 @@ fn react_rejects_empty_body() {
     rig.app.messages = vec![text_msg(5, "me", "x")];
     rig.app.selected_msg_idx = Some(0);
     rig.app.react.clear();
+    rig.app.react_selected = 0;
     request_send_reaction(&mut rig.app);
-    assert!(rig.app.in_flight.is_none());
-    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
-    assert!(rig.mock.st().reactions.is_empty());
+    pump_one(&mut rig.app);
+    // The picker always has a highlighted emoji (top of the seeded standard
+    // set, `+1`), so Enter on an empty query reacts with it (Discord-style)
+    // rather than erroring.
+    assert_eq!(rig.mock.st().reactions, vec![(5, ":+1:".to_string())]);
 }
 
 #[test]

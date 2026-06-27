@@ -378,13 +378,14 @@ fn message_lines(
     lines.push(Line::from(header_spans));
     lines.extend(body_lines(&m.content, t));
     if !m.reactions.is_empty() {
-        lines.push(reactions_line(&m.reactions, t));
+        lines.push(reactions_line(&m.reactions, app, t));
     }
     lines
 }
 
 fn reactions_line(
     reactions: &[crate::domain::Reaction],
+    app: &App,
     t: &crate::tui::theme::Theme,
 ) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = vec![Span::raw("    ")];
@@ -394,11 +395,23 @@ fn reactions_line(
         }
         let count = r.usernames.len();
         spans.push(Span::styled(
-            format!("[{} {count}]", r.emoji),
+            format!("{} {count}", resolve_reaction_glyph(app, &r.emoji)),
             Style::default().fg(t.conv_unread),
         ));
     }
     Line::from(spans)
+}
+
+/// Maps a stored reaction key (a `:shortcode:`) to its glyph via the emoji
+/// catalogue, so the chat shows 🫡 rather than `:saluting_face:`. Falls back
+/// to the key as-is (already a glyph, or an unknown/custom shortcode).
+fn resolve_reaction_glyph(app: &App, key: &str) -> String {
+    let alias = key.trim_matches(':');
+    app.emojis
+        .iter()
+        .find(|e| e.alias == alias)
+        .map(|e| e.display.clone())
+        .unwrap_or_else(|| key.to_string())
 }
 
 fn content_icon(c: &MessageContent) -> &'static str {

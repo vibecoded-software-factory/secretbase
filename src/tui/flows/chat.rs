@@ -1091,13 +1091,9 @@ pub fn open_react_for_selected(app: &mut App) {
     app.react.clear();
     app.react_selected = 0;
     app.screen = crate::tui::screens::Screen::React;
-    // Always have the bundled standard set available, even before/without
-    // the emojilist fetch (headless, offline, or fetch failure).
-    if app.emojis.is_empty() {
-        app.emojis = crate::domain::emoji::standard();
-    }
-    // Lazily fetch the team's custom emojis the first time the picker opens
-    // (merged with the standard set); cached for the rest of the session.
+    // The standard set is seeded at construction; lazily fetch the team's
+    // custom emojis the first time the picker opens (merged on top), cached
+    // for the rest of the session.
     if !app.emojis_loaded {
         request_emojis(app);
     }
