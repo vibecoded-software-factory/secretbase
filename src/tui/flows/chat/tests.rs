@@ -142,6 +142,26 @@ impl KeybasePort for MockKeybase {
         }
         Ok(s.search_hits.clone())
     }
+    fn search_regexp(
+        &mut self,
+        _: &ReadChannel,
+        _: &str,
+        _: u32,
+    ) -> Result<Zeroizing<String>, KeybaseError> {
+        Ok(Zeroizing::new(r#"{"result":{"hits":[]}}"#.to_string()))
+    }
+    fn search_regexp_hits(
+        &mut self,
+        _: &ReadChannel,
+        _: &str,
+        _: u32,
+    ) -> Result<Vec<InboxHit>, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(s.search_hits.clone())
+    }
     fn send_message(
         &mut self,
         channel: &ReadChannel,
@@ -1552,6 +1572,55 @@ fn search_jump_gives_up_when_message_absent_and_no_more_history() {
     handle_load_messages_response(&mut rig.app, Ok((vec![text_msg(1, "alice", "hi")], None)));
     assert_eq!(rig.app.pending_search_jump, None);
     assert_eq!(rig.app.selected_msg_idx, None);
+}
+
+#[test]
+fn conv_search_runs_searchregexp_then_jumps_to_match() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    open_conversation_by_id(&mut rig.app, "c1".into());
+    pump_until_idle(&mut rig.app);
+    // Loaded history contains the match (#7).
+    rig.app.messages = vec![
+        text_msg(1, "alice", "hi"),
+        text_msg(7, "alice", "needle"),
+        text_msg(9, "alice", "bye"),
+    ];
+    // searchregexp returns one hit at #7.
+    rig.mock.st().search_hits = vec![InboxHit {
+        conv_id: String::new(),
+        conv_name: String::new(),
+        message_id: 7,
+        sender: "alice".into(),
+        body_summary: "needle".into(),
+    }];
+    open_conv_search(&mut rig.app);
+    rig.app.conv_search.set("needle");
+    request_conv_search(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.conv_search_results.len(), 1);
+    // Enter on the hit jumps to + selects the message and closes search.
+    conv_search_jump_selected(&mut rig.app);
+    let idx = rig.app.selected_msg_idx.expect("a message is selected");
+    assert_eq!(rig.app.messages[idx].id, 7);
+    assert!(!rig.app.conv_search_active);
+    assert!(rig.app.conv_search_results.is_empty());
+}
+
+#[test]
+fn conv_search_rejects_empty_query() {
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    open_conversation_by_id(&mut rig.app, "c1".into());
+    pump_until_idle(&mut rig.app);
+    rig.app.conv_search.clear();
+    request_conv_search(&mut rig.app);
+    assert!(rig.app.conv_search_results.is_empty());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
 
 #[test]

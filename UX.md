@@ -57,7 +57,14 @@ The compose box is **multi-line**: `Alt+Enter` inserts a newline (`Enter`
 sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
 cursor. Single-line inputs (search, react, new-conversation) keep
-`widgets::editor_spans`. The **login** screen is the signed-out exception: it omits the
+`widgets::editor_spans`. The conversation **header row is split horizontally**:
+the `Conversation` name (left, 35%) + a `draw_search_box` **in-conversation
+search** (right, 65% — wider, the priority). `Ctrl+F` focuses it
+(`conv_search_active`); typing + `Enter` runs `keybase chat api searchregexp`
+over the open conversation (full history), and the match list renders in the
+message viewport (`render_conv_search_results`) — `↑/↓` pick, `Enter` jumps
+to + highlights the message (via `pending_search_jump`, paginating older if
+needed), `Esc` closes. The **login** screen is the signed-out exception: it omits the
 identity bar and shows the figlet/starfield backdrop with a "run `keybase
 login`, then R" hint.
 

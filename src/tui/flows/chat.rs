@@ -323,6 +323,10 @@ fn enter_conversation(app: &mut App, id: String) {
     app.reply_to_id = None;
     app.selected_msg_idx = None;
     app.pending_search_jump = None;
+    app.conv_search_active = false;
+    app.conv_search.clear();
+    app.conv_search_results.clear();
+    app.conv_search_selected = 0;
     restore_draft(app, &id);
     app.screen = crate::tui::screens::Screen::Conversation;
     request_load_messages(app);
@@ -355,6 +359,7 @@ fn restore_draft(app: &mut App, id: &str) {
 pub fn close_conversation(app: &mut App) {
     stash_draft(app);
     app.pending_search_jump = None;
+    close_conv_search(app);
     app.open_conv_id = None;
     app.messages.clear();
     app.messages_scroll = 0;
@@ -812,6 +817,83 @@ fn try_jump_to_search_target(app: &mut App) {
         app.pending_search_jump = None;
         app.set_action(ActionState::Error("Message not found in history".into()));
     }
+}
+
+// ── In-conversation search (Ctrl+F → searchregexp) ───────────────────
+
+/// Max matches requested from `searchregexp` for the in-conversation search.
+const CONV_SEARCH_MAX_HITS: u32 = 50;
+
+/// Focuses the conversation search box.
+pub fn open_conv_search(app: &mut App) {
+    app.conv_search_active = true;
+    app.conv_search_selected = 0;
+}
+
+/// Closes the search box and clears its query + results.
+pub fn close_conv_search(app: &mut App) {
+    app.conv_search_active = false;
+    app.conv_search.clear();
+    app.conv_search_results.clear();
+    app.conv_search_selected = 0;
+}
+
+/// Runs `searchregexp` over the open conversation for the current query.
+pub fn request_conv_search(app: &mut App) {
+    let q = app.conv_search.text().trim().to_string();
+    if q.is_empty() {
+        app.set_action(ActionState::Error("Search is empty".into()));
+        return;
+    }
+    let Some(conv_id) = app.open_conv_id.clone() else {
+        return;
+    };
+    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
+        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
+        return;
+    };
+    let channel_result = read_channel_from_conv(conv);
+    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+        return;
+    };
+    if !app.begin(InFlight::ConvSearch) {
+        return;
+    }
+    app.set_action(ActionState::Running("Searching conversation…".into()));
+    let _ = app.worker_tx.send(WorkerRequest::SearchRegexp {
+        channel,
+        query: q,
+        max_hits: CONV_SEARCH_MAX_HITS,
+    });
+}
+
+pub fn handle_conv_search_response(app: &mut App, result: Result<Vec<InboxHit>, KeybaseError>) {
+    match result {
+        Ok(hits) => {
+            let n = hits.len();
+            app.conv_search_results = hits;
+            app.conv_search_selected = 0;
+            app.set_action(ActionState::Done(format!("{n} matches")));
+            app.push_cmd("keybase chat api searchregexp", true, format!("{n} hits"));
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api searchregexp", false, e.to_string());
+        }
+    }
+}
+
+/// Jumps to the highlighted in-conversation match: closes the search and
+/// reuses the message-jump path (finds it in the loaded history, paginating
+/// older if needed).
+pub fn conv_search_jump_selected(app: &mut App) {
+    let Some(hit) = app.conv_search_results.get(app.conv_search_selected) else {
+        return;
+    };
+    let target = hit.message_id;
+    close_conv_search(app);
+    app.pending_search_jump = Some(target);
+    try_jump_to_search_target(app);
 }
 
 // ── Message selection (Compose ↔ Select modes) ──────────────────────

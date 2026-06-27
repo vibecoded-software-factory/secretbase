@@ -119,6 +119,9 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         (InFlight::SearchInboxRemote, WorkerResponse::SearchInboxHits(r)) => {
             chat::handle_search_inbox_response(app, r);
         }
+        (InFlight::ConvSearch, WorkerResponse::SearchRegexp(r)) => {
+            chat::handle_conv_search_response(app, r);
+        }
         // ── Send / edit / delete / react ──────────────────────────
         (
             InFlight::SendMessage {

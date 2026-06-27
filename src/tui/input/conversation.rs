@@ -31,10 +31,46 @@ pub(crate) fn maybe_queue_older(app: &mut App) {
 }
 
 pub fn handle(app: &mut App, key: KeyEvent) {
+    if app.conv_search_active {
+        return handle_conv_search(app, key);
+    }
     if app.selected_msg_idx.is_some() {
         return handle_select(app, key);
     }
     handle_compose(app, key);
+}
+
+/// In-conversation search box (Ctrl+F): type a query, Enter runs
+/// `searchregexp`; once results exist, ↑/↓ pick one and Enter jumps to it.
+fn handle_conv_search(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => chat::close_conv_search(app),
+        KeyCode::Enter => {
+            if app.conv_search_results.is_empty() {
+                chat::request_conv_search(app);
+            } else {
+                chat::conv_search_jump_selected(app);
+            }
+        }
+        KeyCode::F(5) => chat::request_conv_search(app),
+        KeyCode::Up => {
+            app.conv_search_selected = app.conv_search_selected.saturating_sub(1);
+        }
+        KeyCode::Down => {
+            let max = app.conv_search_results.len().saturating_sub(1);
+            app.conv_search_selected = (app.conv_search_selected + 1).min(max);
+        }
+        _ => {
+            let before = app.conv_search.text().to_string();
+            common::route_line_editor(&mut app.conv_search, key);
+            // Editing the query invalidates the old results so the next
+            // Enter re-runs the search instead of jumping to a stale hit.
+            if app.conv_search.text() != before {
+                app.conv_search_results.clear();
+                app.conv_search_selected = 0;
+            }
+        }
+    }
 }
 
 fn handle_compose(app: &mut App, key: KeyEvent) {
@@ -72,6 +108,7 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::F(5) => chat::request_load_messages(app),
         KeyCode::Char('r') if ctrl => chat::request_load_messages(app),
         KeyCode::Char('y') if ctrl => chat::do_copy_conversation_label(app),
+        KeyCode::Char('f') if ctrl => chat::open_conv_search(app),
 
         // ── Alt shortcuts ──────────────────────────────────────────────
         // Per-message actions (edit / delete / react / pin / reply) live in

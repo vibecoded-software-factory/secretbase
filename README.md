@@ -91,6 +91,7 @@ In the **Filters** panel, `↑` / `↓` change the active filter.
 | `Alt+Enter`             | New line (multi-line message) |
 | `↑` / `↓` · `PgUp` / `PgDn` | Scroll history |
 | `←` / `→` · `Home` / `End`  | Compose cursor |
+| `Ctrl+F`                | Search this conversation (jump to a match) |
 | mouse                   | Click a message to select, scroll to page history |
 | `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
 | `Alt+U`                 | Unpin channel |

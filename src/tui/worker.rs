@@ -100,6 +100,11 @@ pub enum WorkerRequest {
         query: String,
         max_hits: u32,
     },
+    SearchRegexp {
+        channel: ReadChannel,
+        query: String,
+        max_hits: u32,
+    },
     SendMessage {
         channel: ReadChannel,
         body: String,
@@ -165,6 +170,7 @@ pub enum WorkerResponse {
     ReadMessages(Result<(Vec<Message>, Option<String>), KeybaseError>),
     MarkRead(Result<(), KeybaseError>),
     SearchInboxHits(Result<Vec<InboxHit>, KeybaseError>),
+    SearchRegexp(Result<Vec<InboxHit>, KeybaseError>),
     SendMessage(Result<(), KeybaseError>),
     EditMessage(Result<(), KeybaseError>),
     DeleteMessage(Result<(), KeybaseError>),
@@ -200,6 +206,7 @@ pub enum InFlight {
         conv_idx: usize,
     },
     SearchInboxRemote,
+    ConvSearch,
     SendMessage {
         body_len: usize,
         was_reply: bool,
@@ -461,6 +468,14 @@ mod tests {
         fn search_inbox_hits(&mut self, _: &str, _: u32) -> Result<Vec<InboxHit>, KeybaseError> {
             Ok(Vec::new())
         }
+        fn search_regexp(
+            &mut self,
+            _: &ReadChannel,
+            _: &str,
+            _: u32,
+        ) -> Result<Zeroizing<String>, KeybaseError> {
+            Ok(Zeroizing::new(r#"{"result":{"hits":[]}}"#.to_string()))
+        }
     }
 
     #[test]
@@ -520,6 +535,7 @@ mod tests {
                 Self::ReadMessages(_) => f.write_str("ReadMessages(..)"),
                 Self::MarkRead(r) => write!(f, "MarkRead({r:?})"),
                 Self::SearchInboxHits(_) => f.write_str("SearchInboxHits(..)"),
+                Self::SearchRegexp(_) => f.write_str("SearchRegexp(..)"),
                 Self::SendMessage(r) => write!(f, "SendMessage({r:?})"),
                 Self::EditMessage(r) => write!(f, "EditMessage({r:?})"),
                 Self::DeleteMessage(r) => write!(f, "DeleteMessage({r:?})"),
@@ -570,6 +586,13 @@ fn run_worker(
                     keybase.search_inbox_hits(&query, max_hits)
                 }))
             }
+            WorkerRequest::SearchRegexp {
+                channel,
+                query,
+                max_hits,
+            } => WorkerResponse::SearchRegexp(run_caught(|| {
+                keybase.search_regexp_hits(&channel, &query, max_hits)
+            })),
             WorkerRequest::SendMessage {
                 channel,
                 body,

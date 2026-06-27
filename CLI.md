@@ -265,6 +265,12 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   `list` returns the conversation id as lowercase hex** — secretbase
   decodes it to hex when parsing so a search hit re-keys into the cached
   inbox (open-from-search).
+- `searchregexp` `{"channel":…,"query":…,"is_regex":false,"max_hits":N}` —
+  server-side search **within one conversation** (full history). Result shape
+  is `result.hits[]`, each `{hitMessage.valid{messageID, bodySummary,
+  senderUsername, …}}` (flat — already scoped to the channel, no convID
+  wrapper). secretbase drives it from the conversation search box (`Ctrl+F`)
+  and jumps to the picked match.
 - `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
   read), `unread_only`.
 - `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented

@@ -15,7 +15,7 @@ use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo};
 use crate::tui::app::App;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    draw_identity_bar, draw_status_strip, editor_lines, identity_content_rows,
+    draw_identity_bar, draw_search_box, draw_status_strip, editor_lines, identity_content_rows,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -36,16 +36,31 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .split(area);
 
     draw_identity_bar(frame, app, layout[0]);
-    render_header(frame, app, layout[1]);
+    // Header row: the conversation name (left) + the in-conversation search
+    // box (right, given the wider share — `searchregexp`, Ctrl+F).
+    let header = Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)])
+        .split(layout[1]);
+    render_header(frame, app, header[0]);
+    draw_search_box(
+        frame,
+        app,
+        header[1],
+        "Search",
+        "Ctrl+F — search this chat",
+        &app.conv_search,
+        app.conv_search_active,
+    );
     render_messages(frame, app, layout[2]);
     render_compose(frame, app, layout[3]);
 
-    let hint = if app.selected_msg_idx.is_some() {
+    let hint = if app.conv_search_active {
+        "type · Enter search/jump · ↑/↓ pick · Esc close"
+    } else if app.selected_msg_idx.is_some() {
         "↑/↓ select · e edit · d delete · : react · p pin · Esc back"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
-        "Enter send · Alt+A attach · Alt+V select · Esc back"
+        "Enter send · Ctrl+F search · Alt+A attach · Alt+V select · Esc back"
     };
     draw_status_strip(frame, app, layout[4], hint);
 }
@@ -144,7 +159,57 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+/// Renders the `searchregexp` match list in the message viewport while the
+/// in-conversation search is active. `Enter` jumps to the highlighted hit.
+fn render_conv_search_results(frame: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
+    let results = &app.conv_search_results;
+    let sel = app
+        .conv_search_selected
+        .min(results.len().saturating_sub(1));
+    let vh = area.height.saturating_sub(2).max(1) as usize;
+    let scroll = if sel >= vh { sel + 1 - vh } else { 0 };
+    let max_w = area.width.saturating_sub(6).max(8) as usize;
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    for (i, hit) in results.iter().enumerate().skip(scroll).take(vh) {
+        let selected = i == sel;
+        let snippet: String = hit
+            .body_summary
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(max_w)
+            .collect();
+        let mut spans = vec![
+            Span::styled(
+                if selected { "▶ " } else { "  " }.to_string(),
+                Style::default().fg(t.accent),
+            ),
+            Span::styled(format!("{}: ", hit.sender), Style::default().fg(t.dim)),
+            Span::styled(snippet, Style::default().fg(t.foreground)),
+        ];
+        if selected {
+            for s in &mut spans {
+                s.style = s.style.bg(t.selected_bg);
+            }
+        }
+        lines.push(Line::from(spans));
+    }
+    let title = format!("Matches · {}", results.len());
+    frame.render_widget(
+        Paragraph::new(lines).block(titled_block(&title, true, app)),
+        area,
+    );
+}
+
 fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
+    // While searching the conversation, the body shows the match list.
+    if app.conv_search_active && !app.conv_search_results.is_empty() {
+        render_conv_search_results(frame, app, area);
+        return;
+    }
     let t = app.theme.clone();
     let now_s = SystemTime::now()
         .duration_since(UNIX_EPOCH)

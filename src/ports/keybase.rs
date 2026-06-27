@@ -119,6 +119,70 @@ pub trait KeybasePort {
         max_hits: u32,
     ) -> Result<Zeroizing<String>, KeybaseError>;
 
+    /// `{"method":"searchregexp","params":{"options":{"channel":…,"query":…,
+    /// "is_regex":false,"max_hits":N}}}` — server-side search *within one
+    /// conversation* (full history). Returns the raw JSON as zeroized buffer.
+    fn search_regexp(
+        &mut self,
+        channel: &ReadChannel,
+        query: &str,
+        max_hits: u32,
+    ) -> Result<Zeroizing<String>, KeybaseError>;
+
+    /// Typed wrapper around [`Self::search_regexp`]: decodes the standard
+    /// `result.hits[]` shape into [`InboxHit`] rows (scoped to the open
+    /// conversation, so `conv_id`/`conv_name` are left empty).
+    fn search_regexp_hits(
+        &mut self,
+        channel: &ReadChannel,
+        query: &str,
+        max_hits: u32,
+    ) -> Result<Vec<InboxHit>, KeybaseError> {
+        let raw = self.search_regexp(channel, query, max_hits)?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| KeybaseError::InvalidJson {
+                family: "chat".into(),
+                detail: e.to_string(),
+            })?;
+        let mut out = Vec::new();
+        let Some(hits) = parsed
+            .pointer("/result/hits")
+            .and_then(serde_json::Value::as_array)
+        else {
+            return Ok(out);
+        };
+        for h in hits {
+            let valid = h
+                .pointer("/hitMessage/valid")
+                .unwrap_or(&serde_json::Value::Null);
+            let message_id = valid
+                .get("messageID")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            if message_id == 0 {
+                continue;
+            }
+            let sender = valid
+                .get("senderUsername")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let body_summary = valid
+                .get("bodySummary")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            out.push(InboxHit {
+                conv_id: String::new(),
+                conv_name: String::new(),
+                message_id,
+                sender,
+                body_summary,
+            });
+        }
+        Ok(out)
+    }
+
     /// Typed wrapper around [`Self::search_inbox`] that decodes the
     /// JSON into [`InboxHit`] rows so the view layer doesn't have to
     /// know the wire format. Adapters that override [`Self::search_inbox`]

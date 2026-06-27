@@ -290,6 +290,16 @@ pub struct App {
     /// match is below the first page). Cleared once landed or exhausted.
     pub pending_search_jump: Option<u64>,
 
+    // ── In-conversation search (Ctrl+F → keybase chat api searchregexp) ──
+    /// Query for the search box at the top of the conversation screen.
+    pub conv_search: LineEditor,
+    /// Whether the conversation search box holds focus.
+    pub conv_search_active: bool,
+    /// Matches from `searchregexp`, scoped to the open conversation.
+    pub conv_search_results: Vec<InboxHit>,
+    /// Selected row in `conv_search_results`.
+    pub conv_search_selected: usize,
+
     // ── New-conversation popup ──────────────────────────────────────────
     /// Comma-separated usernames typed by the user in the Alt+N popup.
     pub new_conv: LineEditor,
@@ -483,6 +493,10 @@ impl App {
             switcher_from: Screen::Inbox,
             drafts: HashMap::new(),
             pending_search_jump: None,
+            conv_search: LineEditor::default(),
+            conv_search_active: false,
+            conv_search_results: Vec::new(),
+            conv_search_selected: 0,
             new_conv: LineEditor::default(),
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),

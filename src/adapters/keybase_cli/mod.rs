@@ -229,7 +229,7 @@ impl Default for KeybaseCliAdapter {
 fn is_idempotent_method(method: Option<&str>) -> bool {
     matches!(
         method,
-        Some("list" | "read" | "searchinbox" | "list-self-memberships")
+        Some("list" | "read" | "searchinbox" | "searchregexp" | "list-self-memberships")
     )
 }
 
@@ -401,6 +401,24 @@ impl KeybasePort for KeybaseCliAdapter {
             "searchinbox",
             json!({
                 "query": query,
+                "max_hits": max_hits,
+            }),
+        );
+        self.run_api_raw("chat", &req, READ_TIMEOUT)
+    }
+
+    fn search_regexp(
+        &mut self,
+        channel: &ReadChannel,
+        query: &str,
+        max_hits: u32,
+    ) -> Result<Zeroizing<String>, KeybaseError> {
+        let req = request_with_options(
+            "searchregexp",
+            json!({
+                "channel": channel_object(channel),
+                "query": query,
+                "is_regex": false,
                 "max_hits": max_hits,
             }),
         );
