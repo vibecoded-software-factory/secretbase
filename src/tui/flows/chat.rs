@@ -881,29 +881,45 @@ pub fn open_download_for_selected(app: &mut App) {
         ));
         return;
     };
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let fname = safe_attachment_basename(&att.filename, msg.id);
-    app.download_msg_id = Some(msg.id);
-    app.download.set(format!("{home}/Downloads/{fname}"));
-    app.screen = crate::tui::screens::Screen::DownloadAttachment;
-}
-
-pub fn close_download(app: &mut App) {
-    app.download_msg_id = None;
-    app.download.clear();
-    app.screen = crate::tui::screens::Screen::Conversation;
-}
-
-pub fn request_download_attachment(app: &mut App) {
-    let Some(msg_id) = app.download_msg_id else {
-        app.set_action(ActionState::Error("No attachment selected".into()));
-        return;
+    let filename = safe_attachment_basename(&att.filename, msg.id);
+    app.picker_action = crate::tui::app::PickerAction::Download {
+        message_id: msg.id,
+        filename,
     };
-    let path = app.download.text().trim().to_string();
-    if path.is_empty() {
-        app.set_action(ActionState::Error("Output path is empty".into()));
-        return;
+    // Pick the destination directory, starting at the user's Downloads.
+    app.file_picker = Some(crate::tui::file_picker::FilePicker::new_dir(
+        &default_download_dir(),
+    ));
+}
+
+/// The OS default Downloads directory: `$XDG_DOWNLOAD_DIR`, then
+/// `~/Downloads`, then `/` as a last resort.
+fn default_download_dir() -> std::path::PathBuf {
+    use std::path::PathBuf;
+    if let Some(d) = std::env::var_os("XDG_DOWNLOAD_DIR")
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+    {
+        return d;
     }
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        let downloads = home.join("Downloads");
+        if downloads.is_dir() {
+            return downloads;
+        }
+    }
+    PathBuf::from("/")
+}
+
+/// Downloads attachment `message_id` from the open conversation into
+/// `dir`, saved under `filename`. Fired when the directory picker returns.
+pub fn request_download_to(
+    app: &mut App,
+    message_id: u64,
+    dir: std::path::PathBuf,
+    filename: String,
+) {
+    let output = dir.join(&filename).to_string_lossy().to_string();
     let Some(conv_id) = app.open_conv_id.clone() else {
         app.set_action(ActionState::Error("No conversation open".into()));
         return;
@@ -917,16 +933,16 @@ pub fn request_download_attachment(app: &mut App) {
         return;
     };
     if !app.begin(InFlight::DownloadAttachment {
-        message_id: msg_id,
-        path: path.clone(),
+        message_id,
+        path: output.clone(),
     }) {
         return;
     }
-    app.set_action(ActionState::Running("Downloading…".into()));
+    app.set_action(ActionState::Running(format!("Downloading {filename}…")));
     let _ = app.worker_tx.send(WorkerRequest::DownloadAttachment {
         channel,
-        message_id: msg_id,
-        output: path,
+        message_id,
+        output,
     });
 }
 
@@ -944,7 +960,6 @@ pub fn handle_download_attachment_response(
                 true,
                 format!("msg #{message_id} → {path}"),
             );
-            close_download(app);
             app.selected_msg_idx = None;
         }
         Err(e) => {

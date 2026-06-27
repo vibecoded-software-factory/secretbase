@@ -1413,22 +1413,31 @@ fn open_download_requires_attachment_message() {
     rig.app.selected_msg_idx = Some(0);
     open_download_for_selected(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
-    assert!(rig.app.download_msg_id.is_none());
+    assert!(rig.app.file_picker.is_none());
 }
 
 #[test]
-fn open_download_prefills_path_with_home_downloads() {
+fn open_download_opens_dir_picker_with_a_download_action() {
+    use crate::tui::app::PickerAction;
     let mut rig = build_rig();
     rig.app.messages = vec![attachment_msg(99, "bob", "secret.txt", 1024)];
     rig.app.selected_msg_idx = Some(0);
     open_download_for_selected(&mut rig.app);
-    assert_eq!(rig.app.download_msg_id, Some(99));
-    assert!(rig.app.download.text().ends_with("/Downloads/secret.txt"));
-    assert_eq!(rig.app.screen, Screen::DownloadAttachment);
+    assert!(rig.app.file_picker.is_some(), "directory picker opened");
+    match &rig.app.picker_action {
+        PickerAction::Download {
+            message_id,
+            filename,
+        } => {
+            assert_eq!(*message_id, 99);
+            assert_eq!(filename, "secret.txt");
+        }
+        _ => panic!("expected a Download action"),
+    }
 }
 
 #[test]
-fn do_download_attachment_invokes_adapter_with_id_and_path() {
+fn request_download_to_joins_dir_and_filename_and_invokes_adapter() {
     let mut rig = build_rig();
     preload_inbox(
         &mut rig.app,
@@ -1436,35 +1445,17 @@ fn do_download_attachment_invokes_adapter_with_id_and_path() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.download_msg_id = Some(42);
-    rig.app.download.set("/tmp/out.bin");
-    request_download_attachment(&mut rig.app);
+    request_download_to(
+        &mut rig.app,
+        42,
+        std::path::PathBuf::from("/tmp"),
+        "out.bin".to_string(),
+    );
     pump_until_idle(&mut rig.app);
-    let st = rig.mock.st();
-    assert_eq!(st.downloads, vec![(42, "/tmp/out.bin".to_string())]);
-    drop(st);
-    assert!(
-        rig.app.download_msg_id.is_none(),
-        "popup must close on success"
+    assert_eq!(
+        rig.mock.st().downloads,
+        vec![(42, "/tmp/out.bin".to_string())]
     );
-    assert_eq!(rig.app.screen, Screen::Conversation);
-}
-
-#[test]
-fn do_download_rejects_empty_path() {
-    let mut rig = build_rig();
-    preload_inbox(
-        &mut rig.app,
-        &rig.mock,
-        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
-        "c1",
-    );
-    rig.app.download_msg_id = Some(1);
-    rig.app.download.set("   ");
-    request_download_attachment(&mut rig.app);
-    assert!(rig.app.in_flight.is_none());
-    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
-    assert!(rig.mock.st().downloads.is_empty());
 }
 
 // ── Unread counter ────────────────────────────────────────────────────
@@ -2120,7 +2111,8 @@ fn safe_basename_handles_only_control_chars() {
 }
 
 #[test]
-fn open_download_pre_fills_safe_basename_for_malicious_filename() {
+fn open_download_uses_safe_basename_for_malicious_filename() {
+    use crate::tui::app::PickerAction;
     let mut rig = build_rig();
     // Simulate a malicious sender embedding a path traversal in the
     // attachment filename.
@@ -2132,16 +2124,12 @@ fn open_download_pre_fills_safe_basename_for_malicious_filename() {
     )];
     rig.app.selected_msg_idx = Some(0);
     open_download_for_selected(&mut rig.app);
-    // The pre-filled path must land inside ~/Downloads — no `..`
-    // segment between Downloads and the final basename.
-    assert!(
-        rig.app
-            .download
-            .text()
-            .ends_with("/Downloads/authorized_keys"),
-        "unexpected path: {}",
-        rig.app.download.text()
-    );
+    // The download filename is sanitised to a bare basename, so joining it
+    // onto the chosen directory can't escape with a `..` traversal.
+    match &rig.app.picker_action {
+        PickerAction::Download { filename, .. } => assert_eq!(filename, "authorized_keys"),
+        _ => panic!("expected a Download action"),
+    }
 }
 
 // ── read_channel_from_conv ────────────────────────────────────────────

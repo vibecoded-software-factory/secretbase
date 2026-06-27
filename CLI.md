@@ -249,8 +249,10 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
 - `attach` `{"channel":…,"filename":…,"title":…}` — uploads a local file
   (absolute `filename`); `title` is an optional caption (omit ⇒ keybase
   defaults it to the filename). `download` takes `message_id` + `output`
-  path. secretbase drives `attach` from the embedded file picker (Alt+A in
-  a conversation) and runs it on the longer `download_timeout` budget.
+  path. secretbase drives `attach` from the file picker (Alt+A) and
+  `download` from its directory-pick mode (select-mode `s`, destination
+  defaulting to the OS Downloads folder); both run on the longer
+  `download_timeout` budget.
 - `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
   read), `unread_only`.
 - `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented

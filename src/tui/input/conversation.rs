@@ -117,6 +117,7 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Char('r') | KeyCode::Char('R') if alt => chat::request_resend_message(app),
         KeyCode::Char('a') | KeyCode::Char('A') if alt => {
             let start = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            app.picker_action = crate::tui::app::PickerAction::Upload;
             app.file_picker = Some(crate::tui::file_picker::FilePicker::new(&start));
         }
 

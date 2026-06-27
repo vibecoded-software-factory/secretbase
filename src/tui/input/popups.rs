@@ -70,18 +70,6 @@ pub fn confirm_delete_message(app: &mut App, key: KeyEvent) {
     }
 }
 
-// ── Attachment download popup ─────────────────────────────────────────
-
-pub fn download_attachment(app: &mut App, key: KeyEvent) {
-    match key.code {
-        KeyCode::Esc => chat::close_download(app),
-        KeyCode::Enter => chat::request_download_attachment(app),
-        _ => {
-            common::route_line_editor(&mut app.download, key);
-        }
-    }
-}
-
 // ── Reaction input popup ──────────────────────────────────────────────
 
 pub fn react(app: &mut App, key: KeyEvent) {

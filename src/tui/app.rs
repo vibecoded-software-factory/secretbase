@@ -136,6 +136,17 @@ pub struct PendingSend {
     pub state: SendState,
 }
 
+/// What the open [`crate::tui::file_picker::FilePicker`] is for — set when
+/// the picker opens, read when it returns a path.
+#[derive(Debug, Clone)]
+pub enum PickerAction {
+    /// Upload the picked file as an attachment to the open conversation.
+    Upload,
+    /// Download attachment `message_id` into the picked directory, saved
+    /// under `filename`.
+    Download { message_id: u64, filename: String },
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -255,12 +266,9 @@ pub struct App {
     /// Selected row inside [`Self::search_global_results`].
     pub search_global_selected: usize,
 
-    // ── Attachment download popup ───────────────────────────────────────
-    /// Message id of the attachment currently being downloaded
-    /// (matches the row that opened the popup).
-    pub download_msg_id: Option<u64>,
-    /// Destination path being edited in the download popup.
-    pub download: LineEditor,
+    /// What the open `file_picker` will do with the chosen path (upload a
+    /// file, or download an attachment into the chosen directory).
+    pub picker_action: PickerAction,
 
     // ── Search ────────────────────────────────────────────────────────────
     /// Incremental inbox filter box.
@@ -426,8 +434,7 @@ impl App {
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
             search_global_selected: 0,
-            download_msg_id: None,
-            download: LineEditor::default(),
+            picker_action: PickerAction::Upload,
             search: LineEditor::default(),
             help_from: Screen::Inbox,
             help_scroll: 0,

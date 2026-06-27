@@ -14,34 +14,6 @@ use ratatui::{
 use crate::tui::app::App;
 use crate::tui::view::widgets::{center_rect, editor_spans, rounded_block};
 
-pub fn download_attachment(frame: &mut Frame, app: &App) {
-    let t = &app.theme;
-    let area = center_rect(70, 7, frame.area());
-    frame.render_widget(Clear, area);
-
-    let header = app
-        .download_msg_id
-        .map(|id| format!("Download attachment from msg #{id}"))
-        .unwrap_or_else(|| "Download attachment".to_string());
-
-    let lines = vec![
-        Line::from(Span::styled(header, Style::default().fg(t.accent)))
-            .alignment(Alignment::Center),
-        Line::from(""),
-        Line::from(editor_spans(&app.download, true, t)),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Enter: save   |   Esc: cancel   |   ←/→ Home/End edit",
-            Style::default().fg(t.dim),
-        ))
-        .alignment(Alignment::Center),
-    ];
-    frame.render_widget(
-        Paragraph::new(lines).block(rounded_block(Style::default().fg(t.accent))),
-        area,
-    );
-}
-
 pub fn react_input(frame: &mut Frame, app: &App) {
     let t = &app.theme;
     // 6 content lines (title · target · blank · input · blank · hint)

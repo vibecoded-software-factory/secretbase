@@ -36,8 +36,6 @@ pub enum Screen {
     ConfirmDeleteMessage,
     /// Emoji input popup for reacting to a selected message.
     React,
-    /// Path-picker popup for downloading an attachment.
-    DownloadAttachment,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.

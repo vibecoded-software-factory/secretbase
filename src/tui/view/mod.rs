@@ -52,9 +52,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::ConfirmConvAction
         | Screen::NewConversation
         | Screen::SearchGlobal => Screen::Inbox,
-        Screen::ConfirmDeleteMessage | Screen::React | Screen::DownloadAttachment => {
-            Screen::Conversation
-        }
+        Screen::ConfirmDeleteMessage | Screen::React => Screen::Conversation,
         // Help is scoped to (and renders over) the screen it was opened
         // from — use `help_from`, not an open-conversation heuristic, so
         // e.g. Teams isn't drawn as Inbox underneath.
@@ -132,7 +130,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::NewConversation => new_conversation::draw(frame, app),
         Screen::SearchGlobal => search_global::draw(frame, app),
         Screen::React => popups::react_input(frame, app),
-        Screen::DownloadAttachment => popups::download_attachment(frame, app),
         _ => {}
     }
 

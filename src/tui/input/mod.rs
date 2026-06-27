@@ -35,6 +35,7 @@ pub fn handle_events(app: &mut App, event: Event) {
 /// Routes a key to the open file picker and acts on its outcome: a
 /// pick fires the attachment upload, a cancel just closes it.
 fn file_picker_key(app: &mut App, key: KeyEvent) {
+    use crate::tui::app::PickerAction;
     use crate::tui::file_picker::Outcome;
     let Some(picker) = app.file_picker.as_mut() else {
         return;
@@ -44,7 +45,15 @@ fn file_picker_key(app: &mut App, key: KeyEvent) {
         Outcome::Cancelled => app.file_picker = None,
         Outcome::Selected(path) => {
             app.file_picker = None;
-            crate::tui::flows::chat::request_upload_attachment(app, path);
+            match app.picker_action.clone() {
+                PickerAction::Upload => {
+                    crate::tui::flows::chat::request_upload_attachment(app, path)
+                }
+                PickerAction::Download {
+                    message_id,
+                    filename,
+                } => crate::tui::flows::chat::request_download_to(app, message_id, path, filename),
+            }
         }
     }
 }
@@ -156,7 +165,6 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::SearchGlobal => popups::search_global(app, key),
         Screen::ConfirmDeleteMessage => popups::confirm_delete_message(app, key),
         Screen::React => popups::react(app, key),
-        Screen::DownloadAttachment => popups::download_attachment(app, key),
     }
 }
 

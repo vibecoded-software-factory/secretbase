@@ -79,16 +79,26 @@ badge clears as soon as a conversation is read (not on the next resync).
 
 ## File picker (`tui::file_picker`)
 
-A self-contained, headless-safe file chooser (no GUI/portal dependency).
-`Alt+A` in a conversation opens it as a modal overlay (`App::file_picker`,
-drained before screen routing in `input::handle_events`, drawn last in
-`view::draw`). Single-pane, desktop-chooser style: a path bar, the current
-directory (dirs first, then files; dotfiles and any extension shown), and a
-hint bar. `↑↓`/`kj` move, `Enter`/`→` open-or-pick, `⌫`/`←` parent, `~`
-home, `g`/`G` ends, `/` fuzzy filter, `.` toggles hidden, `Esc` cancels.
-On pick it returns the path to the host (here: `keybase chat api attach`).
-It depends only on `ratatui` + the shared `Theme` + `LineEditor`, so the
-same module is reused verbatim across the TUIs.
+A self-contained, headless-safe file chooser (no GUI/portal dependency),
+rendered as a modal overlay (`App::file_picker`, drained before screen
+routing in `input::handle_events`, drawn last in `view::draw`). Single-pane,
+desktop-chooser style: a path bar, the current directory (dirs first;
+dotfiles and any extension shown), and a hint bar. `↑↓`/`kj` move,
+`Enter`/`→` open-or-pick, `⌫`/`←` parent, `~` home, `g`/`G` ends, `/` fuzzy
+filter, `.` toggles hidden, `Esc` cancels. Two modes:
+
+- **File** (`PickerMode::OpenFile`) — pick an existing file. `Alt+A` in a
+  conversation opens it; the pick feeds `keybase chat api attach` (upload).
+- **Directory** (`PickerMode::Dir`) — only directories are listed, plus a
+  `📂 [ choose this folder ]` row that picks the current dir. Opened from
+  select-mode `s` on an attachment to choose a **download** destination; it
+  starts at the OS Downloads folder (`$XDG_DOWNLOAD_DIR` → `~/Downloads` →
+  `/`) and the file is saved as `<dir>/<sanitised-basename>`.
+
+`App::picker_action` (`Upload` / `Download{message_id, filename}`) records
+why the picker was opened, so the `Outcome::Selected(path)` handler knows
+which action to fire. The module depends only on `ratatui` + the shared
+`Theme` + `LineEditor`, so it is reused verbatim across the TUIs.
 
 ## Panels & focus
 

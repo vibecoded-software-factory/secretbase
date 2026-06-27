@@ -28,6 +28,16 @@ use crate::domain::LineEditor;
 use crate::tui::theme::Theme;
 use crate::tui::view::widgets::editor_spans;
 
+/// What the picker is choosing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PickerMode {
+    /// Pick an existing file (e.g. upload). Files are listed and selectable.
+    OpenFile,
+    /// Pick a directory (e.g. download destination). Only directories are
+    /// listed, plus a synthetic "choose this folder" row for the cwd.
+    Dir,
+}
+
 /// One row in the listing.
 struct Entry {
     /// Display name (no trailing slash; the renderer adds it for dirs).
@@ -38,6 +48,8 @@ struct Entry {
     is_dir: bool,
     /// The synthetic `..` parent row (always sorts first, never filtered).
     is_parent: bool,
+    /// The synthetic "choose this folder" row (Dir mode only).
+    is_choose: bool,
     size: u64,
     mtime: Option<SystemTime>,
 }
@@ -54,6 +66,8 @@ pub enum Outcome {
 
 /// State of the embedded file picker.
 pub struct FilePicker {
+    /// File-pick vs directory-pick.
+    mode: PickerMode,
     cwd: PathBuf,
     /// Current directory contents, unfiltered (with `..` first).
     all: Vec<Entry>,
@@ -74,11 +88,22 @@ pub struct FilePicker {
 }
 
 impl FilePicker {
-    /// Opens the picker rooted at `start` (or its parent if `start` is a
-    /// file; or `$HOME` / `/` as a last resort).
+    /// Opens a **file** picker rooted at `start` (or its parent if `start`
+    /// is a file; or `$HOME` / `/` as a last resort).
     pub fn new(start: &Path) -> Self {
+        Self::with_mode(start, PickerMode::OpenFile)
+    }
+
+    /// Opens a **directory** picker rooted at `start` — only directories
+    /// are listed, plus a "choose this folder" row for the current dir.
+    pub fn new_dir(start: &Path) -> Self {
+        Self::with_mode(start, PickerMode::Dir)
+    }
+
+    fn with_mode(start: &Path, mode: PickerMode) -> Self {
         let cwd = resolve_start_dir(start);
         let mut p = Self {
+            mode,
             cwd,
             all: Vec::new(),
             view: Vec::new(),
@@ -103,6 +128,19 @@ impl FilePicker {
     fn load(&mut self) {
         self.all.clear();
         self.error = None;
+        // Directory mode: a "choose this folder" affordance for the cwd.
+        if self.mode == PickerMode::Dir {
+            self.all.push(Entry {
+                name: "[ choose this folder ]".into(),
+                name_lc: String::new(),
+                path: self.cwd.clone(),
+                is_dir: true,
+                is_parent: false,
+                is_choose: true,
+                size: 0,
+                mtime: None,
+            });
+        }
         if self.cwd.parent().is_some() {
             self.all.push(Entry {
                 name: "..".into(),
@@ -110,6 +148,7 @@ impl FilePicker {
                 path: self.cwd.parent().unwrap_or(&self.cwd).to_path_buf(),
                 is_dir: true,
                 is_parent: true,
+                is_choose: false,
                 size: 0,
                 mtime: None,
             });
@@ -127,6 +166,10 @@ impl FilePicker {
                         .or_else(|_| fs::symlink_metadata(&path))
                         .ok();
                     let is_dir = md.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+                    // A directory picker only lists directories.
+                    if self.mode == PickerMode::Dir && !is_dir {
+                        continue;
+                    }
                     let size = md.as_ref().map(|m| m.len()).unwrap_or(0);
                     let mtime = md.as_ref().and_then(|m| m.modified().ok());
                     items.push(Entry {
@@ -135,6 +178,7 @@ impl FilePicker {
                         path,
                         is_dir,
                         is_parent: false,
+                        is_choose: false,
                         size,
                         mtime,
                     });
@@ -165,8 +209,8 @@ impl FilePicker {
             .iter()
             .enumerate()
             .filter(|(_, e)| {
-                if e.is_parent {
-                    // `..` is always shown while browsing, but drops out once
+                if e.is_parent || e.is_choose {
+                    // The synthetic rows show while browsing but drop out once
                     // a filter is active so the first real match is selected.
                     q.is_empty()
                 } else {
@@ -237,7 +281,10 @@ impl FilePicker {
             return Outcome::Pending;
         };
         let e = &self.all[i];
-        if e.is_dir {
+        if e.is_choose {
+            // Pick the current directory itself.
+            Outcome::Selected(e.path.clone())
+        } else if e.is_dir {
             let path = e.path.clone();
             self.cd(path);
             Outcome::Pending
@@ -271,15 +318,19 @@ impl FilePicker {
 
     /// Renders the picker into `area`.
     pub fn render(&mut self, frame: &mut Frame, area: Rect, t: &Theme) {
-        let hints = if self.filtering {
-            " type to filter · ↑↓ move · Enter open/pick · Esc clear "
-        } else {
-            " ↑↓ move · Enter open/pick · ⌫ up · / filter · . hidden · Esc cancel "
+        let hints = match (self.filtering, self.mode) {
+            (true, _) => " type to filter · ↑↓ move · Enter · Esc clear ",
+            (false, PickerMode::OpenFile) => {
+                " ↑↓ move · Enter open/pick · ⌫ up · / filter · . hidden · Esc cancel "
+            }
+            (false, PickerMode::Dir) => {
+                " ↑↓ move · Enter open/choose · ⌫ up · / filter · . hidden · Esc cancel "
+            }
         };
         let block = Block::default()
             .borders(Borders::ALL)
             .title(Span::styled(
-                title_for(&self.cwd, area.width),
+                title_for(&self.cwd, self.mode, area.width),
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ))
             .title_bottom(Line::from(Span::styled(hints, Style::default().fg(t.dim))))
@@ -346,9 +397,15 @@ impl FilePicker {
 /// size + relative mtime), tinted and given the selection background.
 fn row_line(e: &Entry, selected: bool, width: usize, now: SystemTime, t: &Theme) -> Line<'static> {
     let cursor = if selected { "▶ " } else { "  " };
-    let icon = if e.is_dir { "📁 " } else { "📄 " };
+    let icon = if e.is_choose {
+        "📂 "
+    } else if e.is_dir {
+        "📁 "
+    } else {
+        "📄 "
+    };
     let mut name = e.name.clone();
-    if e.is_dir && !e.is_parent {
+    if e.is_dir && !e.is_parent && !e.is_choose {
         name.push('/');
     }
     let meta = if e.is_parent {
@@ -368,7 +425,11 @@ fn row_line(e: &Entry, selected: bool, width: usize, now: SystemTime, t: &Theme)
     // Left budget = everything except the meta column + a gap.
     let left_used = cursor.chars().count() + icon.chars().count() + name.chars().count();
     let gap = width.saturating_sub(left_used + meta_w);
-    let name_color = if e.is_dir { t.accent } else { t.foreground };
+    let name_color = if e.is_choose || e.is_dir {
+        t.accent
+    } else {
+        t.foreground
+    };
 
     let mut spans = vec![
         Span::styled(cursor.to_string(), Style::default().fg(t.accent)),
@@ -392,11 +453,14 @@ fn subsequence(haystack_lc: &str, needle_lc: &str) -> bool {
     needle_lc.chars().all(|c| chars.any(|h| h == c))
 }
 
-/// Title bar: " Pick a file · <path> ", truncated from the left (keeping
-/// the most specific tail) when it doesn't fit.
-fn title_for(cwd: &Path, total_width: u16) -> String {
+/// Title bar: " Pick a file/folder · <path> ", truncated from the left
+/// (keeping the most specific tail) when it doesn't fit.
+fn title_for(cwd: &Path, mode: PickerMode, total_width: u16) -> String {
     let path = cwd.to_string_lossy();
-    let prefix = " Pick a file · ";
+    let prefix = match mode {
+        PickerMode::OpenFile => " Pick a file · ",
+        PickerMode::Dir => " Pick a folder · ",
+    };
     let avail = (total_width as usize).saturating_sub(prefix.chars().count() + 3);
     let shown: String = if path.chars().count() > avail && avail > 1 {
         let tail: String = path
@@ -559,5 +623,29 @@ mod tests {
             p.handle_key(key(KeyCode::Esc)),
             Outcome::Cancelled
         ));
+    }
+
+    #[test]
+    fn dir_mode_lists_only_dirs_with_a_choose_row() {
+        let d = fixture();
+        let p = FilePicker::new_dir(d.path());
+        let n = names(&p);
+        assert_eq!(n[0], "[ choose this folder ]");
+        assert!(n.contains(&"..".to_string()));
+        assert!(n.contains(&"alpha_dir".to_string()));
+        // Files are not listed when picking a directory.
+        assert!(!n.contains(&"Cargo.toml".to_string()));
+        assert!(!n.contains(&"readme.txt".to_string()));
+    }
+
+    #[test]
+    fn dir_mode_choose_returns_the_current_dir() {
+        let d = fixture();
+        let mut p = FilePicker::new_dir(d.path());
+        // The choose row is first and selected by default.
+        match p.handle_key(key(KeyCode::Enter)) {
+            Outcome::Selected(path) => assert_eq!(path, d.path()),
+            _ => panic!("expected Selected(cwd)"),
+        }
     }
 }
