@@ -475,8 +475,6 @@ fn message_lines(
     }
     lines.extend(body_lines(&m.content, t));
     if !m.reactions.is_empty() {
-        // A blank row so the reaction chips aren't glued to the body text.
-        lines.push(Line::from(Span::raw("")));
         lines.push(reactions_line(&m.reactions, app, t));
     }
     lines
