@@ -60,8 +60,8 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
     let btns = Layout::horizontal([Constraint::Length(6), Constraint::Length(6)]).split(cols[1]);
     let send_box = btns[0];
     let attach_box = btns[1];
-    // Emoji-only buttons: 📤 send (💾 save while editing), 📎 attach.
-    let send_label = if editing { "💾" } else { "📤" };
+    // ⏎ send / save (Enter is the action either way), 📎 attach.
+    let send_label = "⏎";
     app.mouse_areas.compose_send = send_box;
     app.mouse_areas.compose_attach = attach_box;
 
