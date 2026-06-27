@@ -412,11 +412,28 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
     let sent_at_ms = message.sent_at_ms;
     let msg_id = message.id;
 
-    // 1. Live-append to the open conversation — skip if we already hold
-    //    this id (our own echo, or a reload race).
-    if viewing && msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
-        app.messages.push(message);
-        app.rebuild_pinned();
+    // 1. Live-update the open conversation.
+    if viewing {
+        // Edits / deletes / reactions modify *existing* messages (and
+        // reactions are projected onto their target), so they can't just
+        // be appended as a new line — re-read the conversation to get the
+        // correctly-projected state (cheap, ~80ms). `begin` debounces:
+        // it refuses if a read is already in flight. Plain new content
+        // (text, attachment, system, pin, join, …) is appended in place,
+        // which is instant and needs no round-trip.
+        use crate::domain::MessageContent;
+        let modifies_existing = matches!(
+            &message.content,
+            MessageContent::Edit { .. }
+                | MessageContent::Delete { .. }
+                | MessageContent::Reaction { .. }
+        );
+        if modifies_existing {
+            request_load_messages(app);
+        } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
+            app.messages.push(message);
+            app.rebuild_pinned();
+        }
     }
 
     // 2. Incremental inbox bump (no full re-fetch).
@@ -1224,6 +1241,26 @@ pub fn request_send_message(app: &mut App) {
     }) {
         return;
     }
+    // Optimistic echo: show the message immediately (id 0 marks it
+    // provisional) so it appears the instant Enter is pressed instead of
+    // after the send + re-read round-trip. The success reload replaces it
+    // with the server's real message (carrying the real id); a failed
+    // send strips it back out (see `handle_send_message_response`).
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    // `Message` is `Drop` (ZeroizeOnDrop), so build by mutating a default
+    // rather than functional-update (`..Default::default()` can't move
+    // fields out of a Drop type).
+    let mut provisional = Message::default();
+    provisional.id = 0;
+    provisional.sender = app.identity.username.clone();
+    provisional.sent_at = now_ms / 1000;
+    provisional.sent_at_ms = now_ms;
+    provisional.content = crate::domain::MessageContent::Text(body.clone());
+    app.messages.push(provisional);
+    app.messages_scroll = 0;
     app.set_action(ActionState::Running("Sending…".into()));
     let _ = app.worker_tx.send(WorkerRequest::SendMessage {
         channel,
@@ -1255,6 +1292,10 @@ pub fn handle_send_message_response(
             request_load_messages(app);
         }
         Err(e) => {
+            // The send failed — strip the optimistic echo (provisional
+            // messages carry id 0; real ids are >= 1) and keep the draft
+            // so the user can retry.
+            app.messages.retain(|m| m.id != 0);
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api send", false, e.to_string());
         }
