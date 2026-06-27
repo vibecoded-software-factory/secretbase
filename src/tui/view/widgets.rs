@@ -127,7 +127,10 @@ pub fn list_table(
         .highlight_symbol("▶ ")
         .block(block);
 
-    let sel = (len > 0).then(|| selected.min(len - 1));
+    // In-range `selected` highlights that row; an out-of-range value (e.g.
+    // `usize::MAX`) renders with no highlight — used by panels that share one
+    // logical selection across several tables (only the active one shows it).
+    let sel = (selected < len).then_some(selected);
     let mut state = TableState::default()
         .with_offset(*scroll)
         .with_selected(sel);

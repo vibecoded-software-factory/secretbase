@@ -9,7 +9,7 @@ use ratatui::{
     widgets::Row,
 };
 
-use crate::domain::{CONVERSATION_FILTERS, ConversationFilter, MembersType};
+use crate::domain::{ConversationFilter, MembersType};
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::split_main;
@@ -34,7 +34,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     render_filters(frame, app, filters_area);
     render_list(frame, app, list_area);
     let cmdlog_focused = app.focus == Focus::CmdLog;
-    draw_cmd_log(frame, app, cmdlog, cmdlog_focused, 3);
+    draw_cmd_log(frame, app, cmdlog, cmdlog_focused, 4);
     let hint = footer_hint(app);
     draw_status_strip(frame, app, status, hint);
 
@@ -69,16 +69,47 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
 
 fn render_filters(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
-    let selected = CONVERSATION_FILTERS
-        .iter()
-        .position(|f| *f == app.active_filter)
-        .unwrap_or(0);
+    // Two stacked panels: general filters (All/Unread) on top, by-type
+    // filters (DMs/Teams) below — so the type split reads as its own group.
+    let panels = Layout::vertical([
+        Constraint::Length(5), // border + header + All + Unread + border
+        Constraint::Min(5),    // border + header + DMs + Teams + border
+    ])
+    .split(area);
+    render_filter_group(
+        frame,
+        app,
+        &t,
+        panels[0],
+        "─[1]-Filters",
+        &[ConversationFilter::All, ConversationFilter::Unread],
+    );
+    render_filter_group(
+        frame,
+        app,
+        &t,
+        panels[1],
+        "─[2]-By type",
+        &[ConversationFilter::Dms, ConversationFilter::Teams],
+    );
+}
 
-    let rows: Vec<Row<'static>> = CONVERSATION_FILTERS
+/// Renders one filter panel (a `list_table` over `group`). Only the panel
+/// holding `app.active_filter` shows a selection highlight — the others get
+/// `usize::MAX`, which `list_table` renders unselected.
+fn render_filter_group(
+    frame: &mut Frame,
+    app: &App,
+    t: &crate::tui::theme::Theme,
+    area: Rect,
+    title: &str,
+    group: &[ConversationFilter],
+) {
+    let rows: Vec<Row<'static>> = group
         .iter()
         .map(|f| {
             let count = app.count_for(f);
-            let (icon, color) = filter_icon_and_color(f, &t);
+            let (icon, color) = filter_icon_and_color(f, t);
             Row::new(vec![
                 ratatui::widgets::Cell::from(Span::styled(
                     format!("{icon}{}", f.label()),
@@ -92,12 +123,17 @@ fn render_filters(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
+    let selected = group
+        .iter()
+        .position(|f| *f == app.active_filter)
+        .unwrap_or(usize::MAX);
+
     let mut scroll = 0usize;
     list_table(
         frame,
-        &t,
+        t,
         area,
-        "─[1]-Filters",
+        title,
         app.focus == Focus::Filters,
         &["Filter", "#"],
         // Only the LAST column may stretch (`Min`); a `Min` on the label
@@ -169,7 +205,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let title = format!("─[2]-{}", list_title("Inbox", shown, total));
+    let title = format!("─[3]-{}", list_title("Inbox", shown, total));
     let mut scroll = app.list_scroll;
     list_table(
         frame,

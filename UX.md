@@ -38,7 +38,13 @@ Every signed-in screen is built from the same vertical stack via
 - **header** — the search box (`widgets::draw_search_box`) on the inbox.
   Screens without a filter (Teams) drop this slot.
 - **body** — the list/table (see below) or a detail layout. The inbox splits
-  it 22 % / 78 % into the filter sidebar and the conversation list.
+  it 22 % / 78 % into the filter sidebar and the conversation list. The
+  sidebar is **two stacked `list_table` panels**: `─[1]-Filters` (All,
+  Unread) on top and `─[2]-By type` (DMs, Teams) below, so the type split
+  reads as its own group. `↑/↓` cycle across **all four** (navigation is over
+  `CONVERSATION_FILTERS`, panel-agnostic); only the panel holding the active
+  filter shows the selection highlight (the other passes `usize::MAX`, which
+  `list_table` renders unselected).
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom; `cmd_log_scroll`
   walks back). Worker ops carry their duration (request → response),
@@ -168,7 +174,7 @@ not focus targets). Conventions:
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
-its panels `─[/]-Search`, `─[1]-Filters`, `─[2]-Inbox`, `─[3]-Command log`; Teams
+its panels `─[/]-Search`, `─[1]-Filters`, `─[2]-By type`, `─[3]-Inbox`, `─[4]-Command log`; Teams
 uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.
