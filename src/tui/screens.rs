@@ -48,10 +48,10 @@ pub enum Screen {
 pub enum Focus {
     /// Search / filter box.
     Search,
+    /// Source picker — Direct messages + one entry per team (left rail).
+    Source,
     /// Status-filter panel (All/Unread).
     Filters,
-    /// Type-filter panel (All/DMs/Teams).
-    ByType,
     /// Main conversation list.
     List,
     /// Bottom command-log panel.

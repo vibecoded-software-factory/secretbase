@@ -22,7 +22,8 @@ End-to-end feature working: **chat inbox list** (read-only).
 
 * `keybase status --json` on boot to detect the session.
 * `keybase chat api {"method":"list"}` to load conversations.
-* Sidebar filters (All / Unread / DMs / Teams).
+* Discord-style sidebar: a **Spaces** rail (Direct messages + one entry per
+  team) and a **Filters** rail (All / Unread), intersected.
 * Local fuzzy search (channel name, topic name, creator).
 * Mark conversation as read (`m`).
 * Copy conversation label to clipboard (`y`).
@@ -66,7 +67,7 @@ tables.
 | `↑` / `↓` · `k` / `j`   | Navigate |
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
-| `Tab` / `Shift+Tab`     | Cycle focus (search · filters · list · log) |
+| `Tab` / `Shift+Tab`     | Cycle focus (search · spaces · filters · list · log) |
 | `/`                     | Focus search |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |
@@ -80,7 +81,9 @@ tables.
 | `Ctrl+K`                | Quick switcher — jump to a conversation |
 | `Shift+L`               | Logout (confirmation) |
 
-In the **Filters** panel, `↑` / `↓` change the active filter.
+In the **Spaces** rail, `↑` / `↓` pick Direct messages or a team; in the
+**Filters** rail, `↑` / `↓` switch All / Unread. The inbox shows the
+intersection of the two.
 
 ### Conversation
 
@@ -147,7 +150,7 @@ src/
 │   ├── message.rs          # Message + MessageContent variants
 │   ├── team.rs             # TeamMembership, TeamRole
 │   ├── identity.rs         # IdentityInfo (keybase status)
-│   ├── filter.rs           # ConversationFilter (All/Unread/DMs/Teams)
+│   ├── filter.rs           # StatusFilter (All/Unread) + InboxSource (DMs/team)
 │   ├── search.rs           # Fuzzy ranking
 │   └── validation.rs       # username validators
 ├── ports/                  # trait abstractions

@@ -1,37 +1,25 @@
-//! Sidebar filters — **two independent axes** that intersect: a *status*
-//! axis (All / Unread) and a *type* axis (All / DMs / Teams). The inbox
-//! shows conversations matching the active status **and** the active type.
+//! Inbox filters. Two independent axes intersect:
 //!
-//! Neither axis checks active-membership; the caller
-//! ([`crate::tui::app::App::rebuild_filter`]) applies that once across both.
+//! * a **status** axis ([`StatusFilter`]: All / Unread), and
+//! * a **source** axis ([`InboxSource`]: Direct messages, or one team) —
+//!   a Discord-style picker listing DMs and each team separately.
+//!
+//! Neither checks active-membership; the caller
+//! ([`crate::tui::app::App::rebuild_filter`]) applies that once.
 
 use crate::domain::conversation::Conversation;
 
 /// Status axis: read-state filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusFilter {
-    /// Every active conversation.
+    /// Every conversation in the current source.
     All,
-    /// Conversations with `unread = true`.
+    /// Only those with `unread = true`.
     Unread,
-}
-
-/// Type axis: conversation-kind filter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeFilter {
-    /// Every kind (DMs + teams).
-    All,
-    /// DMs only (impteam — one-to-one or small groups).
-    Dms,
-    /// Conversations inside an explicit team.
-    Teams,
 }
 
 /// Status filters in sidebar (top-to-bottom) order.
 pub const STATUS_FILTERS: [StatusFilter; 2] = [StatusFilter::All, StatusFilter::Unread];
-
-/// Type filters in sidebar (top-to-bottom) order.
-pub const TYPE_FILTERS: [TypeFilter; 3] = [TypeFilter::All, TypeFilter::Dms, TypeFilter::Teams];
 
 impl StatusFilter {
     /// Sidebar label.
@@ -51,22 +39,36 @@ impl StatusFilter {
     }
 }
 
-impl TypeFilter {
+/// Source axis: which space the inbox is showing — all DMs, or one team's
+/// channels. Built dynamically from the loaded conversations (one entry per
+/// team), so it can't be a fixed enum like [`StatusFilter`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InboxSource {
+    /// All direct messages (non-team conversations).
+    Dms,
+    /// One specific team — shows its channels. The `String` is the team
+    /// name (`Channel::name` for team conversations).
+    Team(String),
+}
+
+impl InboxSource {
     /// Sidebar label.
-    pub fn label(self) -> &'static str {
+    pub fn label(&self) -> &str {
         match self {
-            TypeFilter::All => "All",
-            TypeFilter::Dms => "DMs",
-            TypeFilter::Teams => "Teams",
+            InboxSource::Dms => "Direct messages",
+            InboxSource::Team(name) => name,
         }
     }
 
-    /// Whether `conv` passes the type axis (no active-membership check).
-    pub fn includes(self, conv: &Conversation) -> bool {
+    /// Whether `conv` belongs to this source (no active-membership check).
+    /// "Direct messages" is the catch-all for everything that isn't a team,
+    /// so conversations with an unknown/future members-type stay visible.
+    pub fn includes(&self, conv: &Conversation) -> bool {
         match self {
-            TypeFilter::All => true,
-            TypeFilter::Dms => conv.channel.members_type.is_dm(),
-            TypeFilter::Teams => conv.channel.members_type.is_team(),
+            InboxSource::Dms => !conv.channel.members_type.is_team(),
+            InboxSource::Team(name) => {
+                conv.channel.members_type.is_team() && &conv.channel.name == name
+            }
         }
     }
 }
@@ -76,11 +78,11 @@ mod tests {
     use super::*;
     use crate::domain::conversation::{Channel, MemberStatus, MembersType, TopicType};
 
-    fn conv(members: MembersType, unread: bool) -> Conversation {
+    fn conv(name: &str, members: MembersType, unread: bool) -> Conversation {
         Conversation {
-            id: "x".into(),
+            id: name.into(),
             channel: Channel {
-                name: "x".into(),
+                name: name.into(),
                 members_type: members,
                 topic_type: TopicType::Chat,
                 topic_name: None,
@@ -97,35 +99,29 @@ mod tests {
 
     #[test]
     fn status_axis() {
-        let unread = conv(MembersType::Team, true);
-        let read = conv(MembersType::Team, false);
+        let unread = conv("a", MembersType::Team, true);
+        let read = conv("a", MembersType::Team, false);
         assert!(StatusFilter::All.includes(&read));
-        assert!(StatusFilter::All.includes(&unread));
         assert!(StatusFilter::Unread.includes(&unread));
         assert!(!StatusFilter::Unread.includes(&read));
     }
 
     #[test]
-    fn type_axis() {
-        let dm = conv(MembersType::ImpTeamNative, false);
-        let team = conv(MembersType::Team, false);
-        assert!(TypeFilter::All.includes(&dm));
-        assert!(TypeFilter::All.includes(&team));
-        assert!(TypeFilter::Dms.includes(&dm));
-        assert!(!TypeFilter::Dms.includes(&team));
-        assert!(TypeFilter::Teams.includes(&team));
-        assert!(!TypeFilter::Teams.includes(&dm));
+    fn source_dms_matches_only_dms() {
+        let dm = conv("alice,bob", MembersType::ImpTeamNative, false);
+        let team = conv("acme", MembersType::Team, false);
+        assert!(InboxSource::Dms.includes(&dm));
+        assert!(!InboxSource::Dms.includes(&team));
     }
 
     #[test]
-    fn axes_intersect() {
-        let unread_dm = conv(MembersType::ImpTeamNative, true);
-        let read_dm = conv(MembersType::ImpTeamNative, false);
-        let unread_team = conv(MembersType::Team, true);
-        let pass =
-            |c: &Conversation| StatusFilter::Unread.includes(c) && TypeFilter::Dms.includes(c);
-        assert!(pass(&unread_dm));
-        assert!(!pass(&read_dm));
-        assert!(!pass(&unread_team));
+    fn source_team_matches_only_its_own_channels() {
+        let acme = conv("acme", MembersType::Team, false);
+        let other = conv("globex", MembersType::Team, false);
+        let dm = conv("alice,bob", MembersType::ImpTeamNative, false);
+        let src = InboxSource::Team("acme".into());
+        assert!(src.includes(&acme));
+        assert!(!src.includes(&other));
+        assert!(!src.includes(&dm));
     }
 }

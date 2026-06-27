@@ -33,7 +33,7 @@ fn handle_inbox(app: &mut App, ev: MouseEvent) {
             });
             // Clicking the filters / command-log panels just moves focus.
             if let Some(target) = app.mouse_areas.focus_for(ev.column, ev.row)
-                && matches!(target, Focus::Filters | Focus::ByType | Focus::CmdLog)
+                && matches!(target, Focus::Source | Focus::Filters | Focus::CmdLog)
             {
                 app.focus = target;
             }

@@ -9,7 +9,7 @@ use ratatui::{
     widgets::Row,
 };
 
-use crate::domain::{MembersType, STATUS_FILTERS, StatusFilter, TYPE_FILTERS, TypeFilter};
+use crate::domain::{InboxSource, MembersType, STATUS_FILTERS, StatusFilter};
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::split_main;
@@ -24,13 +24,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let id_rows = identity_content_rows(app, area.width);
     let [identity, header, body, cmdlog, status] = split_main(area, id_rows);
 
-    let cols =
-        Layout::horizontal([Constraint::Percentage(22), Constraint::Percentage(78)]).split(body);
-    let filters_area = cols[0];
-    let list_area = cols[1];
+    // Discord-style three rails: the source picker (DMs + teams) on the far
+    // left, the status filter next, then the conversation list.
+    let cols = Layout::horizontal([
+        Constraint::Percentage(20), // source rail
+        Constraint::Percentage(18), // status filters
+        Constraint::Percentage(62), // inbox
+    ])
+    .split(body);
+    let source_area = cols[0];
+    let filters_area = cols[1];
+    let list_area = cols[2];
 
     draw_identity_bar(frame, app, identity);
     render_search(frame, app, header);
+    render_source(frame, app, source_area);
     render_filters(frame, app, filters_area);
     render_list(frame, app, list_area);
     let cmdlog_focused = app.focus == Focus::CmdLog;
@@ -39,7 +47,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_status_strip(frame, app, status, hint);
 
     app.mouse_areas.search = header;
-    // filters / bytype rects are set inside render_filters (it owns the split).
+    app.mouse_areas.source = source_area;
+    app.mouse_areas.filters = filters_area;
     app.mouse_areas.list = list_area;
     app.mouse_areas.cmd_log = cmdlog;
 }
@@ -47,8 +56,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 fn footer_hint(app: &App) -> &'static str {
     match app.focus {
         Focus::Search => "type to filter · Enter/Esc leave",
-        Focus::Filters => "↑/↓ status filter · Tab type · Enter apply",
-        Focus::ByType => "↑/↓ type filter · Enter apply",
+        Focus::Source => "↑/↓ pick DMs / a team · Enter apply",
+        Focus::Filters => "↑/↓ status filter · Enter apply",
         Focus::List => "↑/↓ nav · Enter open · Alt+N new · Tab focus",
         Focus::CmdLog => "↑/↓ scroll · Tab focus",
     }
@@ -68,21 +77,46 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+/// Far-left rail: the source picker — "Direct messages" + one row per team.
+fn render_source(frame: &mut Frame, app: &mut App, area: Rect) {
+    let t = app.theme.clone();
+    let sources = app.inbox_sources();
+    let label_budget = (area.width as usize).saturating_sub(9).max(6);
+
+    let rows: Vec<Row<'static>> = sources
+        .iter()
+        .map(|s| {
+            let (icon, color) = match s {
+                InboxSource::Dms => ("󰭹 ", t.conv_dm),
+                InboxSource::Team(_) => ("󰀎 ", t.conv_team),
+            };
+            let label = middle_ellipsis(s.label(), label_budget);
+            filter_row(format!("{icon}{label}"), color, app.count_source(s), &t)
+        })
+        .collect();
+    let sel = sources
+        .iter()
+        .position(|s| *s == app.inbox_source)
+        .unwrap_or(0);
+    let mut scroll = 0usize;
+    list_table(
+        frame,
+        &t,
+        area,
+        "─[1]-Spaces",
+        app.focus == Focus::Source,
+        &["Space", "#"],
+        &[Constraint::Length(label_budget as u16), Constraint::Min(2)],
+        rows,
+        sel,
+        &mut scroll,
+    );
+}
+
+/// Status filter rail: All / Unread (scoped to the active source).
 fn render_filters(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
-    // Two independent panels: the status axis (All/Unread) on top, the type
-    // axis (All/DMs/Teams) below. Each is its own focus target; the inbox
-    // shows the intersection of the two active filters.
-    let panels = Layout::vertical([
-        Constraint::Length(5), // border + header + 2 rows + border
-        Constraint::Min(6),    // border + header + 3 rows + border
-    ])
-    .split(area);
-    app.mouse_areas.filters = panels[0];
-    app.mouse_areas.bytype = panels[1];
-
-    // ── Status panel ──────────────────────────────────────────────────
-    let status_rows: Vec<Row<'static>> = STATUS_FILTERS
+    let rows: Vec<Row<'static>> = STATUS_FILTERS
         .iter()
         .map(|f| {
             let (icon, color) = status_icon_color(*f, &t);
@@ -94,53 +128,22 @@ fn render_filters(frame: &mut Frame, app: &mut App, area: Rect) {
             )
         })
         .collect();
-    let status_sel = STATUS_FILTERS
+    let sel = STATUS_FILTERS
         .iter()
         .position(|f| *f == app.status_filter)
         .unwrap_or(0);
-    let mut s0 = 0usize;
+    let mut scroll = 0usize;
     list_table(
         frame,
         &t,
-        panels[0],
-        "─[1]-Filters",
+        area,
+        "─[2]-Filters",
         app.focus == Focus::Filters,
         &["Filter", "#"],
-        &[Constraint::Length(12), Constraint::Min(3)],
-        status_rows,
-        status_sel,
-        &mut s0,
-    );
-
-    // ── Type panel ────────────────────────────────────────────────────
-    let type_rows: Vec<Row<'static>> = TYPE_FILTERS
-        .iter()
-        .map(|f| {
-            let (icon, color) = type_icon_color(*f, &t);
-            filter_row(
-                format!("{icon}{}", f.label()),
-                color,
-                app.count_type(*f),
-                &t,
-            )
-        })
-        .collect();
-    let type_sel = TYPE_FILTERS
-        .iter()
-        .position(|f| *f == app.type_filter)
-        .unwrap_or(0);
-    let mut s1 = 0usize;
-    list_table(
-        frame,
-        &t,
-        panels[1],
-        "─[2]-By type",
-        app.focus == Focus::ByType,
-        &["Type", "#"],
-        &[Constraint::Length(12), Constraint::Min(3)],
-        type_rows,
-        type_sel,
-        &mut s1,
+        &[Constraint::Length(10), Constraint::Min(3)],
+        rows,
+        sel,
+        &mut scroll,
     );
 }
 
@@ -164,17 +167,6 @@ fn status_icon_color(
     match f {
         StatusFilter::All => ("  ", t.foreground),
         StatusFilter::Unread => ("● ", t.conv_unread),
-    }
-}
-
-fn type_icon_color(
-    f: TypeFilter,
-    t: &crate::tui::theme::Theme,
-) -> (&'static str, ratatui::style::Color) {
-    match f {
-        TypeFilter::All => ("  ", t.foreground),
-        TypeFilter::Dms => ("󰭹 ", t.conv_dm),
-        TypeFilter::Teams => ("󰀎 ", t.conv_team),
     }
 }
 

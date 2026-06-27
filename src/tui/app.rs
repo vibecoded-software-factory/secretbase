@@ -11,9 +11,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    ChatEvent, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
-    MemberStatus, Message, STATUS_FILTERS, StatusFilter, TYPE_FILTERS, TeamMembership, TypeFilter,
-    fuzzy_score_lowered,
+    ChatEvent, Conversation, Emoji, IdentityInfo, InboxHit, InboxSource, LineEditor,
+    LoweredConversation, MemberStatus, Message, StatusFilter, TeamMembership, fuzzy_score_lowered,
 };
 use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
@@ -163,9 +162,9 @@ pub struct App {
     pub focus: Focus,
     /// Status axis of the inbox filter (All / Unread).
     pub status_filter: StatusFilter,
-    /// Type axis of the inbox filter (All / DMs / Teams). Independent of
-    /// `status_filter` — the inbox shows the intersection of both.
-    pub type_filter: TypeFilter,
+    /// Source axis: which space the inbox shows — all DMs, or one team
+    /// (Discord-style picker). Intersects with `status_filter`.
+    pub inbox_source: InboxSource,
 
     // ── Identity (from `keybase status --json`) ───────────────────────────
     pub identity: IdentityInfo,
@@ -178,12 +177,6 @@ pub struct App {
     pub conversations_lowered: Vec<LoweredConversation>,
     /// Indices into `conversations` after filter + search are applied.
     pub filtered_cache: Vec<usize>,
-    /// Per-filter counts (active conversations only), indexed by position
-    /// inside [`STATUS_FILTERS`] / [`TYPE_FILTERS`]. Precomputed at load time
-    /// so the sidebar render path doesn't scan `conversations` per filter per
-    /// frame. Counts are per-axis totals (independent of the other axis).
-    pub status_counts: [usize; STATUS_FILTERS.len()],
-    pub type_counts: [usize; TYPE_FILTERS.len()],
     /// Selected row inside `filtered_cache`. Reset on filter/search
     /// changes.
     pub list_selected: usize,
@@ -461,13 +454,11 @@ impl App {
             screen: Screen::Splash,
             focus: Focus::List,
             status_filter: StatusFilter::All,
-            type_filter: TypeFilter::All,
+            inbox_source: InboxSource::Dms,
             identity: IdentityInfo::default(),
             conversations: Vec::new(),
             conversations_lowered: Vec::new(),
             filtered_cache: Vec::new(),
-            status_counts: [0; STATUS_FILTERS.len()],
-            type_counts: [0; TYPE_FILTERS.len()],
             list_selected: 0,
             list_scroll: 0,
             teams: Vec::new(),
@@ -770,10 +761,9 @@ impl App {
         self.last_activity = Instant::now();
     }
 
-    /// Rebuilds [`Self::conversations_lowered`] *and*
-    /// [`Self::filter_counts`] from [`Self::conversations`]. Called
-    /// once after every load — both caches feed the hot
-    /// rendering/search paths and stay valid as long as
+    /// Rebuilds [`Self::conversations_lowered`] from
+    /// [`Self::conversations`]. Called once after every load — the cache
+    /// feeds the hot rendering/search paths and stays valid as long as
     /// `conversations` isn't mutated outside this function.
     pub fn rebuild_lowered(&mut self) {
         let me_owned = self.identity.username.clone();
@@ -787,25 +777,6 @@ impl App {
             .iter()
             .map(|c| LoweredConversation::from(c, me))
             .collect();
-
-        // Per-axis totals over the active conversations (one O(N) pass) —
-        // so the sidebar renders counts at O(1) per filter per frame.
-        let mut status = [0usize; STATUS_FILTERS.len()];
-        let mut typ = [0usize; TYPE_FILTERS.len()];
-        for c in self
-            .conversations
-            .iter()
-            .filter(|c| c.member_status == MemberStatus::Active)
-        {
-            for (i, f) in STATUS_FILTERS.iter().enumerate() {
-                status[i] += f.includes(c) as usize;
-            }
-            for (i, f) in TYPE_FILTERS.iter().enumerate() {
-                typ[i] += f.includes(c) as usize;
-            }
-        }
-        self.status_counts = status;
-        self.type_counts = typ;
     }
 
     /// Recomputes [`Self::pinned_msg_id`] by scanning the loaded
@@ -858,10 +829,10 @@ impl App {
         let query_lc = self.search.text().to_lowercase();
         let mut indices: Vec<usize> = Vec::new();
         for (idx, conv) in self.conversations.iter().enumerate() {
-            // Two independent axes intersect, over active conversations only.
+            // Source × status intersect, over active conversations only.
             if conv.member_status != MemberStatus::Active
+                || !self.inbox_source.includes(conv)
                 || !self.status_filter.includes(conv)
-                || !self.type_filter.includes(conv)
             {
                 continue;
             }
@@ -889,22 +860,44 @@ impl App {
             .and_then(|&i| self.conversations.get(i))
     }
 
-    /// Active-conversation count matching a status filter (precomputed).
-    pub fn count_status(&self, filter: StatusFilter) -> usize {
-        STATUS_FILTERS
-            .iter()
-            .position(|f| *f == filter)
-            .and_then(|idx| self.status_counts.get(idx).copied())
-            .unwrap_or(0)
+    /// Whether a conversation counts toward the sidebar tallies.
+    fn is_active(c: &Conversation) -> bool {
+        c.member_status == MemberStatus::Active
     }
 
-    /// Active-conversation count matching a type filter (precomputed).
-    pub fn count_type(&self, filter: TypeFilter) -> usize {
-        TYPE_FILTERS
+    /// Count of active conversations matching `filter` **within the current
+    /// source** (so e.g. "Unread" reflects the open team, not the whole app).
+    pub fn count_status(&self, filter: StatusFilter) -> usize {
+        self.conversations
             .iter()
-            .position(|f| *f == filter)
-            .and_then(|idx| self.type_counts.get(idx).copied())
-            .unwrap_or(0)
+            .filter(|c| Self::is_active(c) && self.inbox_source.includes(c) && filter.includes(c))
+            .count()
+    }
+
+    /// Count of active conversations belonging to `source`.
+    pub fn count_source(&self, source: &InboxSource) -> usize {
+        self.conversations
+            .iter()
+            .filter(|c| Self::is_active(c) && source.includes(c))
+            .count()
+    }
+
+    /// The source picker's entries: "Direct messages" first, then one per
+    /// team (distinct `Channel::name`, alphabetical), built from the loaded
+    /// active conversations.
+    pub fn inbox_sources(&self) -> Vec<InboxSource> {
+        let mut teams: Vec<String> = self
+            .conversations
+            .iter()
+            .filter(|c| Self::is_active(c) && c.channel.members_type.is_team())
+            .map(|c| c.channel.name.clone())
+            .collect();
+        teams.sort();
+        teams.dedup();
+        let mut sources = Vec::with_capacity(teams.len() + 1);
+        sources.push(InboxSource::Dms);
+        sources.extend(teams.into_iter().map(InboxSource::Team));
+        sources
     }
 
     /// Total number of conversations flagged as unread. Surfaced in

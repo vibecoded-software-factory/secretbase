@@ -265,16 +265,20 @@ pub fn cycle_status(app: &mut App, delta: isize) {
     app.rebuild_filter();
 }
 
-/// Cycles the **type** axis (All ↔ DMs ↔ Teams) by `delta` and refreshes.
-pub fn cycle_type(app: &mut App, delta: isize) {
-    use crate::domain::TYPE_FILTERS;
-    let cur = TYPE_FILTERS
+/// Cycles the **source** axis (Direct messages ↔ each team) by `delta` and
+/// refreshes — the source list is dynamic, built from the loaded teams.
+pub fn cycle_source(app: &mut App, delta: isize) {
+    let sources = app.inbox_sources();
+    if sources.is_empty() {
+        return;
+    }
+    let cur = sources
         .iter()
-        .position(|f| *f == app.type_filter)
+        .position(|s| *s == app.inbox_source)
         .unwrap_or(0) as isize;
-    let n = TYPE_FILTERS.len() as isize;
+    let n = sources.len() as isize;
     let next = (cur + delta).rem_euclid(n) as usize;
-    app.type_filter = TYPE_FILTERS[next];
+    app.inbox_source = sources[next].clone();
     app.list_selected = 0;
     app.list_scroll = 0;
     app.rebuild_filter();

@@ -32,7 +32,7 @@ pub use conversation::{
 };
 pub use duration::format_duration;
 pub use emoji::Emoji;
-pub use filter::{STATUS_FILTERS, StatusFilter, TYPE_FILTERS, TypeFilter};
+pub use filter::{InboxSource, STATUS_FILTERS, StatusFilter};
 pub use identity::IdentityInfo;
 pub use inbox_hit::InboxHit;
 pub use line_editor::LineEditor;

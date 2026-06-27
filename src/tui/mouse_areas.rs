@@ -23,8 +23,8 @@ use crate::tui::screens::Focus;
 #[derive(Debug, Default, Clone)]
 pub struct MouseAreas {
     pub search: Rect,
+    pub source: Rect,
     pub filters: Rect,
-    pub bytype: Rect,
     pub list: Rect,
     pub cmd_log: Rect,
     /// The conversation message viewport (for click-to-select + scroll).
@@ -52,11 +52,11 @@ impl MouseAreas {
         if rect_contains(self.search, col, row) {
             return Some(Focus::Search);
         }
+        if rect_contains(self.source, col, row) {
+            return Some(Focus::Source);
+        }
         if rect_contains(self.filters, col, row) {
             return Some(Focus::Filters);
-        }
-        if rect_contains(self.bytype, col, row) {
-            return Some(Focus::ByType);
         }
         if rect_contains(self.list, col, row) {
             return Some(Focus::List);

@@ -432,7 +432,9 @@ fn load_inbox_populates_conversations_and_rebuilds_filter() {
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.app.conversations.len(), 2);
-    assert_eq!(rig.app.filtered_cache.len(), 2);
+    // Default source is Direct messages, so only the DM shows (the team
+    // lives under its own source entry).
+    assert_eq!(rig.app.filtered_cache.len(), 1);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
 }
 
@@ -506,7 +508,8 @@ fn load_inbox_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
     pump_until_idle(&mut rig.app);
     // Good rows must load — the bad one must not block them.
     assert_eq!(rig.app.conversations.len(), 2);
-    assert_eq!(rig.app.filtered_cache.len(), 2);
+    // Default source = Direct messages → only the DM is in the filtered view.
+    assert_eq!(rig.app.filtered_cache.len(), 1);
     // The feedback strip stays Done (load succeeded) but mentions
     // the count of skipped rows.
     match &rig.app.action_state {
@@ -1117,27 +1120,36 @@ fn status_axis_cycles_and_wraps() {
 }
 
 #[test]
-fn type_axis_cycles_independently_of_status() {
-    use crate::domain::{StatusFilter, TypeFilter};
+fn source_cycles_dms_then_teams_independently_of_status() {
+    use crate::domain::{InboxSource, StatusFilter};
     let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("d", "alice", MembersType::ImpTeamNative),
+            conv("t", "acme", MembersType::Team),
+        ],
+        "d",
+    );
     rig.app.status_filter = StatusFilter::Unread;
-    rig.app.type_filter = TypeFilter::All;
-    cycle_type(&mut rig.app, 1);
-    assert_eq!(rig.app.type_filter, TypeFilter::Dms);
-    cycle_type(&mut rig.app, 1);
-    assert_eq!(rig.app.type_filter, TypeFilter::Teams);
-    // The status axis is untouched by type cycling.
+    rig.app.inbox_source = InboxSource::Dms;
+    cycle_source(&mut rig.app, 1);
+    assert_eq!(rig.app.inbox_source, InboxSource::Team("acme".into()));
+    cycle_source(&mut rig.app, 1); // wraps back to DMs
+    assert_eq!(rig.app.inbox_source, InboxSource::Dms);
+    // The status axis is untouched by source cycling.
     assert_eq!(rig.app.status_filter, StatusFilter::Unread);
 }
 
 #[test]
-fn filter_axes_intersect_in_the_inbox() {
-    use crate::domain::{StatusFilter, TypeFilter};
+fn source_and_status_intersect_in_the_inbox() {
+    use crate::domain::{InboxSource, StatusFilter};
     let mut rig = build_rig();
     let mut unread_dm = conv("d", "alice", MembersType::ImpTeamNative);
     unread_dm.unread = true;
     let read_dm = conv("d2", "bob", MembersType::ImpTeamNative);
-    let mut unread_team = conv("t", "team#general", MembersType::Team);
+    let mut unread_team = conv("t", "acme", MembersType::Team);
     unread_team.unread = true;
     preload_inbox(
         &mut rig.app,
@@ -1145,9 +1157,9 @@ fn filter_axes_intersect_in_the_inbox() {
         vec![unread_dm, read_dm, unread_team],
         "d",
     );
-    // Unread × DMs → only the unread DM survives.
+    // Direct messages × Unread → only the unread DM survives.
+    rig.app.inbox_source = InboxSource::Dms;
     rig.app.status_filter = StatusFilter::Unread;
-    rig.app.type_filter = TypeFilter::Dms;
     rig.app.rebuild_filter();
     let ids: Vec<&str> = rig
         .app
@@ -1156,6 +1168,31 @@ fn filter_axes_intersect_in_the_inbox() {
         .map(|&i| rig.app.conversations[i].id.as_str())
         .collect();
     assert_eq!(ids, vec!["d"]);
+}
+
+#[test]
+fn inbox_sources_lists_dms_then_each_team() {
+    use crate::domain::InboxSource;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("d", "alice", MembersType::ImpTeamNative),
+            conv("t1", "globex", MembersType::Team),
+            conv("t2", "acme", MembersType::Team),
+        ],
+        "d",
+    );
+    let sources = rig.app.inbox_sources();
+    assert_eq!(
+        sources,
+        vec![
+            InboxSource::Dms,
+            InboxSource::Team("acme".into()),
+            InboxSource::Team("globex".into()),
+        ]
+    );
 }
 
 // ── search query helpers ──────────────────────────────────────────────
@@ -1930,12 +1967,12 @@ fn input_tab_steps_forward_through_non_search_focuses() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
 
-    // FOCUS_ORDER = [Search, Filters, ByType, List, CmdLog].
-    rig.app.focus = Focus::Filters;
+    // FOCUS_ORDER = [Search, Source, Filters, List, CmdLog].
+    rig.app.focus = Focus::Source;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::ByType);
+    assert_eq!(rig.app.focus, Focus::Filters);
 
-    rig.app.focus = Focus::ByType;
+    rig.app.focus = Focus::Filters;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::List);
 
@@ -1952,13 +1989,13 @@ fn input_tab_steps_forward_through_non_search_focuses() {
 fn input_tab_from_search_cycles_focus() {
     // Tab is a global focus-cycle and works even from the search box
     // (it can't be confused with text input), so the user can leave
-    // search with one keystroke. FOCUS_ORDER = [Search, Filters, …].
+    // search with one keystroke. FOCUS_ORDER = [Search, Source, …].
     use crate::tui::screens::Focus;
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Search;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Filters);
+    assert_eq!(rig.app.focus, Focus::Source);
 }
 
 #[test]
