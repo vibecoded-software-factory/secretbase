@@ -1365,6 +1365,58 @@ pub fn request_resend_message(app: &mut App) {
     });
 }
 
+// ── Upload attachment ────────────────────────────────────────────────
+
+/// Uploads a local file to the open conversation as an attachment
+/// (`keybase chat api {"method":"attach"}`). The path comes from the
+/// embedded file picker.
+pub fn request_upload_attachment(app: &mut App, path: std::path::PathBuf) {
+    let Some(conv_id) = app.open_conv_id.clone() else {
+        app.set_action(ActionState::Error("No conversation open".into()));
+        return;
+    };
+    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
+        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
+        return;
+    };
+    let channel_result = read_channel_from_conv(conv);
+    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+        return;
+    };
+    let filename = path.to_string_lossy().to_string();
+    let display = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| filename.clone());
+    if !app.begin(InFlight::UploadAttachment {
+        filename: display.clone(),
+    }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Uploading {display}…")));
+    let _ = app.worker_tx.send(WorkerRequest::UploadAttachment {
+        channel,
+        filename,
+        title: String::new(),
+    });
+}
+
+pub fn handle_upload_response(app: &mut App, result: Result<(), KeybaseError>, filename: String) {
+    match result {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Uploaded {filename}")));
+            app.push_cmd("keybase chat api attach", true, filename);
+            // Re-read so the new attachment message appears.
+            app.messages_scroll = 0;
+            request_load_messages(app);
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api attach", false, e.to_string());
+        }
+    }
+}
+
 // ── Mute / unmute ────────────────────────────────────────────────────
 
 pub fn request_mute_conversation(app: &mut App) {

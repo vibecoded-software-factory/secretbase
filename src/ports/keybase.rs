@@ -253,6 +253,16 @@ pub trait KeybasePort {
         body: &str,
     ) -> Result<(), KeybaseError>;
 
+    /// `{"method":"attach","params":{...}}` — upload a local file as an
+    /// attachment to the conversation. `title` is an optional caption
+    /// (empty string ⇒ keybase defaults it to the filename).
+    fn upload_attachment(
+        &mut self,
+        channel: &ReadChannel,
+        filename: &str,
+        title: &str,
+    ) -> Result<(), KeybaseError>;
+
     // ── Teams ─────────────────────────────────────────────────────────────
 
     /// `{"method":"list-self-memberships"}`.

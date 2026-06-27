@@ -479,6 +479,27 @@ impl KeybasePort for KeybaseCliAdapter {
         Ok(())
     }
 
+    fn upload_attachment(
+        &mut self,
+        channel: &ReadChannel,
+        filename: &str,
+        title: &str,
+    ) -> Result<(), KeybaseError> {
+        // Uploads can be many MB over a slow uplink, like downloads — use
+        // the dedicated, configurable download/transfer timeout rather than
+        // the short per-op budget.
+        let mut options = json!({
+            "channel": channel_object(channel),
+            "filename": filename,
+        });
+        if !title.is_empty() {
+            options["title"] = json!(title);
+        }
+        let req = request_with_options("attach", options);
+        self.chat_api(&req, self.download_timeout)?;
+        Ok(())
+    }
+
     fn new_conversation(&mut self, channel: &ReadChannel) -> Result<String, KeybaseError> {
         let req = request_with_options("newconv", json!({ "channel": channel_object(channel) }));
         let reply = self.chat_api(&req, QUICK_OP_TIMEOUT)?;

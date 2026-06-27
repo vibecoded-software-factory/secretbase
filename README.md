@@ -94,6 +94,7 @@ In the **Filters** panel, `↑` / `↓` change the active filter.
 | `Alt+J` / `Alt+P`       | React / pin last message |
 | `Alt+U`                 | Unpin channel |
 | `Alt+R`                 | Resend failed message |
+| `Alt+A`                 | Attach a file (opens the file picker) |
 | `F5` / `Ctrl+R`         | Refresh |
 | `Ctrl+Y`                | Copy label |
 | `Esc`                   | Cancel / back |

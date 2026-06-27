@@ -151,6 +151,9 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         ) => {
             chat::handle_download_attachment_response(app, r, message_id, path);
         }
+        (InFlight::UploadAttachment { filename }, WorkerResponse::UploadAttachment(r)) => {
+            chat::handle_upload_response(app, r, filename);
+        }
         // ── Teams ─────────────────────────────────────────────────
         (InFlight::LoadTeams, WorkerResponse::ListSelfMemberships(r)) => {
             teams::handle_load_teams_response(app, r);

@@ -60,6 +60,7 @@ struct MockState {
     pins: Vec<u64>,
     unpins: usize,
     downloads: Vec<(u64, String)>,
+    uploads: Vec<(String, String)>,
     mark_reads: Vec<u64>,
     read_calls: Vec<Option<String>>,
     /// Next adapter call returning a Result returns this error then
@@ -176,6 +177,19 @@ impl KeybasePort for MockKeybase {
             return Err(e);
         }
         s.reactions.push((id, body.to_string()));
+        Ok(())
+    }
+    fn upload_attachment(
+        &mut self,
+        _: &ReadChannel,
+        filename: &str,
+        title: &str,
+    ) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.uploads.push((filename.to_string(), title.to_string()));
         Ok(())
     }
     fn new_conversation(&mut self, channel: &ReadChannel) -> Result<String, KeybaseError> {
@@ -655,6 +669,24 @@ fn resend_failed_message_clears_the_outbox_on_success() {
     request_resend_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert!(rig.app.outbox.is_empty());
+}
+
+#[test]
+fn upload_attachment_sends_the_file_and_reloads() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    request_upload_attachment(&mut rig.app, std::path::PathBuf::from("/tmp/photo.png"));
+    pump_until_idle(&mut rig.app);
+    let uploads = rig.mock.st().uploads.clone();
+    assert_eq!(uploads.len(), 1);
+    assert_eq!(uploads[0].0, "/tmp/photo.png");
+    // Success chains a re-read, which lands as Done (no error).
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
 }
 
 #[test]

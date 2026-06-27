@@ -115,6 +115,10 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Char('u') | KeyCode::Char('U') if alt => chat::request_unpin_conversation(app),
         KeyCode::Char('v') | KeyCode::Char('V') if alt => chat::enter_select_mode(app),
         KeyCode::Char('r') | KeyCode::Char('R') if alt => chat::request_resend_message(app),
+        KeyCode::Char('a') | KeyCode::Char('A') if alt => {
+            let start = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            app.file_picker = Some(crate::tui::file_picker::FilePicker::new(&start));
+        }
 
         // ── text input (cursor moves + edits) ──────────────────────────
         _ => {

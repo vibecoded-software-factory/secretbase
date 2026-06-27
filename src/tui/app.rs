@@ -15,6 +15,7 @@ use crate::domain::{
 };
 use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
+use crate::tui::file_picker::FilePicker;
 use crate::tui::mouse_areas::MouseAreas;
 use crate::tui::screens::{Focus, Screen};
 use crate::tui::theme::{self, Theme};
@@ -205,6 +206,9 @@ pub struct App {
     /// never drops a still-pending or failed send. Rendered below the
     /// loaded history for the conversation each entry targets.
     pub outbox: Vec<PendingSend>,
+    /// Open embedded file picker (attachment upload). When `Some`, it
+    /// captures all input and renders as a modal overlay.
+    pub file_picker: Option<FilePicker>,
 
     // ── Compose ──────────────────────────────────────────────────────────
     /// Whether the compose pane is open (user is typing a new message).
@@ -405,6 +409,7 @@ impl App {
             open_conv_id: None,
             messages: Vec::new(),
             outbox: Vec::new(),
+            file_picker: None,
             messages_scroll: 0,
             messages_next: None,
             messages_loading_older: false,

@@ -42,7 +42,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
-        "Enter send · ↑/↓ scroll · Alt+V select · Esc back"
+        "Enter send · Alt+A attach · Alt+V select · Esc back"
     };
     draw_status_strip(frame, app, layout[4], hint);
 }

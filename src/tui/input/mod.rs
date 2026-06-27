@@ -32,12 +32,35 @@ pub fn handle_events(app: &mut App, event: Event) {
     }
 }
 
+/// Routes a key to the open file picker and acts on its outcome: a
+/// pick fires the attachment upload, a cancel just closes it.
+fn file_picker_key(app: &mut App, key: KeyEvent) {
+    use crate::tui::file_picker::Outcome;
+    let Some(picker) = app.file_picker.as_mut() else {
+        return;
+    };
+    match picker.handle_key(key) {
+        Outcome::Pending => {}
+        Outcome::Cancelled => app.file_picker = None,
+        Outcome::Selected(path) => {
+            app.file_picker = None;
+            crate::tui::flows::chat::request_upload_attachment(app, path);
+        }
+    }
+}
+
 /// Top-level keyboard dispatch. Global shortcuts win; everything else
 /// goes to the per-screen handler.
 fn handle_key(app: &mut App, key: KeyEvent) {
     // Global shortcuts handled before screen-specific routing.
     if matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL) {
         app.should_quit = true;
+        return;
+    }
+    // The embedded file picker, when open, is a modal overlay that owns
+    // every key (except the global Ctrl+C quit above).
+    if app.file_picker.is_some() {
+        file_picker_key(app, key);
         return;
     }
     // While a worker request is in flight, swallow every key but Esc so

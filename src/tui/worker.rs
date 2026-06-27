@@ -138,6 +138,11 @@ pub enum WorkerRequest {
         message_id: u64,
         output: String,
     },
+    UploadAttachment {
+        channel: ReadChannel,
+        filename: String,
+        title: String,
+    },
     ListSelfMemberships,
     /// Terminates the worker. Sent automatically on drop of
     /// [`WorkerHandle`].
@@ -168,6 +173,7 @@ pub enum WorkerResponse {
     PinMessage(Result<(), KeybaseError>),
     UnpinMessage(Result<(), KeybaseError>),
     DownloadAttachment(Result<(), KeybaseError>),
+    UploadAttachment(Result<(), KeybaseError>),
     ListSelfMemberships(Result<ListTeamsOk, KeybaseError>),
 }
 
@@ -218,6 +224,9 @@ pub enum InFlight {
     DownloadAttachment {
         message_id: u64,
         path: String,
+    },
+    UploadAttachment {
+        filename: String,
     },
     LoadTeams,
 }
@@ -415,6 +424,14 @@ mod tests {
         ) -> Result<(), KeybaseError> {
             Ok(())
         }
+        fn upload_attachment(
+            &mut self,
+            _: &ReadChannel,
+            _: &str,
+            _: &str,
+        ) -> Result<(), KeybaseError> {
+            Ok(())
+        }
         fn list_self_memberships(&mut self) -> Result<ListTeamsOk, KeybaseError> {
             Ok(ListTeamsOk {
                 teams: Vec::<TeamMembership>::new(),
@@ -506,6 +523,7 @@ mod tests {
                 Self::PinMessage(r) => write!(f, "PinMessage({r:?})"),
                 Self::UnpinMessage(r) => write!(f, "UnpinMessage({r:?})"),
                 Self::DownloadAttachment(r) => write!(f, "DownloadAttachment({r:?})"),
+                Self::UploadAttachment(r) => write!(f, "UploadAttachment({r:?})"),
                 Self::ListSelfMemberships(_) => f.write_str("ListSelfMemberships(..)"),
             }
         }
@@ -593,6 +611,13 @@ fn run_worker(
                 output,
             } => WorkerResponse::DownloadAttachment(run_caught(|| {
                 keybase.download_attachment(&channel, message_id, &output)
+            })),
+            WorkerRequest::UploadAttachment {
+                channel,
+                filename,
+                title,
+            } => WorkerResponse::UploadAttachment(run_caught(|| {
+                keybase.upload_attachment(&channel, &filename, &title)
             })),
             WorkerRequest::ListSelfMemberships => {
                 WorkerResponse::ListSelfMemberships(run_caught(|| keybase.list_self_memberships()))

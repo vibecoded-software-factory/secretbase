@@ -102,7 +102,19 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 ("Alt+J / Alt+P", "react / pin last"),
                 ("Alt+U", "unpin channel"),
                 ("Alt+R", "resend failed message"),
+                ("Alt+A", "attach a file (opens the file picker)"),
                 ("Esc", "cancel / back"),
+            ] {
+                lines.push(help_line(k, d, t));
+            }
+            lines.push(Line::raw(""));
+            lines.push(section("File picker", t));
+            for (k, d) in [
+                ("↑/↓ k/j", "move"),
+                ("Enter / →", "open dir / pick file"),
+                ("⌫ / ←", "parent dir"),
+                ("/", "filter · . hidden · ~ home"),
+                ("Esc", "cancel"),
             ] {
                 lines.push(help_line(k, d, t));
             }

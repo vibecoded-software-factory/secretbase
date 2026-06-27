@@ -135,6 +135,17 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::DownloadAttachment => popups::download_attachment(frame, app),
         _ => {}
     }
+
+    // The embedded file picker sits above everything else as a modal.
+    if app.file_picker.is_some() {
+        let t = app.theme.clone();
+        let full = frame.area();
+        let h = (full.height.saturating_mul(4) / 5).max(8);
+        let area = widgets::center_rect(72, h, full);
+        if let Some(picker) = app.file_picker.as_mut() {
+            picker.render(frame, area, &t);
+        }
+    }
 }
 
 /// Renders a single non-overlay base screen.

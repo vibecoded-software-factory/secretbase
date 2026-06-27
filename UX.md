@@ -77,6 +77,19 @@ Loading states stay honest: the message viewer shows "Loading messages…"
 during the first fetch (not the empty-conversation prompt), and the unread
 badge clears as soon as a conversation is read (not on the next resync).
 
+## File picker (`tui::file_picker`)
+
+A self-contained, headless-safe file chooser (no GUI/portal dependency).
+`Alt+A` in a conversation opens it as a modal overlay (`App::file_picker`,
+drained before screen routing in `input::handle_events`, drawn last in
+`view::draw`). Single-pane, desktop-chooser style: a path bar, the current
+directory (dirs first, then files; dotfiles and any extension shown), and a
+hint bar. `↑↓`/`kj` move, `Enter`/`→` open-or-pick, `⌫`/`←` parent, `~`
+home, `g`/`G` ends, `/` fuzzy filter, `.` toggles hidden, `Esc` cancels.
+On pick it returns the path to the host (here: `keybase chat api attach`).
+It depends only on `ratatui` + the shared `Theme` + `LineEditor`, so the
+same module is reused verbatim across the TUIs.
+
 ## Panels & focus
 
 The inbox's focusable panels are the `screens::Focus` variants: `Search`,
