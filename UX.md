@@ -52,7 +52,12 @@ The **conversation** screen uses a custom layout (identity · header ·
 messages · compose · status) because the message stream is a *viewer*, not
 a grid. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row) and scroll the wheel to page history
-(`mouse_areas` carries the messages viewport rect + a per-message row map). The **login** screen is the signed-out exception: it omits the
+(`mouse_areas` carries the messages viewport rect + a per-message row map).
+The compose box is **multi-line**: `Alt+Enter` inserts a newline (`Enter`
+sends), the box grows with the line count (capped, then it scrolls to keep
+the cursor visible), and `widgets::editor_lines` renders the multi-row
+cursor. Single-line inputs (search, react, new-conversation) keep
+`widgets::editor_spans`. The **login** screen is the signed-out exception: it omits the
 identity bar and shows the figlet/starfield backdrop with a "run `keybase
 login`, then R" hint.
 

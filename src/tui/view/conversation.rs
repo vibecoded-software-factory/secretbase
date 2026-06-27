@@ -15,19 +15,22 @@ use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo};
 use crate::tui::app::App;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    draw_identity_bar, draw_status_strip, editor_spans, identity_content_rows,
+    draw_identity_bar, draw_status_strip, editor_lines, identity_content_rows,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let id_rows = identity_content_rows(app, area.width);
+    // Compose grows with its line count (multi-line via Alt+Enter), capped.
+    let compose_lines = app.compose.text().split('\n').count().max(1) as u16;
+    let compose_h = (compose_lines + 2).clamp(3, 8);
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(id_rows + 2), // identity bar
             Constraint::Length(3),           // conversation header
             Constraint::Min(3),              // messages
-            Constraint::Length(3),           // compose pane
+            Constraint::Length(compose_h),   // compose pane (dynamic)
             Constraint::Length(1),           // status strip
         ])
         .split(area);
@@ -66,16 +69,24 @@ fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         "type and press Enter to send…"
     };
-    let line = if app.compose.is_empty() {
-        Line::from(Span::styled(
+    let lines: Vec<Line> = if app.compose.is_empty() {
+        vec![Line::from(Span::styled(
             placeholder,
             Style::default().fg(t.placeholder),
-        ))
+        ))]
     } else {
-        Line::from(editor_spans(&app.compose, true, t))
+        editor_lines(&app.compose, t)
     };
+    // Vertically scroll so the cursor's row stays visible when the draft has
+    // more lines than the (capped) box can show.
+    let inner_h = area.height.saturating_sub(2) as usize;
+    let cur = app.compose.cursor().min(app.compose.text().len());
+    let cursor_row = app.compose.text()[..cur].matches('\n').count();
+    let scroll = cursor_row.saturating_sub(inner_h.saturating_sub(1)) as u16;
     frame.render_widget(
-        Paragraph::new(line).block(titled_block(&title, true, app)),
+        Paragraph::new(lines)
+            .scroll((scroll, 0))
+            .block(titled_block(&title, true, app)),
         area,
     );
 }

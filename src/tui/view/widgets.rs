@@ -400,6 +400,56 @@ pub fn editor_spans(editor: &LineEditor, focused: bool, theme: &Theme) -> Vec<Sp
     ]
 }
 
+/// Multi-line variant of [`editor_spans`]: splits the editor text on `\n`
+/// into one [`Line`] per row, with the reversed block cursor on the row +
+/// column matching `editor.cursor()`. Used by the compose box, which allows
+/// newlines (Alt+Enter).
+pub fn editor_lines(editor: &LineEditor, theme: &Theme) -> Vec<Line<'static>> {
+    let text = editor.text();
+    let base = Style::default().fg(theme.foreground);
+    let cursor = Style::default().add_modifier(Modifier::REVERSED);
+    let cur = editor.cursor().min(text.len());
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut start = 0usize;
+    loop {
+        // `end` is the next '\n' byte (or end of text); the cursor sits on
+        // this row when it falls in [start, end] (end = just before the \n).
+        let end = text[start..]
+            .find('\n')
+            .map(|i| start + i)
+            .unwrap_or(text.len());
+        let seg = &text[start..end];
+        if cur >= start && cur <= end {
+            let col = cur - start;
+            if col >= seg.len() {
+                out.push(Line::from(vec![
+                    Span::styled(seg.to_string(), base),
+                    Span::styled(" ".to_string(), cursor),
+                ]));
+            } else {
+                let next = seg[col..]
+                    .char_indices()
+                    .nth(1)
+                    .map(|(i, _)| col + i)
+                    .unwrap_or(seg.len());
+                out.push(Line::from(vec![
+                    Span::styled(seg[..col].to_string(), base),
+                    Span::styled(seg[col..next].to_string(), cursor),
+                    Span::styled(seg[next..].to_string(), base),
+                ]));
+            }
+        } else {
+            out.push(Line::from(Span::styled(seg.to_string(), base)));
+        }
+        if end >= text.len() {
+            break;
+        }
+        start = end + 1;
+    }
+    out
+}
+
 /// Renders the command-log panel (`✓ cmd  →  detail`), newest at the
 /// bottom. `cmd_log_scroll` walks back through history.
 ///
@@ -532,6 +582,20 @@ mod tests {
     fn list_title_formats() {
         assert_eq!(list_title("Inbox", 3, 10), "Inbox · 3 of 10");
         assert_eq!(list_title("Teams", 0, 0), "Teams · 0 of 0");
+    }
+
+    #[test]
+    fn editor_lines_splits_rows_and_keeps_trailing_empty() {
+        let t = Theme::default();
+        // Two rows from one newline.
+        assert_eq!(
+            editor_lines(&LineEditor::from_text("hello\nworld"), &t).len(),
+            2
+        );
+        // A trailing newline yields an extra (empty) row where the cursor sits.
+        assert_eq!(editor_lines(&LineEditor::from_text("a\n"), &t).len(), 2);
+        // No newline → a single row.
+        assert_eq!(editor_lines(&LineEditor::from_text("solo"), &t).len(), 1);
     }
 
     #[test]

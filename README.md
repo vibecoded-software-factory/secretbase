@@ -87,6 +87,7 @@ In the **Filters** panel, `↑` / `↓` change the active filter.
 |---|---|
 | typing                  | Extend draft |
 | `Enter`                 | Send / save edit |
+| `Alt+Enter`             | New line (multi-line message) |
 | `↑` / `↓` · `PgUp` / `PgDn` | Scroll history |
 | `←` / `→` · `Home` / `End`  | Compose cursor |
 | mouse                   | Click a message to select, scroll to page history |
