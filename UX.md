@@ -54,6 +54,25 @@ a grid. The **login** screen is the signed-out exception: it omits the
 identity bar and shows the figlet/starfield backdrop with a "run `keybase
 login`, then R" hint.
 
+## Real-time updates
+
+The UI is push-driven, not poll-driven. A `keybase chat api-listen` stream
+feeds `flows::apply_chat_event` (drained each frame), so the screens update
+on their own:
+
+- **Inbox** — an incoming message bumps its conversation (recency + the
+  unread dot) and re-sorts in place; no spinner, no full reload. The
+  periodic `list` is just a safety-net resync (`inbox_refresh_secs`).
+- **Open conversation** — incoming messages append live; edits / deletes /
+  reactions trigger a quiet re-read so they reproject correctly.
+- **Sending** — the message echoes instantly (an optimistic, provisional
+  entry) the moment `Enter` is pressed; the send's reply reconciles it, and
+  a failed send removes it and keeps the draft.
+
+Loading states stay honest: the message viewer shows "Loading messages…"
+during the first fetch (not the empty-conversation prompt), and the unread
+badge clears as soon as a conversation is read (not on the next resync).
+
 ## Panels & focus
 
 The inbox's focusable panels are the `screens::Focus` variants: `Search`,

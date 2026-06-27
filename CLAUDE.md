@@ -161,6 +161,24 @@ per-operation timeout in `adapters/keybase_cli/process.rs`.
 Clipboard + settings stay **synchronous** on the render thread (they're
 fast).
 
+## Real-time push (`keybase chat api-listen`)
+
+Alongside the request/response worker, a **third lane** delivers push
+updates: a long-lived `keybase chat api-listen --convs --hide-exploding`
+process (`adapters/keybase_cli/listen.rs`) whose reader thread parses each
+JSON line into a `domain::ChatEvent` and sends it on a channel. `main.rs`
+owns the listener guard (its child is killed on exit) and hands only the
+`Receiver<ChatEvent>` to the TUI, which drains it every frame in the run
+loop and applies events via `flows::apply_chat_event` — no `InFlight`
+ticket, so a push can land at any time without touching the user's slot.
+Events update state **incrementally** (append a message to the open
+conversation, bump a conversation in the inbox) instead of re-fetching;
+edits/deletes/reactions trigger a re-read to reproject. Because real-time
+arrives via push, the periodic inbox `list` is only a **safety-net resync**
+(`inbox_refresh_secs`, default 180 s). The listener is push-only (no stdin);
+see `CLI.md` for the event shapes and the CLI's limits (no typing/read-state
+over `api-listen`).
+
 **Do NOT pull in `tokio`/`async-std`.** Extend the `std::thread` + `mpsc`
 worker pattern: add a `WorkerRequest`/`WorkerResponse`/`InFlight` variant
 and a `request_*`/`handle_*` pair.

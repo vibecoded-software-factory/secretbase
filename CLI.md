@@ -281,9 +281,33 @@ These are NOT api-mode (run as one-shot `keybase chat <sub>` spawns):
   `addtochannel`, `conv-info`, `mute`, `report`, `download`, `upload`,
   emoji*, `default-channels`.
 
-### Other JSON APIs
+### `keybase chat api-listen` — push stream
 
-- `keybase chat api-listen` — push notifications of new messages.
+`keybase chat api-listen` prints chat notifications as one JSON object per
+line, for as long as it runs (no stdin protocol — it only emits). secretbase
+spawns it once at launch and drives the real-time inbox + open-conversation
+updates from it (see `adapters/keybase_cli/listen.rs`).
+
+Flags secretbase passes (verified against `go/client/cmd_chat_api_listen.go`):
+
+- `--convs` — also emit a notification when a new conversation is
+  created/joined.
+- `--hide-exploding` — skip ephemeral (exploding) messages.
+
+Event shapes secretbase parses (verified against
+`go/client/chat_api_listen_display.go`):
+
+- **incoming message** — `{"type":"chat","source":"remote","msg":{<MsgSummary>}}`
+  (the `msg` is the same shape `keybase chat api read` returns; own/local
+  messages are skipped unless `--local` is passed, which we don't).
+- **new conversation** — `{"type":"chat_conv","conv":{<ConvSummary>}}`.
+
+Only `NewChatActivity` (messages, new conversations) and joined-conversation
+notifications are printed; **typing, read-state, edits-as-deltas, and the
+other `NotifyChat` callbacks return `nil`** in the source, so they are *not*
+available over the CLI — only the lower-level service RPC exposes them.
+
+### Other JSON APIs
 - `keybase team api` — team JSON API (`list-self-memberships`,
   `create-team`, `add-members`, `list-team-memberships`, …). Verify against
   `go/client/cmd_team_api.go` / the team api doc in source.
