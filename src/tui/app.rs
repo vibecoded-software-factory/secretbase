@@ -6,6 +6,7 @@
 //! [`input`](crate::tui::input), [`view`](crate::tui::view)) read and
 //! mutate `App` through `&mut App`.
 
+use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -263,6 +264,9 @@ pub struct App {
     pub emojis_loaded: bool,
     /// Whether an `emojilist` fetch is in flight (de-dupes the request).
     pub emojis_loading: bool,
+    /// Per-alias reaction usage this session — floats the most-used emojis
+    /// to the top of the picker (Discord-style frecency).
+    pub emoji_uses: HashMap<String, u32>,
 
     // ── New-conversation popup ──────────────────────────────────────────
     /// Comma-separated usernames typed by the user in the Alt+N popup.
@@ -444,6 +448,7 @@ impl App {
             emojis: Vec::new(),
             emojis_loaded: false,
             emojis_loading: false,
+            emoji_uses: HashMap::new(),
             new_conv: LineEditor::default(),
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
@@ -491,12 +496,28 @@ impl App {
     /// (case-insensitive substring on the alias; all when empty).
     pub fn filtered_emoji_indices(&self) -> Vec<usize> {
         let q = self.react.text().trim().to_lowercase();
-        self.emojis
+        let mut idx: Vec<usize> = self
+            .emojis
             .iter()
             .enumerate()
             .filter(|(_, e)| q.is_empty() || e.alias.to_lowercase().contains(&q))
             .map(|(i, _)| i)
-            .collect()
+            .collect();
+        // Most-used first; `sort_by` is stable, so ties keep catalogue order.
+        idx.sort_by(|&a, &b| {
+            let ua = self
+                .emoji_uses
+                .get(&self.emojis[a].alias)
+                .copied()
+                .unwrap_or(0);
+            let ub = self
+                .emoji_uses
+                .get(&self.emojis[b].alias)
+                .copied()
+                .unwrap_or(0);
+            ub.cmp(&ua)
+        });
+        idx
     }
 
     /// Opens the Settings overlay over the current screen. Stashes the

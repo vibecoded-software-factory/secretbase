@@ -638,7 +638,14 @@ impl KeybasePort for KeybaseCliAdapter {
 fn parse_emojis(reply: &Value) -> Vec<Emoji> {
     let mut out: Vec<Emoji> = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let Some(groups) = reply.pointer("/result/emojis").and_then(Value::as_array) else {
+    // The result is `UserEmojiRes { emojis: UserEmojis { emojis: [groups] } }`
+    // — the groups live at `result.emojis.emojis`. Fall back to the flatter
+    // `result.emojis` in case a keybase version inlines it.
+    let Some(groups) = reply
+        .pointer("/result/emojis/emojis")
+        .or_else(|| reply.pointer("/result/emojis"))
+        .and_then(Value::as_array)
+    else {
         return out;
     };
     for group in groups {
@@ -1292,7 +1299,8 @@ mod content_parse_tests {
 
     #[test]
     fn parse_emojis_flattens_groups_dedups_and_picks_unicode_or_alias() {
-        let reply = json!({"result": {"emojis": [
+        // Real shape: result.emojis is a UserEmojis object wrapping `emojis`.
+        let reply = json!({"result": {"emojis": {"emojis": [
             {"name": "Smileys", "emojis": [
                 {"alias": "+1", "remoteSource": {"stockalias": {"text": "👍"}}},
                 {"alias": "+1", "remoteSource": {"stockalias": {"text": "👍"}}}
@@ -1300,7 +1308,7 @@ mod content_parse_tests {
             {"name": "Team", "emojis": [
                 {"alias": "partyparrot", "remoteSource": {"message": {}}}
             ]}
-        ]}});
+        ]}}});
         let out = parse_emojis(&reply);
         assert_eq!(out.len(), 2, "the duplicate +1 is dropped");
         assert_eq!(out[0].alias, "+1");

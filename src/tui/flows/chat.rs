@@ -1187,6 +1187,11 @@ pub fn request_send_reaction(app: &mut App) {
 pub fn handle_react_response(app: &mut App, result: Result<(), KeybaseError>, body: String) {
     match result {
         Ok(()) => {
+            // Bump frecency so this emoji floats up the picker next time.
+            let alias = body.trim_matches(':').to_string();
+            if !alias.is_empty() {
+                *app.emoji_uses.entry(alias).or_insert(0) += 1;
+            }
             app.set_action(ActionState::Done("Reaction sent".into()));
             app.push_cmd("keybase chat api reaction", true, body);
             app.screen = crate::tui::screens::Screen::Conversation;
