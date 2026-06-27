@@ -25,8 +25,12 @@ pub struct UserSettings {
     /// (the `peek` flag is then passed to `keybase chat api read`
     /// so the messages stay unread on the server).
     pub auto_mark_read: bool,
-    /// Interval in seconds between automatic inbox refreshes while
-    /// idle. `0` disables the background refresh.
+    /// Interval in seconds for the background inbox **safety-net**
+    /// resync while idle. Real-time updates come from the
+    /// `keybase chat api-listen` push stream; this periodic resync only
+    /// catches drift the listener doesn't push (read-state from other
+    /// devices, deletions, status changes), so it can be infrequent.
+    /// `0` disables it.
     pub inbox_refresh_secs: u64,
 }
 
@@ -37,7 +41,7 @@ impl Default for UserSettings {
             list_inbox_timeout_secs: 30,
             download_timeout_secs: 300,
             auto_mark_read: true,
-            inbox_refresh_secs: 30,
+            inbox_refresh_secs: 180,
         }
     }
 }

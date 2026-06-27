@@ -3,7 +3,9 @@
 //! Composition root — instantiates concrete adapters and starts the
 //! [`secretbase::tui`] event loop.
 
-use secretbase::adapters::{KeybaseCliAdapter, SystemClipboardAdapter, TomlSettingsAdapter};
+use secretbase::adapters::{
+    KeybaseCliAdapter, SystemClipboardAdapter, TomlSettingsAdapter, spawn_chat_listener,
+};
 use secretbase::ports::{KeybasePort, SettingsPort};
 use secretbase::tui;
 
@@ -38,5 +40,15 @@ fn main() -> Result<()> {
     let clipboard = Box::new(SystemClipboardAdapter::new());
     let settings = Box::new(settings_adapter);
 
-    tui::run(keybase, keybase_bg, clipboard, settings)
+    // Long-lived `keybase chat api-listen` push stream for real-time
+    // inbox + conversation updates. The guard is kept alive here for the
+    // whole run so its child is killed on exit; only the event receiver
+    // crosses into the TUI (no adapter coupling there). A spawn failure
+    // (e.g. logged out) degrades gracefully to the periodic resync.
+    let mut listener = spawn_chat_listener().ok();
+    let chat_rx = listener.as_mut().and_then(|l| l.take_rx());
+
+    let result = tui::run(keybase, keybase_bg, clipboard, settings, chat_rx);
+    drop(listener);
+    result
 }

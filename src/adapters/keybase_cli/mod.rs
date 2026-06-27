@@ -67,6 +67,7 @@
 
 pub mod codec;
 pub mod json;
+pub mod listen;
 pub mod process;
 pub mod session;
 
@@ -604,7 +605,7 @@ impl KeybasePort for KeybaseCliAdapter {
 /// [`MessageContent::Unknown`] so the view layer can render a useful
 /// placeholder with the original type name — only structural
 /// invariants (id) gate the `None` return.
-fn parse_message(msg: &Value) -> Option<Message> {
+pub(crate) fn parse_message(msg: &Value) -> Option<Message> {
     let id = msg.pointer("/id").and_then(Value::as_u64)?;
     let sender = msg
         .pointer("/sender/username")

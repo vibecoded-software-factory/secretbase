@@ -299,6 +299,7 @@ fn build_rig() -> Rig {
         tx,
         bg_tx,
         rx,
+        None,
         Box::new(FakeClipboard),
         Box::new(FakeSettings),
     );

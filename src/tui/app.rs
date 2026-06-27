@@ -10,8 +10,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    CONVERSATION_FILTERS, Conversation, ConversationFilter, IdentityInfo, InboxHit, LineEditor,
-    LoweredConversation, Message, TeamMembership, fuzzy_score_lowered,
+    CONVERSATION_FILTERS, ChatEvent, Conversation, ConversationFilter, IdentityInfo, InboxHit,
+    LineEditor, LoweredConversation, Message, TeamMembership, fuzzy_score_lowered,
 };
 use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
@@ -315,6 +315,11 @@ pub struct App {
     /// Receive half — the run loop polls this each tick.
     pub worker_rx: Receiver<WorkerResponse>,
 
+    /// Push events from the `keybase chat api-listen` stream, drained
+    /// each frame for real-time inbox + open-conversation updates. `None`
+    /// when the listener couldn't spawn (e.g. logged out at launch).
+    pub chat_rx: Option<Receiver<ChatEvent>>,
+
     // ── Injected ports (synchronous, stay on the render thread) ───────────
     pub clipboard: Box<dyn ClipboardPort>,
     pub settings: Box<dyn SettingsPort>,
@@ -332,6 +337,7 @@ impl App {
         worker_tx: Sender<WorkerRequest>,
         bg_worker_tx: Sender<WorkerRequest>,
         worker_rx: Receiver<WorkerResponse>,
+        chat_rx: Option<Receiver<ChatEvent>>,
         clipboard: Box<dyn ClipboardPort>,
         settings: Box<dyn SettingsPort>,
     ) -> Self {
@@ -408,6 +414,7 @@ impl App {
             bg_started: None,
             last_op_elapsed: None,
             worker_rx,
+            chat_rx,
             clipboard,
             settings,
         }
@@ -702,6 +709,7 @@ mod tests {
             req_tx,
             bg_tx,
             resp_rx,
+            None,
             Box::new(FakeClipboard),
             Box::new(FakeSettings),
         )

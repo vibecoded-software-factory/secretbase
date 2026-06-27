@@ -32,8 +32,10 @@ use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use std::time::Duration;
 
+use crate::domain::ChatEvent;
 use crate::ports::{ClipboardPort, KeybasePort, SettingsPort};
 use action::ActionState;
+use std::sync::mpsc::Receiver;
 use worker::WorkerHandle;
 
 /// Number of poll ticks (~80 ms each) a Done/Error message stays on
@@ -60,6 +62,7 @@ pub fn run(
     keybase_bg: Box<dyn KeybasePort + Send>,
     clipboard: Box<dyn ClipboardPort>,
     settings: Box<dyn SettingsPort>,
+    chat_rx: Option<Receiver<ChatEvent>>,
 ) -> Result<()> {
     ratatui::run(|terminal| {
         // The worker thread owns the keybase port. The handle stays
@@ -71,7 +74,14 @@ pub fn run(
         let bg_worker_tx = worker.spawn_extra(keybase_bg);
         let worker_rx = worker.take_rx();
 
-        let mut app = App::new(worker_tx, bg_worker_tx, worker_rx, clipboard, settings);
+        let mut app = App::new(
+            worker_tx,
+            bg_worker_tx,
+            worker_rx,
+            chat_rx,
+            clipboard,
+            settings,
+        );
 
         execute!(std::io::stdout(), EnableMouseCapture)?;
 
@@ -134,6 +144,27 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
         // iteration of this loop picks them up.
         while let Ok(resp) = app.worker_rx.try_recv() {
             flows::apply_response(app, resp);
+            done_ticks = 0;
+        }
+
+        // Drain push events from the `keybase chat api-listen` stream —
+        // non-blocking. Collected first so the dispatch can take `&mut
+        // app` without holding the `chat_rx` borrow.
+        let chat_evs: Vec<ChatEvent> = match app.chat_rx.as_ref() {
+            Some(rx) => {
+                let mut v = Vec::new();
+                while let Ok(ev) = rx.try_recv() {
+                    v.push(ev);
+                    if v.len() >= 128 {
+                        break;
+                    }
+                }
+                v
+            }
+            None => Vec::new(),
+        };
+        for ev in chat_evs {
+            flows::apply_chat_event(app, ev);
             done_ticks = 0;
         }
 

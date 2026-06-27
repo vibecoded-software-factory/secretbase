@@ -29,9 +29,12 @@ const DEFAULT_LIST_INBOX_TIMEOUT_SECS: u64 = 30;
 /// with `download_timeout_secs = N` for larger files / slower links.
 const DEFAULT_DOWNLOAD_TIMEOUT_SECS: u64 = 300;
 
-/// Default cadence (in seconds) for the background inbox refresh.
-/// Set `inbox_refresh_secs = 0` in `config.toml` to disable.
-const DEFAULT_INBOX_REFRESH_SECS: u64 = 30;
+/// Default cadence (in seconds) for the background inbox **safety-net**
+/// resync. Real-time updates arrive via the `keybase chat api-listen`
+/// push stream, so this only needs to catch drift the listener doesn't
+/// push — hence a relaxed default. Set `inbox_refresh_secs = 0` to
+/// disable.
+const DEFAULT_INBOX_REFRESH_SECS: u64 = 180;
 
 /// Owner-only file mode for `config.toml`. The file does not carry
 /// credentials (Keybase keeps those in the local service) but it can

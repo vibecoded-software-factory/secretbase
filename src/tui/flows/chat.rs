@@ -399,6 +399,49 @@ pub fn handle_load_messages_response(
     }
 }
 
+// ── Incoming push messages (from the api-listen stream) ─────────────
+
+/// Applies a message pushed by the listener: live-appends it to the open
+/// conversation (if that's the one being viewed) and bumps the matching
+/// inbox conversation (recency + unread). A message for a conversation
+/// not yet in the inbox triggers a silent resync to pull it in.
+pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message) {
+    let from_me = !app.identity.username.is_empty() && message.sender == app.identity.username;
+    let viewing = app.open_conv_id.as_deref() == Some(conv_id.as_str());
+    let sent_at = message.sent_at;
+    let sent_at_ms = message.sent_at_ms;
+    let msg_id = message.id;
+
+    // 1. Live-append to the open conversation — skip if we already hold
+    //    this id (our own echo, or a reload race).
+    if viewing && msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
+        app.messages.push(message);
+        app.rebuild_pinned();
+    }
+
+    // 2. Incremental inbox bump (no full re-fetch).
+    let known = if let Some(c) = app.conversations.iter_mut().find(|c| c.id == conv_id) {
+        if sent_at_ms > c.active_at_ms {
+            c.active_at_ms = sent_at_ms;
+            c.active_at = sent_at;
+        }
+        // Mark unread unless it's our own message or we're viewing it.
+        if !from_me && !viewing {
+            c.unread = true;
+        }
+        true
+    } else {
+        false
+    };
+    if known {
+        app.rebuild_lowered();
+        app.rebuild_filter();
+    } else {
+        // First message of a conversation we don't have yet.
+        request_load_inbox_silent(app);
+    }
+}
+
 // ── Load older messages (pagination) ────────────────────────────────
 
 pub fn request_load_older_messages(app: &mut App) {

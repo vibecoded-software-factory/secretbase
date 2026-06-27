@@ -13,6 +13,7 @@
 //! ([`crate::ports`], [`crate::adapters`], [`crate::tui`]) depends on
 //! this one and never the other way around.
 
+pub mod chat_event;
 pub mod conversation;
 pub mod duration;
 pub mod filter;
@@ -24,6 +25,7 @@ pub mod search;
 pub mod team;
 pub mod validation;
 
+pub use chat_event::ChatEvent;
 pub use conversation::{
     Channel, Conversation, MemberStatus, MembersType, TopicType, conversation_label,
 };

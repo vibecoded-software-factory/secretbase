@@ -20,6 +20,26 @@ use crate::tui::action::ActionState;
 use crate::tui::app::App;
 use crate::tui::worker::{InFlight, WorkerResponse};
 
+/// Applies a push event from the `keybase chat api-listen` stream.
+///
+/// This is a *push*, not a request/response — it carries no `InFlight`
+/// ticket and never touches the user's slot, so it can land at any time
+/// (even mid-request). It updates the inbox and the open conversation
+/// incrementally; a brand-new conversation triggers a silent resync.
+pub fn apply_chat_event(app: &mut App, event: crate::domain::ChatEvent) {
+    use crate::domain::ChatEvent;
+    match event {
+        ChatEvent::Message { conv_id, message } => {
+            chat::handle_incoming_message(app, conv_id, message);
+        }
+        ChatEvent::NewConversation => {
+            // The listener's conv summary is thinner than an inbox row,
+            // so pull the new conversation in with a silent resync.
+            chat::request_load_inbox_silent(app);
+        }
+    }
+}
+
 /// Routes a worker response to the matching `handle_*_response`
 /// based on the `InFlight` context.
 ///
