@@ -370,6 +370,24 @@ pub fn handle_load_messages_response(
             app.messages_loading_older = false;
             app.rebuild_pinned();
             app.messages_scroll = 0;
+            // Opening with auto-mark-read does a non-peek `read`, which
+            // marks the conversation read server-side — so clear the inbox
+            // unread badge for it locally now, instead of waiting for the
+            // next inbox refresh.
+            if app.settings_cache.auto_mark_read
+                && let Some(id) = app.open_conv_id.clone()
+            {
+                let cleared = app
+                    .conversations
+                    .iter_mut()
+                    .find(|c| c.id == id)
+                    .map(|c| std::mem::replace(&mut c.unread, false))
+                    .unwrap_or(false);
+                if cleared {
+                    app.rebuild_lowered();
+                    app.rebuild_filter();
+                }
+            }
             app.set_action(ActionState::Done(format!("Loaded {n} messages")));
             app.push_cmd("keybase chat api read", true, format!("{n} messages"));
         }
