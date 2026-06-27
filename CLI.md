@@ -253,11 +253,12 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   `download` from its directory-pick mode (select-mode `s`, destination
   defaulting to the OS Downloads folder); both run on the longer
   `download_timeout` budget.
-- `emojilist` — the emojis the user can send (stock + the team's custom
-  ones), as `result.emojis[].emojis[]`; each carries an `alias` (the
-  `:shortcode:`) and, for stock emojis, a unicode glyph at
-  `remoteSource.stockalias.text`. secretbase caches it (fetched once,
-  warmed at boot) to power the searchable reaction picker.
+- `emojilist` — result shape is `result.emojis.emojis[]` (groups), each
+  group `{name, emojis:[{alias, remoteSource{…}}]}`. **In practice it
+  returns only the team's *custom* emojis, not the stock unicode set**, so
+  secretbase merges it with a bundled curated standard set
+  (`domain::emoji::standard`) to power the reaction picker. Fetched once,
+  warmed at boot, cached.
 - `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
   read), `unread_only`.
 - `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented

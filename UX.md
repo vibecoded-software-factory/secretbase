@@ -69,10 +69,14 @@ on their own:
   `reactions` field); the standalone reaction events are dropped from the
   stream so they don't show as stray `reacted :emoji: on msg #N` lines.
   **Adding** a reaction (`Alt+J`, or `:` in select-mode) opens a searchable
-  **reaction picker** (`Screen::React`): a `/`-style query over the cached
-  `emojilist` catalogue (fetched once, warmed at boot), an arrow-navigable
+  **reaction picker** (`Screen::React`): a `/`-style search over the emoji
+  catalogue — a bundled curated set of common standard emojis
+  (`domain::emoji::standard`, searchable by keyword so "thumb" finds 👍)
+  merged with the team's custom emojis from `emojilist` (fetched once,
+  warmed at boot). Most-used first (per-session frecency). An arrow-navigable
   list of `glyph :alias:`, `Enter` to react, and a custom-`:shortcode:`
-  fallback when nothing matches — so you never have to recall a shortcode.
+  fallback when nothing matches. (Keybase's `emojilist` returns only the
+  custom emojis, hence the bundled standard set.)
 - **Sending** — the message echoes instantly the moment `Enter` is pressed,
   as an optimistic **outbox** bubble below the history (`App::outbox`, kept
   separate from `messages` so a re-read can't drop it). It carries a state:

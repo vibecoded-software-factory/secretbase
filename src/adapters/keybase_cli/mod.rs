@@ -668,6 +668,8 @@ fn parse_emojis(reply: &Value) -> Vec<Emoji> {
             out.push(Emoji {
                 alias: alias.to_string(),
                 display,
+                // Custom emojis are searched by their alias.
+                keywords: alias.to_lowercase(),
             });
         }
     }

@@ -1091,8 +1091,13 @@ pub fn open_react_for_selected(app: &mut App) {
     app.react.clear();
     app.react_selected = 0;
     app.screen = crate::tui::screens::Screen::React;
-    // Lazily fetch the sendable-emoji catalogue the first time the picker
-    // opens; it stays cached for the rest of the session.
+    // Always have the bundled standard set available, even before/without
+    // the emojilist fetch (headless, offline, or fetch failure).
+    if app.emojis.is_empty() {
+        app.emojis = crate::domain::emoji::standard();
+    }
+    // Lazily fetch the team's custom emojis the first time the picker opens
+    // (merged with the standard set); cached for the rest of the session.
     if !app.emojis_loaded {
         request_emojis(app);
     }
@@ -1116,11 +1121,26 @@ pub fn handle_emojis_response(
 ) {
     app.emojis_loading = false;
     match result {
-        Ok(emojis) => {
-            let n = emojis.len();
-            app.emojis = emojis;
+        Ok(custom) => {
+            // Keybase returns only the team's custom emojis; merge them with
+            // the bundled standard set (standard first, custom appended,
+            // de-duplicated by alias) so the picker has the everyday glyphs.
+            let n = custom.len();
+            let mut merged = crate::domain::emoji::standard();
+            let mut seen: std::collections::HashSet<String> =
+                merged.iter().map(|e| e.alias.clone()).collect();
+            for e in custom {
+                if seen.insert(e.alias.clone()) {
+                    merged.push(e);
+                }
+            }
+            app.emojis = merged;
             app.emojis_loaded = true;
-            app.push_cmd("keybase chat api emojilist", true, format!("{n} emojis"));
+            app.push_cmd(
+                "keybase chat api emojilist",
+                true,
+                format!("{n} custom emojis"),
+            );
         }
         Err(e) => {
             // Non-fatal: the picker still works as a custom-shortcode entry,

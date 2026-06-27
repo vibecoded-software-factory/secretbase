@@ -500,7 +500,7 @@ impl App {
             .emojis
             .iter()
             .enumerate()
-            .filter(|(_, e)| q.is_empty() || e.alias.to_lowercase().contains(&q))
+            .filter(|(_, e)| q.is_empty() || e.keywords.contains(&q))
             .map(|(i, _)| i)
             .collect();
         // Most-used first; `sort_by` is stable, so ties keep catalogue order.
