@@ -690,6 +690,21 @@ fn upload_attachment_sends_the_file_and_reloads() {
 }
 
 #[test]
+fn reaction_events_are_dropped_from_the_message_stream() {
+    use crate::domain::MessageContent;
+    // A standalone reaction event is collapsed onto its target (via the
+    // target's `reactions` field), so it shouldn't survive as its own row.
+    let mut reaction = text_msg(200, "alice", "");
+    reaction.content = MessageContent::Reaction {
+        target_id: 91,
+        body: ":+1:".into(),
+    };
+    let kept = without_reaction_events(vec![text_msg(1, "alice", "hi"), reaction]);
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].id, 1);
+}
+
+#[test]
 fn send_message_clears_buffer_records_call_and_queues_reload() {
     let mut rig = build_rig();
     preload_inbox(

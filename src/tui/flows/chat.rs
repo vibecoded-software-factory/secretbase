@@ -27,6 +27,16 @@ use crate::tui::worker::{InFlight, WorkerRequest};
 /// decode cost low when the user paginates back through history.
 pub const MESSAGES_PER_PAGE: u32 = 50;
 
+/// Drops standalone `reaction` messages. Keybase aggregates each reaction
+/// onto its target message's `reactions` field (which the view renders
+/// collapsed beneath the message), so the separate reaction event would
+/// only duplicate it as a stray line.
+fn without_reaction_events(msgs: Vec<Message>) -> Vec<Message> {
+    msgs.into_iter()
+        .filter(|m| !matches!(m.content, crate::domain::MessageContent::Reaction { .. }))
+        .collect()
+}
+
 // ── Inbox load ────────────────────────────────────────────────────────
 
 /// Queues a refresh of the inbox list (`keybase chat api list`).
@@ -365,8 +375,8 @@ pub fn handle_load_messages_response(
     match result {
         Ok((mut msgs, next)) => {
             msgs.reverse();
-            let n = msgs.len();
-            app.messages = msgs;
+            app.messages = without_reaction_events(msgs);
+            let n = app.messages.len();
             app.messages_next = next;
             app.messages_loading_older = false;
             app.rebuild_pinned();
@@ -518,6 +528,7 @@ pub fn handle_load_older_messages_response(
     match result {
         Ok((mut older, next)) => {
             older.reverse();
+            older = without_reaction_events(older);
             let n = older.len();
             older.extend(std::mem::take(&mut app.messages));
             app.messages = older;

@@ -64,7 +64,10 @@ on their own:
   unread dot) and re-sorts in place; no spinner, no full reload. The
   periodic `list` is just a safety-net resync (`inbox_refresh_secs`).
 - **Open conversation** — incoming messages append live; edits / deletes /
-  reactions trigger a quiet re-read so they reproject correctly.
+  reactions trigger a quiet re-read so they reproject correctly. Reactions
+  render **collapsed** beneath their target message (via the message's
+  `reactions` field); the standalone reaction events are dropped from the
+  stream so they don't show as stray `reacted :emoji: on msg #N` lines.
 - **Sending** — the message echoes instantly the moment `Enter` is pressed,
   as an optimistic **outbox** bubble below the history (`App::outbox`, kept
   separate from `messages` so a re-read can't drop it). It carries a state:
