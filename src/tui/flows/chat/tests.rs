@@ -1967,12 +1967,12 @@ fn input_tab_steps_forward_through_non_search_focuses() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
 
-    // FOCUS_ORDER = [Search, Source, Filters, List, CmdLog].
-    rig.app.focus = Focus::Source;
-    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Filters);
-
+    // FOCUS_ORDER = [Search, Filters, Source, List, CmdLog].
     rig.app.focus = Focus::Filters;
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::Source);
+
+    rig.app.focus = Focus::Source;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::List);
 
@@ -1989,13 +1989,13 @@ fn input_tab_steps_forward_through_non_search_focuses() {
 fn input_tab_from_search_cycles_focus() {
     // Tab is a global focus-cycle and works even from the search box
     // (it can't be confused with text input), so the user can leave
-    // search with one keystroke. FOCUS_ORDER = [Search, Source, …].
+    // search with one keystroke. FOCUS_ORDER = [Search, Filters, …].
     use crate::tui::screens::Focus;
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Search;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Source);
+    assert_eq!(rig.app.focus, Focus::Filters);
 }
 
 #[test]

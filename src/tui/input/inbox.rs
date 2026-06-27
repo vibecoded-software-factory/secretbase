@@ -16,8 +16,8 @@ use crate::tui::screens::{Focus, Screen};
 /// Focus cycle order — visual top-to-bottom reading order of the inbox.
 const FOCUS_ORDER: [Focus; 5] = [
     Focus::Search,
-    Focus::Source,
     Focus::Filters,
+    Focus::Source,
     Focus::List,
     Focus::CmdLog,
 ];
@@ -166,8 +166,13 @@ fn handle_list(app: &mut App, key: KeyEvent) {
 
 fn handle_filters(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => chat::cycle_status(app, -1),
-        KeyCode::Down | KeyCode::Char('j') => chat::cycle_status(app, 1),
+        // Horizontal bar — arrows on either axis flip the status.
+        KeyCode::Left | KeyCode::Up | KeyCode::Char('h') | KeyCode::Char('k') => {
+            chat::cycle_status(app, -1)
+        }
+        KeyCode::Right | KeyCode::Down | KeyCode::Char('l') | KeyCode::Char('j') => {
+            chat::cycle_status(app, 1)
+        }
         KeyCode::Enter => app.focus = Focus::List,
         _ => {}
     }

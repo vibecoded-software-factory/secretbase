@@ -37,21 +37,21 @@ Every signed-in screen is built from the same vertical stack via
   (+2 for borders); it is currently always 1 row.
 - **header** — the search box (`widgets::draw_search_box`) on the inbox.
   Screens without a filter (Teams) drop this slot.
-- **body** — the list/table (see below) or a detail layout. The inbox is
-  **three Discord-style rails** (20 % / 18 % / 62 %): a **source** picker, a
-  **status** filter, then the conversation list. The two filter axes
-  intersect (`App::rebuild_filter` over active conversations:
+- **header** — split horizontally: a compact `─[1]-Filter` status bar on the
+  left (`Length(28)`, `render_filters_bar`) + the `─[/]-Search` box filling
+  the rest. The filter bar is the **status** axis (`domain::StatusFilter`:
+  `All`/`Unread`) as inline pills, scoped to the active source
+  (`Focus::Filters`, `←/→` via `chat::cycle_status`).
+- **body** — split 22 % / 78 % into the **source** rail and the list. The two
+  filter axes intersect (`App::rebuild_filter` over active conversations:
   `inbox_source.includes && status.includes`):
-  - `─[1]-Spaces` (`Focus::Source`) — the **source** axis
+  - `─[2]-Spaces` (`Focus::Source`) — the **source** axis
     (`domain::InboxSource`): `Direct messages` (everything that isn't a team)
-    + **one row per team**, built dynamically by `App::inbox_sources`.
+    + **one row per team**, built dynamically by `App::inbox_sources`;
     `chat::cycle_source` walks it.
-  - `─[2]-Filters` (`Focus::Filters`) — the **status** axis
-    (`domain::StatusFilter`: `All`/`Unread`), scoped to the active source;
-    `chat::cycle_status` walks it.
-  Each rail is its own Tab focus target; `↑/↓` cycle within the focused one,
-  always showing its current selection highlighted (accent border only when
-  focused). Counts are computed live, scoped to the active source.
+  - `─[3]-Inbox` — the conversation list. The DM/team tag column is gone (the
+    Spaces rail already says which kind you're in); rows are just the unread
+    dot + label. Counts are computed live, scoped to the active source.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom; `cmd_log_scroll`
   walks back). Worker ops carry their duration (request → response),
@@ -168,8 +168,9 @@ which action to fire. The module depends only on `ratatui` + the shared
 ## Panels & focus
 
 The inbox's focusable panels are the `screens::Focus` variants: `Search`,
-`Source` (DMs + teams rail), `Filters` (status axis), `List`, `CmdLog` (the
-identity bar and status strip are chrome, not focus targets). Conventions:
+`Filters` (status bar in the header), `Source` (DMs + teams rail), `List`,
+`CmdLog` (the identity bar and status strip are chrome, not focus targets).
+Conventions:
 
 - `/` jumps to Search; `Tab`/`Shift+Tab` cycle focus via
   `input::common::cycle_focus` over `FOCUS_ORDER`.
@@ -181,7 +182,7 @@ identity bar and status strip are chrome, not focus targets). Conventions:
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
-its panels `─[/]-Search`, `─[1]-Spaces`, `─[2]-Filters`, `─[3]-Inbox`, `─[4]-Command log`; Teams
+its panels `─[/]-Search`, `─[1]-Filter`, `─[2]-Spaces`, `─[3]-Inbox`, `─[4]-Command log`; Teams
 uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.
