@@ -76,7 +76,14 @@ on their own:
   warmed at boot). Most-used first (per-session frecency). An arrow-navigable
   list of `glyph :alias:`, `Enter` to react, and a custom-`:shortcode:`
   fallback when nothing matches. (Keybase's `emojilist` returns only the
-  custom emojis, hence the bundled standard set.)
+  custom emojis, hence the bundled standard set.) Stored reactions render
+  as their **glyph** in the chat (the `:shortcode:` is resolved via the
+  catalogue), collapsed under the message.
+- **Select mode** (`Alt+V`) shows a contextual **action bar** under the
+  highlighted message listing what you can do with it and the key for each
+  (`: react`, `r reply`, `e edit`/`d delete` on your own messages,
+  `p pin`, `s download` on attachments) — visual feedback that accompanies
+  the direct keybindings, it doesn't replace them.
 - **Sending** — the message echoes instantly the moment `Enter` is pressed,
   as an optimistic **outbox** bubble below the history (`App::outbox`, kept
   separate from `messages` so a re-read can't drop it). It carries a state:

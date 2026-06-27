@@ -218,6 +218,12 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             }
         }
         lines.extend(block);
+        // In select mode, show a contextual action bar under the highlighted
+        // message — visual feedback for what can be done with it (the keys
+        // still work directly).
+        if is_selected && app.selected_msg_idx.is_some() {
+            lines.push(select_actions_line(m, app, &t));
+        }
         lines.push(Line::from(Span::raw("")));
     }
 
@@ -397,6 +403,42 @@ fn reactions_line(
         spans.push(Span::styled(
             format!("{} {count}", resolve_reaction_glyph(app, &r.emoji)),
             Style::default().fg(t.conv_unread),
+        ));
+    }
+    Line::from(spans)
+}
+
+/// Contextual action bar shown under the selected message in select mode:
+/// the actions available for *this* message, each with its key. Own
+/// messages add edit/delete; attachments add download. Pure visual feedback
+/// — the keys work directly regardless.
+fn select_actions_line(m: &Message, app: &App, t: &crate::tui::theme::Theme) -> Line<'static> {
+    let is_me = !app.identity.username.is_empty() && m.sender == app.identity.username;
+    let is_attachment = matches!(m.content, MessageContent::Attachment(_));
+    let mut actions: Vec<(&str, &str)> = vec![(":", "react"), ("r", "reply")];
+    if is_me {
+        actions.push(("e", "edit"));
+        actions.push(("d", "delete"));
+    }
+    actions.push(("p", "pin"));
+    if is_attachment {
+        actions.push(("s", "download"));
+    }
+    let mut spans: Vec<Span<'static>> = vec![Span::styled(
+        "    ▸ ".to_string(),
+        Style::default().fg(t.accent),
+    )];
+    for (i, (k, label)) in actions.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw("  "));
+        }
+        spans.push(Span::styled(
+            k.to_string(),
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!(" {label}"),
+            Style::default().fg(t.dim),
         ));
     }
     Line::from(spans)
