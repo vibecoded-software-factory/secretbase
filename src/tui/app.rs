@@ -19,6 +19,7 @@ use crate::tui::mouse_areas::MouseAreas;
 use crate::tui::screens::{Focus, Screen};
 use crate::tui::theme::{self, Theme};
 use crate::tui::worker::{InFlight, WorkerRequest, WorkerResponse};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Maximum number of command-log entries kept in memory.
 pub const CMD_LOG_LIMIT: usize = 50;
@@ -101,6 +102,39 @@ impl SettingsSection {
     }
 }
 
+/// Delivery state of an optimistic [`PendingSend`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendState {
+    /// In flight — waiting for the send reply.
+    Pending,
+    /// The send succeeded; awaiting the reconciling re-read that will
+    /// replace this bubble with the real message (then it is pruned).
+    Delivered,
+    /// The send failed — kept on screen so the user can resend it.
+    Failed,
+}
+
+/// An optimistically-rendered outgoing message (see [`App::outbox`]).
+/// Shown the instant the user hits Enter and tracked to delivery, so the
+/// send never feels like it waited on a round-trip — and a failure stays
+/// visible with a resend affordance instead of silently vanishing.
+#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
+pub struct PendingSend {
+    /// Conversation this send targets (matches `Conversation::id`).
+    pub conv_id: String,
+    /// Message body — chat content, wiped on drop.
+    pub body: String,
+    /// Threaded-reply target, if any.
+    #[zeroize(skip)]
+    pub reply_to: Option<u64>,
+    /// Wall-clock send time (unix millis) for the bubble's timestamp.
+    #[zeroize(skip)]
+    pub sent_at_ms: u64,
+    /// Current delivery state.
+    #[zeroize(skip)]
+    pub state: SendState,
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -165,6 +199,12 @@ pub struct App {
     /// the conversation has no pin (or the pin event is older than
     /// the loaded history).
     pub pinned_msg_id: Option<u64>,
+    /// Optimistic send queue: messages shown immediately and tracked
+    /// through `Pending → Delivered → Failed`. Kept separate from
+    /// `messages` so a re-read (which replaces `messages` wholesale)
+    /// never drops a still-pending or failed send. Rendered below the
+    /// loaded history for the conversation each entry targets.
+    pub outbox: Vec<PendingSend>,
 
     // ── Compose ──────────────────────────────────────────────────────────
     /// Whether the compose pane is open (user is typing a new message).
@@ -364,6 +404,7 @@ impl App {
             teams_selected: 0,
             open_conv_id: None,
             messages: Vec::new(),
+            outbox: Vec::new(),
             messages_scroll: 0,
             messages_next: None,
             messages_loading_older: false,

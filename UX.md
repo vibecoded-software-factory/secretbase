@@ -65,9 +65,13 @@ on their own:
   periodic `list` is just a safety-net resync (`inbox_refresh_secs`).
 - **Open conversation** — incoming messages append live; edits / deletes /
   reactions trigger a quiet re-read so they reproject correctly.
-- **Sending** — the message echoes instantly (an optimistic, provisional
-  entry) the moment `Enter` is pressed; the send's reply reconciles it, and
-  a failed send removes it and keeps the draft.
+- **Sending** — the message echoes instantly the moment `Enter` is pressed,
+  as an optimistic **outbox** bubble below the history (`App::outbox`, kept
+  separate from `messages` so a re-read can't drop it). It carries a state:
+  `○ sending…` while in flight; on success it flips to a delivered `→` and
+  the reconciling re-read prunes it; on failure it stays as a red
+  `✗ failed · Alt+R to resend`, preserving the body so **`Alt+R`** retries
+  it. The compose is cleared at send time (the draft is safe in the outbox).
 
 Loading states stay honest: the message viewer shows "Loading messages…"
 during the first fetch (not the empty-conversation prompt), and the unread

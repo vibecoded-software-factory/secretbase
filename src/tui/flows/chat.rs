@@ -19,6 +19,7 @@ use crate::ports::KeybaseError;
 use crate::ports::keybase::{ListConversationsOk, ReadChannel};
 use crate::tui::action::ActionState;
 use crate::tui::app::{App, ConvAction};
+use crate::tui::app::{PendingSend, SendState};
 use crate::tui::worker::{InFlight, WorkerRequest};
 
 /// Number of messages fetched per page. Sized so most chats fit
@@ -370,6 +371,14 @@ pub fn handle_load_messages_response(
             app.messages_loading_older = false;
             app.rebuild_pinned();
             app.messages_scroll = 0;
+            // This fresh read includes any optimistic send that just
+            // succeeded, so drop the Delivered bubbles for this
+            // conversation — the real messages now stand in for them.
+            // Pending/Failed entries stay.
+            let open = app.open_conv_id.clone();
+            app.outbox.retain(|p| {
+                !(p.state == SendState::Delivered && Some(&p.conv_id) == open.as_ref())
+            });
             // Opening with auto-mark-read does a non-peek `read`, which
             // marks the conversation read server-side — so clear the inbox
             // unread badge for it locally now, instead of waiting for the
@@ -1241,25 +1250,23 @@ pub fn request_send_message(app: &mut App) {
     }) {
         return;
     }
-    // Optimistic echo: show the message immediately (id 0 marks it
-    // provisional) so it appears the instant Enter is pressed instead of
-    // after the send + re-read round-trip. The success reload replaces it
-    // with the server's real message (carrying the real id); a failed
-    // send strips it back out (see `handle_send_message_response`).
+    // Optimistic echo: queue the message in the outbox (state Pending) and
+    // show it immediately, so it appears the instant Enter is pressed
+    // rather than after the send round-trip. Clear the compose now — the
+    // body is held safely in the outbox, so a failure keeps it (visible
+    // and resendable) without leaving a stale draft behind.
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    // `Message` is `Drop` (ZeroizeOnDrop), so build by mutating a default
-    // rather than functional-update (`..Default::default()` can't move
-    // fields out of a Drop type).
-    let mut provisional = Message::default();
-    provisional.id = 0;
-    provisional.sender = app.identity.username.clone();
-    provisional.sent_at = now_ms / 1000;
-    provisional.sent_at_ms = now_ms;
-    provisional.content = crate::domain::MessageContent::Text(body.clone());
-    app.messages.push(provisional);
+    app.outbox.push(PendingSend {
+        conv_id,
+        body: body.clone(),
+        reply_to,
+        sent_at_ms: now_ms,
+        state: SendState::Pending,
+    });
+    app.compose_clear();
     app.messages_scroll = 0;
     app.set_action(ActionState::Running("Sending…".into()));
     let _ = app.worker_tx.send(WorkerRequest::SendMessage {
@@ -1277,10 +1284,18 @@ pub fn handle_send_message_response(
 ) {
     match result {
         Ok(()) => {
-            // Only on success: drop the draft + reply context. A
-            // failed send keeps both so the user can retry without
-            // retyping or re-marking-as-reply.
-            app.compose_clear();
+            // The send landed. Flip the in-flight pending to Delivered (it
+            // stays on screen, now styled as sent) and re-read to reconcile
+            // it with the server's real message; the re-read prunes the
+            // Delivered bubble once the real message is in `messages`, so
+            // there's no gap. The compose was already cleared at send time.
+            if let Some(p) = app
+                .outbox
+                .iter_mut()
+                .find(|p| p.state == SendState::Pending)
+            {
+                p.state = SendState::Delivered;
+            }
             let done = if was_reply {
                 "Reply sent".to_string()
             } else {
@@ -1292,14 +1307,62 @@ pub fn handle_send_message_response(
             request_load_messages(app);
         }
         Err(e) => {
-            // The send failed — strip the optimistic echo (provisional
-            // messages carry id 0; real ids are >= 1) and keep the draft
-            // so the user can retry.
-            app.messages.retain(|m| m.id != 0);
+            // The send failed — mark the in-flight pending Failed so it
+            // stays on screen with a resend affordance; its body lives in
+            // the outbox, so `Alt+R` can retry it.
+            if let Some(p) = app
+                .outbox
+                .iter_mut()
+                .find(|p| p.state == SendState::Pending)
+            {
+                p.state = SendState::Failed;
+            }
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api send", false, e.to_string());
         }
     }
+}
+
+/// Resends the oldest failed message in the open conversation. Re-arms it
+/// (Failed → Pending) and reuses the normal send path, so the response is
+/// handled by [`handle_send_message_response`] like any other send.
+pub fn request_resend_message(app: &mut App) {
+    let Some(conv_id) = app.open_conv_id.clone() else {
+        app.set_action(ActionState::Error("No conversation open".into()));
+        return;
+    };
+    let Some(idx) = app
+        .outbox
+        .iter()
+        .position(|p| p.state == SendState::Failed && p.conv_id == conv_id)
+    else {
+        app.set_action(ActionState::Error("No failed message to resend".into()));
+        return;
+    };
+    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
+        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
+        return;
+    };
+    let channel_result = read_channel_from_conv(conv);
+    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+        return;
+    };
+    let body = app.outbox[idx].body.clone();
+    let reply_to = app.outbox[idx].reply_to;
+    let body_len = body.len();
+    if !app.begin(InFlight::SendMessage {
+        body_len,
+        was_reply: reply_to.is_some(),
+    }) {
+        return;
+    }
+    app.outbox[idx].state = SendState::Pending;
+    app.set_action(ActionState::Running("Resending…".into()));
+    let _ = app.worker_tx.send(WorkerRequest::SendMessage {
+        channel,
+        body,
+        reply_to,
+    });
 }
 
 // ── Mute / unmute ────────────────────────────────────────────────────

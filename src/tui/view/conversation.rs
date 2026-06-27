@@ -134,8 +134,15 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
 
 fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
+    let now_s = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Optimistic outbox bubbles for this conversation (sending / failed),
+    // rendered below the loaded history.
+    let outbox = outbox_lines(app, now_s, &t);
 
-    if app.messages.is_empty() {
+    if app.messages.is_empty() && outbox.is_empty() {
         // Distinguish the initial fetch (LoadMessages in flight) from a
         // genuinely empty conversation — showing "empty" while we're still
         // downloading the history is misleading.
@@ -172,24 +179,20 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    let now_s = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let mut lines: Vec<Line<'static>> = Vec::with_capacity(app.messages.len() * 3 + outbox.len());
 
-    let mut lines: Vec<Line<'static>> = Vec::with_capacity(app.messages.len() * 3);
-
-    if app.messages_next.is_some() {
-        lines.push(Line::from(Span::styled(
-            "  ↑ press Up to load older messages",
-            Style::default().fg(t.dim),
-        )));
-        lines.push(Line::from(Span::raw("")));
-    } else {
-        lines.push(Line::from(Span::styled(
-            "  · beginning of conversation",
-            Style::default().fg(t.dim),
-        )));
+    if !app.messages.is_empty() {
+        if app.messages_next.is_some() {
+            lines.push(Line::from(Span::styled(
+                "  ↑ press Up to load older messages",
+                Style::default().fg(t.dim),
+            )));
+        } else {
+            lines.push(Line::from(Span::styled(
+                "  · beginning of conversation",
+                Style::default().fg(t.dim),
+            )));
+        }
         lines.push(Line::from(Span::raw("")));
     }
 
@@ -216,6 +219,10 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         lines.extend(block);
         lines.push(Line::from(Span::raw("")));
     }
+
+    // Optimistic sends sit at the very bottom, after the loaded history.
+    lines.extend(outbox);
+
     let total_lines = lines.len();
     let viewport = area.height.saturating_sub(2).max(1) as usize;
     let max_back = total_lines.saturating_sub(viewport);
@@ -257,6 +264,55 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     );
 
     app.messages_max_back = max_back;
+}
+
+/// Builds the bubbles for the optimistic outbox entries targeting the open
+/// conversation: `○ sending…`, a delivered `→` (transient, pruned by the
+/// reconciling re-read), and a red `✗ failed · Alt+R to resend`.
+fn outbox_lines(app: &App, now_s: u64, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {
+    use crate::tui::app::SendState;
+    let Some(conv_id) = app.open_conv_id.as_deref() else {
+        return Vec::new();
+    };
+    let me = app.identity.username.clone();
+    let sender_style = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    for p in app.outbox.iter().filter(|p| p.conv_id == conv_id) {
+        let (icon, icon_color, status) = match p.state {
+            SendState::Pending => (
+                "○",
+                t.dim,
+                Span::styled(
+                    "sending…".to_string(),
+                    Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
+                ),
+            ),
+            SendState::Delivered => (
+                "→",
+                t.dim,
+                Span::styled(
+                    relative_time(p.sent_at_ms / 1000, now_s),
+                    Style::default().fg(t.dim),
+                ),
+            ),
+            SendState::Failed => (
+                "✗",
+                t.error,
+                Span::styled(
+                    "failed · Alt+R to resend".to_string(),
+                    Style::default().fg(t.error).add_modifier(Modifier::BOLD),
+                ),
+            ),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {icon} "), Style::default().fg(icon_color)),
+            Span::styled(format!("{me} "), sender_style),
+            status,
+        ]));
+        lines.extend(body_lines(&MessageContent::Text(p.body.clone()), t));
+        lines.push(Line::from(Span::raw("")));
+    }
+    lines
 }
 
 fn message_lines(

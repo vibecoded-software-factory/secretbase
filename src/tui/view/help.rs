@@ -101,6 +101,7 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 ("Alt+E / Alt+D", "edit / delete last own"),
                 ("Alt+J / Alt+P", "react / pin last"),
                 ("Alt+U", "unpin channel"),
+                ("Alt+R", "resend failed message"),
                 ("Esc", "cancel / back"),
             ] {
                 lines.push(help_line(k, d, t));

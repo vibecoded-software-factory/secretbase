@@ -93,6 +93,7 @@ In the **Filters** panel, `↑` / `↓` change the active filter.
 | `Alt+E` / `Alt+D`       | Edit / delete last own message |
 | `Alt+J` / `Alt+P`       | React / pin last message |
 | `Alt+U`                 | Unpin channel |
+| `Alt+R`                 | Resend failed message |
 | `F5` / `Ctrl+R`         | Refresh |
 | `Ctrl+Y`                | Copy label |
 | `Esc`                   | Cancel / back |

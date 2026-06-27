@@ -610,11 +610,9 @@ fn send_message_rejects_empty_buffer() {
 #[test]
 fn send_message_failure_preserves_draft_and_reply_context() {
     // Regression guard: a transient network failure must not eat the
-    // user's typed message. They retry by hitting Enter again. The
-    // sync code (pre-worker-thread refactor) had this property; the
-    // async port lost it briefly because the buffer was cleared
-    // before the worker call, then was restored to clear-on-success-
-    // only.
+    // user's typed message. With the optimistic outbox, the compose is
+    // cleared at send time and the body is parked in the outbox as a
+    // Failed entry (with its reply context) that `Alt+R` can resend.
     let mut rig = build_rig();
     preload_inbox(
         &mut rig.app,
@@ -627,11 +625,36 @@ fn send_message_failure_preserves_draft_and_reply_context() {
     rig.mock.st().fail_next = Some(KeybaseError::api_message("network unreachable"));
     request_send_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    // Draft + reply context preserved so the user can retry.
-    assert_eq!(rig.app.compose.text(), "important draft");
-    assert_eq!(rig.app.reply_to_id, Some(42));
+    // Compose is cleared at send time; the draft survives in the outbox.
+    assert_eq!(rig.app.compose.text(), "");
+    assert_eq!(rig.app.outbox.len(), 1);
+    assert_eq!(rig.app.outbox[0].state, crate::tui::app::SendState::Failed);
+    assert_eq!(rig.app.outbox[0].body, "important draft");
+    assert_eq!(rig.app.outbox[0].reply_to, Some(42));
     // Error visible on the feedback strip.
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+#[test]
+fn resend_failed_message_clears_the_outbox_on_success() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.compose.set("retry me");
+    rig.mock.st().fail_next = Some(KeybaseError::api_message("boom"));
+    request_send_message(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.outbox.len(), 1);
+    assert_eq!(rig.app.outbox[0].state, crate::tui::app::SendState::Failed);
+    // Resend — the mock no longer fails, so it goes through and the
+    // reconciling re-read prunes the now-Delivered bubble.
+    request_resend_message(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert!(rig.app.outbox.is_empty());
 }
 
 #[test]
