@@ -129,9 +129,8 @@ selected_bg  = "#313244"
 ```
 
 Pick a bundled palette with `name`, then override individual keys if you want.
-Omitting `name` keeps the shared default (Nord with terminal-inherited text).
-You can also switch presets live in-app from the **Settings** screen (`F9`). The
-same four presets ship in bytewarden and jewel, so the three look identical.
+Omitting `name` keeps the default (Nord with terminal-inherited text). You can
+also switch presets live in-app from the **Settings** screen (`F9`).
 
 ## Architecture
 

@@ -6,9 +6,8 @@ push** (see `CLAUDE.md`). The whole point is that every screen looks and
 behaves the same — when in doubt, reuse an existing component; never invent
 a one-off.
 
-secretbase shares its design system **verbatim with jewel** (the AWS TUI):
-the `split_main` vertical stack, the top identity bar, the single
-`widgets::list_table` list renderer, `draw_search_box`, `draw_cmd_log`,
+The design system: the `split_main` vertical stack, the top identity bar, the
+single `widgets::list_table` list renderer, `draw_search_box`, `draw_cmd_log`,
 `draw_status_strip`, the navigable `draw_confirm_popup`, and the
 `LineEditor` + `editor_spans` text-input model. The shared input mechanics
 live in `tui::input::common`. The decoration budget is small and lives
@@ -25,11 +24,9 @@ The router `view::mod::draw` picks a base screen per `Screen`, then overlays
 any popup on top (popups draw the base screen underneath first). The
 terminal floor is **70×18** (`view::mod::MIN_W`/`MIN_H`); below it every
 screen is replaced by the centered "terminal too small" notice
-(`view::mod::draw_too_small`). That notice is **shared verbatim with jewel and
-bytewarden**: three vertically-centered lines — an `error`-colored bold
-`Terminal too small` title, a `dim` `Resize to at least {MIN_W}×{MIN_H}
-(currently {w}×{h})` line, and a `dim` `Ctrl+C to quit` hint. Only the
-`MIN_W`/`MIN_H` floor differs per app (it tracks each layout's real minimum).
+(`view::mod::draw_too_small`): three vertically-centered lines — an
+`error`-colored bold `Terminal too small` title, a `dim` `Resize to at least
+{MIN_W}×{MIN_H} (currently {w}×{h})` line, and a `dim` `Ctrl+C to quit` hint.
 
 Every signed-in screen is built from the same vertical stack via
 `view::mod::split_main(area, identity_content_rows)` →
@@ -72,7 +69,7 @@ not focus targets). Conventions:
 ## Lists & tables — the single pattern
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
-its top border — the shared convention across the three TUIs. The inbox numbers
+its top border. The inbox numbers
 its panels `─[/]-Search`, `─[1]-Filters`, `─[2]-Inbox`, `─[3]-Command log`; Teams
 uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
@@ -205,14 +202,13 @@ starfield colors `star_dim`/`star_mid`/`star_bright`, and the conversation
 marker colors `conv_dm` / `conv_team` / `conv_unread`. **Don't hardcode
 colors — use these.**
 
-**Presets.** Themes are built from a shared `Palette` (13 named roles) via
-`Theme::from_palette`, which maps the core roles identically to bytewarden and
-jewel and derives secretbase's starfield + conversation-marker colors. Four
-presets ship (`Preset::ALL`: `catppuccin-mocha`, `dracula`, `nord` (default —
-`Preset::DEFAULT`), `catppuccin-latte`); `name = "<preset>"` in `[theme]` picks
-the base and per-key hex entries override it. The Settings picker applies live.
-Adding a preset = one `Palette` arm in `Preset::palette` (mirror it in all three
-apps).
+**Presets.** Themes are built from a `Palette` (13 named roles) via
+`Theme::from_palette`, which maps the core roles and derives the starfield +
+conversation-marker colors. Four presets ship (`Preset::ALL`:
+`catppuccin-mocha`, `dracula`, `nord` (default — `Preset::DEFAULT`),
+`catppuccin-latte`); `name = "<preset>"` in `[theme]` picks the base and per-key
+hex entries override it. The Settings picker applies live. Adding a preset = one
+`Palette` arm in `Preset::palette`.
 
 ## Settings overlay (`F9`)
 
@@ -224,8 +220,8 @@ preferences surface can grow** (Clipboard, Notifications…) without changing th
 chrome; today the only section is **Theme**, a preset picker that **previews
 live** as you move (`App::settings_preview_theme`) — `Enter` applies + persists
 `name = "<preset>"` to `config.toml` (`SettingsPort::write_theme_name`), `Esc`/`F9`
-cancels and restores the pre-open theme. Shared verbatim with jewel; add a new
-section by extending `SettingsSection`.
+cancels and restores the pre-open theme. Add a new section by extending
+`SettingsSection`.
 
 ## Golden rules
 
@@ -235,8 +231,7 @@ section by extending `SettingsSection`.
    screen = `split_main`.
 2. **Fix the class, not the instance** — when you change one screen, change
    every screen with the same pattern (and update this file).
-3. **Every change stays coherent** with the rest of the UI — and with jewel,
-   which shares these components. If you diverge, update the spec here first
-   and apply it everywhere.
+3. **Every change stays coherent** with the rest of the UI. If you diverge,
+   update the spec here first and apply it everywhere.
 4. **No decorative noise on working screens** — the figlet + starfield belong
    to splash/login only. Screen identity comes from the bordered block titles.

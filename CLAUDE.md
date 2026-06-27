@@ -41,12 +41,11 @@ updated before every push** when a change touches UX/UI (new screen, new
 pattern, changed convention): update the spec in the same change and apply
 it everywhere.
 
-This app shares its design system **verbatim with jewel** (the AWS TUI):
-the `split_main` vertical stack, the
+The design system: the `split_main` vertical stack, the
 top identity bar, the single `widgets::list_table` renderer, the navigable
 `widgets::draw_confirm_popup`, the `LineEditor` + `editor_spans` text-input
 model, the shared `input::common` mechanics, the rolling command log, and a
-restrained night-sky splash. When in doubt about a pattern, match jewel.
+restrained night-sky splash. When in doubt, reuse the documented component.
 
 ## Working agreements (READ FIRST)
 
@@ -239,9 +238,8 @@ re-implementing per screen** — that's what keeps the app coherent.
   (`Conversation`, `Message`, …) derive `Zeroize`/`ZeroizeOnDrop`, and the
   adapter zeroizes subprocess JSON buffers before drop. This is *hygiene*
   (no stale plaintext on the heap), not a cryptographic defense.
-- **Text inputs are zeroized.** `domain::LineEditor` derives `ZeroizeOnDrop`
-  here (a secretbase-specific divergence — jewel keeps its
-  plain). Every text input can hold sensitive chat content (a message draft,
+- **Text inputs are zeroized.** `domain::LineEditor` derives `ZeroizeOnDrop`.
+  Every text input can hold sensitive chat content (a message draft,
   a participant username, a global-search query), so the buffer is wiped on
   drop. This restores and extends the hygiene the compose/new-conversation
   drafts had as `Zeroizing<String>` before they moved onto the shared editor.
