@@ -77,6 +77,7 @@ tables.
 | `Alt+I`                 | Ignore conversation (hide from inbox) |
 | `Alt+T`                 | Teams |
 | `Ctrl+G`                | Global search |
+| `Ctrl+K`                | Quick switcher — jump to a conversation |
 | `Shift+L`               | Logout (confirmation) |
 
 In the **Filters** panel, `↑` / `↓` change the active filter.

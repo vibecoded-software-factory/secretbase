@@ -325,6 +325,44 @@ pub fn close_conversation(app: &mut App) {
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
+/// Opens a conversation directly by id (used by the quick switcher, which
+/// may target a conversation outside the current inbox filter).
+pub fn open_conversation_by_id(app: &mut App, id: String) {
+    app.open_conv_id = Some(id);
+    app.messages.clear();
+    app.messages_scroll = 0;
+    app.compose_open = true;
+    app.compose_clear();
+    app.screen = crate::tui::screens::Screen::Conversation;
+    request_load_messages(app);
+}
+
+// ── Quick switcher (Ctrl+K) ──────────────────────────────────────────
+
+pub fn open_quick_switcher(app: &mut App) {
+    app.switcher_from = app.screen;
+    app.switcher.clear();
+    app.switcher_selected = 0;
+    app.screen = crate::tui::screens::Screen::QuickSwitcher;
+}
+
+pub fn close_quick_switcher(app: &mut App) {
+    app.switcher.clear();
+    app.screen = app.switcher_from;
+}
+
+/// Jumps to the highlighted conversation in the switcher.
+pub fn quick_switcher_open_selected(app: &mut App) {
+    let results = app.switcher_results();
+    let Some(&i) = results.get(app.switcher_selected) else {
+        close_quick_switcher(app);
+        return;
+    };
+    let id = app.conversations[i].id.clone();
+    app.switcher.clear();
+    open_conversation_by_id(app, id);
+}
+
 // ── Load messages (first page) ───────────────────────────────────────
 
 pub fn request_load_messages(app: &mut App) {

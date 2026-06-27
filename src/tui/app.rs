@@ -268,6 +268,14 @@ pub struct App {
     /// to the top of the picker (Discord-style frecency).
     pub emoji_uses: HashMap<String, u32>,
 
+    // ── Quick switcher (Ctrl+K) ──────────────────────────────────────────
+    /// Fuzzy query in the Ctrl+K quick switcher.
+    pub switcher: LineEditor,
+    /// Selected row in the switcher (indexes [`Self::switcher_results`]).
+    pub switcher_selected: usize,
+    /// Screen the switcher was opened from, restored on cancel.
+    pub switcher_from: Screen,
+
     // ── New-conversation popup ──────────────────────────────────────────
     /// Comma-separated usernames typed by the user in the Alt+N popup.
     pub new_conv: LineEditor,
@@ -452,6 +460,9 @@ impl App {
             emojis_loaded: false,
             emojis_loading: false,
             emoji_uses: HashMap::new(),
+            switcher: LineEditor::default(),
+            switcher_selected: 0,
+            switcher_from: Screen::Inbox,
             new_conv: LineEditor::default(),
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
@@ -521,6 +532,28 @@ impl App {
             ub.cmp(&ua)
         });
         idx
+    }
+
+    /// Conversations matching the quick-switcher query, as indices into
+    /// `conversations`. Empty query → all, most-recent first; otherwise
+    /// fuzzy-ranked over the lowered projection (same scorer as the inbox).
+    pub fn switcher_results(&self) -> Vec<usize> {
+        let q = self.switcher.text().trim().to_lowercase();
+        if q.is_empty() {
+            let mut idx: Vec<usize> = (0..self.conversations.len()).collect();
+            idx.sort_by_key(|&i| std::cmp::Reverse(self.conversations[i].active_at_ms));
+            idx
+        } else {
+            let mut scored: Vec<(usize, u32)> = self
+                .conversations_lowered
+                .iter()
+                .enumerate()
+                .map(|(i, l)| (i, fuzzy_score_lowered(l, &q)))
+                .filter(|(_, s)| *s > 0)
+                .collect();
+            scored.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
+            scored.into_iter().map(|(i, _)| i).collect()
+        }
     }
 
     /// Opens the Settings overlay over the current screen. Stashes the

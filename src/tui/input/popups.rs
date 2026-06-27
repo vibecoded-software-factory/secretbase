@@ -98,3 +98,30 @@ fn react_move(app: &mut App, delta: isize) {
     let last = (len - 1) as isize;
     app.react_selected = ((app.react_selected as isize + delta).clamp(0, last)) as usize;
 }
+
+// ── Quick switcher (Ctrl+K) ───────────────────────────────────────────
+
+pub fn quick_switcher(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => chat::close_quick_switcher(app),
+        KeyCode::Enter => chat::quick_switcher_open_selected(app),
+        KeyCode::Up => switcher_move(app, -1),
+        KeyCode::Down => switcher_move(app, 1),
+        _ => {
+            let before = app.switcher.text().to_string();
+            common::route_line_editor(&mut app.switcher, key);
+            if app.switcher.text() != before {
+                app.switcher_selected = 0;
+            }
+        }
+    }
+}
+
+fn switcher_move(app: &mut App, delta: isize) {
+    let len = app.switcher_results().len();
+    if len == 0 {
+        return;
+    }
+    let last = (len - 1) as isize;
+    app.switcher_selected = ((app.switcher_selected as isize + delta).clamp(0, last)) as usize;
+}

@@ -53,6 +53,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::NewConversation
         | Screen::SearchGlobal => Screen::Inbox,
         Screen::ConfirmDeleteMessage | Screen::React => Screen::Conversation,
+        // The quick switcher floats over wherever it was opened.
+        Screen::QuickSwitcher => app.switcher_from,
         // Help is scoped to (and renders over) the screen it was opened
         // from — use `help_from`, not an open-conversation heuristic, so
         // e.g. Teams isn't drawn as Inbox underneath.
@@ -130,6 +132,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::NewConversation => new_conversation::draw(frame, app),
         Screen::SearchGlobal => search_global::draw(frame, app),
         Screen::React => popups::react_input(frame, app),
+        Screen::QuickSwitcher => popups::quick_switcher(frame, app),
         _ => {}
     }
 

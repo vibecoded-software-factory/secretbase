@@ -72,6 +72,15 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         file_picker_key(app, key);
         return;
     }
+    // Ctrl+K opens the quick switcher from the inbox or an open
+    // conversation — pure navigation, allowed even while busy.
+    if matches!(key.code, KeyCode::Char('k'))
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(app.screen, Screen::Inbox | Screen::Conversation)
+    {
+        crate::tui::flows::chat::open_quick_switcher(app);
+        return;
+    }
     // While a worker request is in flight, swallow every key but Esc so
     // a second `request_*` can't overwrite `in_flight` / queue a stray
     // `WorkerRequest` (mirrors jewel's `busy_blocks` gate). Esc still
@@ -165,6 +174,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::SearchGlobal => popups::search_global(app, key),
         Screen::ConfirmDeleteMessage => popups::confirm_delete_message(app, key),
         Screen::React => popups::react(app, key),
+        Screen::QuickSwitcher => popups::quick_switcher(app, key),
     }
 }
 

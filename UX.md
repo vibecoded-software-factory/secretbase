@@ -103,6 +103,17 @@ Loading states stay honest: the message viewer shows "Loading messages…"
 during the first fetch (not the empty-conversation prompt), and the unread
 badge clears as soon as a conversation is read (not on the next resync).
 
+## Quick switcher (`Ctrl+K`)
+
+Discord-style jump-to-conversation modal (`Screen::QuickSwitcher`), opened
+with `Ctrl+K` from the inbox or an open conversation (returns to wherever it
+was opened — `App::switcher_from`). A search box over **all** conversations:
+empty query lists them most-recent first, typing fuzzy-ranks them via the
+same `fuzzy_score_lowered` the inbox uses (`App::switcher_results`). `↑/↓`
+select, `Enter` jumps (opens by conv id, bypassing the inbox filter), `Esc`
+cancels. It's navigation, distinct from `/` (inbox filter) and `Ctrl+G`
+(message-content search).
+
 ## File picker (`tui::file_picker`)
 
 A self-contained, headless-safe file chooser (no GUI/portal dependency),

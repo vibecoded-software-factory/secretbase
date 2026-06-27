@@ -98,6 +98,7 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 ("←/→ Home/End", "compose cursor"),
                 ("F5 / Ctrl+R", "refresh"),
                 ("Ctrl+Y", "copy label"),
+                ("Ctrl+K", "quick switcher — jump to a conversation"),
                 ("mouse", "click a message to select, scroll to page history"),
                 ("Alt+V", "select mode — act on a message"),
                 ("Alt+U", "unpin channel"),
@@ -182,6 +183,7 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 ("Alt+I", "ignore conversation"),
                 ("Alt+T", "teams"),
                 ("Ctrl+G", "global search"),
+                ("Ctrl+K", "quick switcher — jump to a conversation"),
                 ("Shift+L", "logout"),
             ] {
                 lines.push(help_line(k, d, t));

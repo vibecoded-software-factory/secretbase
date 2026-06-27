@@ -1489,6 +1489,31 @@ fn request_download_to_joins_dir_and_filename_and_invokes_adapter() {
     );
 }
 
+// ── Quick switcher ────────────────────────────────────────────────────
+
+#[test]
+fn quick_switcher_lists_all_then_filters_by_name() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("a", "alice", MembersType::ImpTeamNative),
+            conv("b", "bob", MembersType::ImpTeamNative),
+            conv("c", "carol", MembersType::Team),
+        ],
+        "a",
+    );
+    // Empty query → every conversation is a candidate.
+    rig.app.switcher.clear();
+    assert_eq!(rig.app.switcher_results().len(), 3);
+    // A query narrows + ranks; the matching conversation comes first.
+    rig.app.switcher.set("bob");
+    let r = rig.app.switcher_results();
+    assert!(!r.is_empty());
+    assert_eq!(rig.app.conversations[r[0]].id, "b");
+}
+
 // ── Unread counter ────────────────────────────────────────────────────
 
 #[test]

@@ -36,6 +36,8 @@ pub enum Screen {
     ConfirmDeleteMessage,
     /// Emoji input popup for reacting to a selected message.
     React,
+    /// Quick switcher (Ctrl+K) — fuzzy jump to any conversation.
+    QuickSwitcher,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.
