@@ -136,17 +136,34 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
 
     if app.messages.is_empty() {
-        let lines = vec![
-            Line::from(Span::raw("")),
-            Line::from(Span::styled(
-                "  this conversation is empty",
-                Style::default().fg(t.dim),
-            )),
-            Line::from(Span::styled(
-                "  type below and press Enter to start it",
-                Style::default().fg(t.placeholder),
-            )),
-        ];
+        // Distinguish the initial fetch (LoadMessages in flight) from a
+        // genuinely empty conversation — showing "empty" while we're still
+        // downloading the history is misleading.
+        let loading = matches!(
+            app.in_flight,
+            Some(crate::tui::worker::InFlight::LoadMessages)
+        );
+        let lines = if loading {
+            vec![
+                Line::from(Span::raw("")),
+                Line::from(Span::styled(
+                    "  Loading messages…",
+                    Style::default().fg(t.dim),
+                )),
+            ]
+        } else {
+            vec![
+                Line::from(Span::raw("")),
+                Line::from(Span::styled(
+                    "  this conversation is empty",
+                    Style::default().fg(t.dim),
+                )),
+                Line::from(Span::styled(
+                    "  type below and press Enter to start it",
+                    Style::default().fg(t.placeholder),
+                )),
+            ]
+        };
         frame.render_widget(
             Paragraph::new(lines).block(titled_block("Messages", false, app)),
             area,
