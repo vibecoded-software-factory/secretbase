@@ -57,9 +57,17 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
     // bordered box (like the list panels) placed side by side.
     let cols = Layout::horizontal([Constraint::Min(10), Constraint::Length(12)]).split(area);
     let input_area = cols[0];
-    let btns = Layout::horizontal([Constraint::Length(6), Constraint::Length(6)]).split(cols[1]);
+    // Box widths sized to the glyph so centering is exact: ⏎ (1 cell) wants
+    // an odd inner (box 5 → inner 3), 📎 (2 cells) an even inner (box 6 →
+    // inner 4); a 1-col gap between them.
+    let btns = Layout::horizontal([
+        Constraint::Length(5),
+        Constraint::Length(1),
+        Constraint::Length(6),
+    ])
+    .split(cols[1]);
     let send_box = btns[0];
-    let attach_box = btns[1];
+    let attach_box = btns[2];
     // ⏎ send / save (Enter is the action either way), 📎 attach.
     let send_label = "⏎";
     app.mouse_areas.compose_send = send_box;
