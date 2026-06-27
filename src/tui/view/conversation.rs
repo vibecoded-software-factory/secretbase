@@ -5,10 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Block, Borders, Paragraph},
 };
 
 use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo};
@@ -53,30 +53,17 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
     let editing = app.edit_target_id.is_some();
     let replying = app.reply_to_id;
 
-    // Split off a right-hand column for the Send / Attach buttons.
-    let cols = Layout::horizontal([Constraint::Min(10), Constraint::Length(14)]).split(area);
+    // Split off a right-hand column for the Send / Attach buttons, each a
+    // bordered box (like the list panels) placed side by side.
+    let cols = Layout::horizontal([Constraint::Min(10), Constraint::Length(12)]).split(area);
     let input_area = cols[0];
-    let btn_area = cols[1];
-
-    // Button labels + clickable rects (stored for the mouse layer).
-    let send_label = if editing {
-        "[ ⏎ Save ]"
-    } else {
-        "[ ⏎ Send ]"
-    };
-    let attach_label = "[ + Attach ]";
-    app.mouse_areas.compose_send = Rect {
-        x: btn_area.x,
-        y: btn_area.y,
-        width: (send_label.chars().count() as u16).min(btn_area.width),
-        height: 1,
-    };
-    app.mouse_areas.compose_attach = Rect {
-        x: btn_area.x,
-        y: btn_area.y + 1,
-        width: (attach_label.chars().count() as u16).min(btn_area.width),
-        height: 1,
-    };
+    let btns = Layout::horizontal([Constraint::Length(6), Constraint::Length(6)]).split(cols[1]);
+    let send_box = btns[0];
+    let attach_box = btns[1];
+    // Emoji-only buttons: 📤 send (💾 save while editing), 📎 attach.
+    let send_label = if editing { "💾" } else { "📤" };
+    app.mouse_areas.compose_send = send_box;
+    app.mouse_areas.compose_attach = attach_box;
 
     let (title, _border_focus) = if let Some(id) = app.edit_target_id {
         (format!("Editing msg #{id}"), true)
@@ -106,29 +93,50 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
         input_area,
     );
 
-    // Render the two buttons, highlighting whichever has focus.
-    let btn_style = |focused: bool| {
-        if focused {
-            Style::default()
-                .fg(t.accent)
-                .bg(t.selected_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(t.accent)
-        }
+    // Bordered buttons, accent border + bold when focused (like a focused
+    // panel), inactive otherwise.
+    render_compose_button(
+        frame,
+        send_box,
+        send_label,
+        app.compose_focus == ComposeFocus::Send,
+        &t,
+    );
+    render_compose_button(
+        frame,
+        attach_box,
+        "📎",
+        app.compose_focus == ComposeFocus::Attach,
+        &t,
+    );
+}
+
+/// Renders one compose button as a bordered box with a centered label,
+/// matching the list-panel chrome (accent border + bold when focused).
+fn render_compose_button(
+    frame: &mut Frame,
+    area: Rect,
+    label: &str,
+    focused: bool,
+    t: &crate::tui::theme::Theme,
+) {
+    let style = if focused {
+        Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(t.inactive)
+    };
+    let block = Block::default().borders(Borders::ALL).border_style(style);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let label_style = if focused {
+        Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(t.foreground)
     };
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(Span::styled(
-                send_label,
-                btn_style(app.compose_focus == ComposeFocus::Send),
-            )),
-            Line::from(Span::styled(
-                attach_label,
-                btn_style(app.compose_focus == ComposeFocus::Attach),
-            )),
-        ]),
-        btn_area,
+        Paragraph::new(Line::from(Span::styled(label.to_string(), label_style)))
+            .alignment(Alignment::Center),
+        inner,
     );
 }
 
@@ -467,6 +475,8 @@ fn message_lines(
     }
     lines.extend(body_lines(&m.content, t));
     if !m.reactions.is_empty() {
+        // A blank row so the reaction chips aren't glued to the body text.
+        lines.push(Line::from(Span::raw("")));
         lines.push(reactions_line(&m.reactions, app, t));
     }
     lines
