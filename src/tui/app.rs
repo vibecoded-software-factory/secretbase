@@ -392,6 +392,10 @@ pub struct App {
     pub request_started: Option<Instant>,
     /// When the current background refresh was started.
     pub bg_started: Option<Instant>,
+    /// When the background emoji-catalogue fetch was started — its own slot
+    /// so it can't clobber `bg_started` if a silent refresh overlaps; used
+    /// to time the `emojilist` command-log row like every other op.
+    pub emojis_started: Option<Instant>,
     /// Elapsed time of the just-completed operation, stamped onto the
     /// next [`Self::push_cmd`] entry. Set by `flows::apply_response`
     /// right before dispatching the response handler.
@@ -509,6 +513,7 @@ impl App {
             bg_inflight: false,
             request_started: None,
             bg_started: None,
+            emojis_started: None,
             last_op_elapsed: None,
             worker_rx,
             chat_rx,

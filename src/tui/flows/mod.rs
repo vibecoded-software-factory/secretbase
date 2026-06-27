@@ -64,6 +64,9 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         // Background emoji-catalogue fetch for the reaction picker — also
         // routed by variant (no `in_flight` ticket).
         WorkerResponse::Emojis(r) => {
+            // Stamp the fetch's elapsed time so its cmd_log row carries it,
+            // like every other keybase op.
+            app.last_op_elapsed = app.emojis_started.take().map(|t| t.elapsed());
             chat::handle_emojis_response(app, r);
             return;
         }

@@ -1176,6 +1176,7 @@ pub fn request_emojis(app: &mut App) {
         return;
     }
     app.emojis_loading = true;
+    app.emojis_started = Some(std::time::Instant::now());
     let _ = app.bg_worker_tx.send(WorkerRequest::ListEmojis);
 }
 
