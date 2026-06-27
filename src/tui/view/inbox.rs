@@ -9,7 +9,7 @@ use ratatui::{
     widgets::Row,
 };
 
-use crate::domain::{ConversationFilter, MembersType};
+use crate::domain::{MembersType, STATUS_FILTERS, StatusFilter, TYPE_FILTERS, TypeFilter};
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::split_main;
@@ -39,7 +39,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_status_strip(frame, app, status, hint);
 
     app.mouse_areas.search = header;
-    app.mouse_areas.filters = filters_area;
+    // filters / bytype rects are set inside render_filters (it owns the split).
     app.mouse_areas.list = list_area;
     app.mouse_areas.cmd_log = cmdlog;
 }
@@ -47,7 +47,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 fn footer_hint(app: &App) -> &'static str {
     match app.focus {
         Focus::Search => "type to filter · Enter/Esc leave",
-        Focus::Filters => "↑/↓ filter · Enter apply",
+        Focus::Filters => "↑/↓ status filter · Tab type · Enter apply",
+        Focus::ByType => "↑/↓ type filter · Enter apply",
         Focus::List => "↑/↓ nav · Enter open · Alt+N new · Tab focus",
         Focus::CmdLog => "↑/↓ scroll · Tab focus",
     }
@@ -69,96 +70,111 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
 
 fn render_filters(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
-    // Two stacked panels: general filters (All/Unread) on top, by-type
-    // filters (DMs/Teams) below — so the type split reads as its own group.
+    // Two independent panels: the status axis (All/Unread) on top, the type
+    // axis (All/DMs/Teams) below. Each is its own focus target; the inbox
+    // shows the intersection of the two active filters.
     let panels = Layout::vertical([
-        Constraint::Length(5), // border + header + All + Unread + border
-        Constraint::Min(5),    // border + header + DMs + Teams + border
+        Constraint::Length(5), // border + header + 2 rows + border
+        Constraint::Min(6),    // border + header + 3 rows + border
     ])
     .split(area);
-    render_filter_group(
+    app.mouse_areas.filters = panels[0];
+    app.mouse_areas.bytype = panels[1];
+
+    // ── Status panel ──────────────────────────────────────────────────
+    let status_rows: Vec<Row<'static>> = STATUS_FILTERS
+        .iter()
+        .map(|f| {
+            let (icon, color) = status_icon_color(*f, &t);
+            filter_row(
+                format!("{icon}{}", f.label()),
+                color,
+                app.count_status(*f),
+                &t,
+            )
+        })
+        .collect();
+    let status_sel = STATUS_FILTERS
+        .iter()
+        .position(|f| *f == app.status_filter)
+        .unwrap_or(0);
+    let mut s0 = 0usize;
+    list_table(
         frame,
-        app,
         &t,
         panels[0],
         "─[1]-Filters",
-        &[ConversationFilter::All, ConversationFilter::Unread],
+        app.focus == Focus::Filters,
+        &["Filter", "#"],
+        &[Constraint::Length(12), Constraint::Min(3)],
+        status_rows,
+        status_sel,
+        &mut s0,
     );
-    render_filter_group(
+
+    // ── Type panel ────────────────────────────────────────────────────
+    let type_rows: Vec<Row<'static>> = TYPE_FILTERS
+        .iter()
+        .map(|f| {
+            let (icon, color) = type_icon_color(*f, &t);
+            filter_row(
+                format!("{icon}{}", f.label()),
+                color,
+                app.count_type(*f),
+                &t,
+            )
+        })
+        .collect();
+    let type_sel = TYPE_FILTERS
+        .iter()
+        .position(|f| *f == app.type_filter)
+        .unwrap_or(0);
+    let mut s1 = 0usize;
+    list_table(
         frame,
-        app,
         &t,
         panels[1],
         "─[2]-By type",
-        &[ConversationFilter::Dms, ConversationFilter::Teams],
-    );
-}
-
-/// Renders one filter panel (a `list_table` over `group`). Only the panel
-/// holding `app.active_filter` shows a selection highlight — the others get
-/// `usize::MAX`, which `list_table` renders unselected.
-fn render_filter_group(
-    frame: &mut Frame,
-    app: &App,
-    t: &crate::tui::theme::Theme,
-    area: Rect,
-    title: &str,
-    group: &[ConversationFilter],
-) {
-    let rows: Vec<Row<'static>> = group
-        .iter()
-        .map(|f| {
-            let count = app.count_for(f);
-            let (icon, color) = filter_icon_and_color(f, t);
-            Row::new(vec![
-                ratatui::widgets::Cell::from(Span::styled(
-                    format!("{icon}{}", f.label()),
-                    Style::default().fg(color),
-                )),
-                ratatui::widgets::Cell::from(Span::styled(
-                    count.to_string(),
-                    Style::default().fg(t.dim),
-                )),
-            ])
-        })
-        .collect();
-
-    let selected = group
-        .iter()
-        .position(|f| *f == app.active_filter)
-        .unwrap_or(usize::MAX);
-    // Only the panel holding the active filter lights up (border + row), so
-    // navigating ↑/↓ across the boundary moves the focus between panels
-    // instead of lighting both at once.
-    let focused = app.focus == Focus::Filters && selected != usize::MAX;
-
-    let mut scroll = 0usize;
-    list_table(
-        frame,
-        t,
-        area,
-        title,
-        focused,
-        &["Filter", "#"],
-        // Only the LAST column may stretch (`Min`); a `Min` on the label
-        // (non-final) column would shove the count to the far right with
-        // a gap — the recurring list_table "gap" bug.
+        app.focus == Focus::ByType,
+        &["Type", "#"],
         &[Constraint::Length(12), Constraint::Min(3)],
-        rows,
-        selected,
-        &mut scroll,
+        type_rows,
+        type_sel,
+        &mut s1,
     );
 }
 
-fn filter_icon_and_color(
-    f: &ConversationFilter,
+/// Builds one filter row: `<icon+label>` (colored) + a dim count.
+fn filter_row(
+    label: String,
+    color: ratatui::style::Color,
+    count: usize,
+    t: &crate::tui::theme::Theme,
+) -> Row<'static> {
+    Row::new(vec![
+        ratatui::widgets::Cell::from(Span::styled(label, Style::default().fg(color))),
+        ratatui::widgets::Cell::from(Span::styled(count.to_string(), Style::default().fg(t.dim))),
+    ])
+}
+
+fn status_icon_color(
+    f: StatusFilter,
     t: &crate::tui::theme::Theme,
 ) -> (&'static str, ratatui::style::Color) {
     match f {
-        ConversationFilter::All => ("  ", t.foreground),
-        ConversationFilter::Unread => ("● ", t.conv_unread),
-        ConversationFilter::Dms => ("󰭹 ", t.conv_dm),
-        ConversationFilter::Teams => ("󰀎 ", t.conv_team),
+        StatusFilter::All => ("  ", t.foreground),
+        StatusFilter::Unread => ("● ", t.conv_unread),
+    }
+}
+
+fn type_icon_color(
+    f: TypeFilter,
+    t: &crate::tui::theme::Theme,
+) -> (&'static str, ratatui::style::Color) {
+    match f {
+        TypeFilter::All => ("  ", t.foreground),
+        TypeFilter::Dms => ("󰭹 ", t.conv_dm),
+        TypeFilter::Teams => ("󰀎 ", t.conv_team),
     }
 }
 

@@ -1,52 +1,72 @@
-//! Sidebar filters that narrow the conversation list.
+//! Sidebar filters — **two independent axes** that intersect: a *status*
+//! axis (All / Unread) and a *type* axis (All / DMs / Teams). The inbox
+//! shows conversations matching the active status **and** the active type.
+//!
+//! Neither axis checks active-membership; the caller
+//! ([`crate::tui::app::App::rebuild_filter`]) applies that once across both.
 
-use crate::domain::conversation::{Conversation, MemberStatus};
+use crate::domain::conversation::Conversation;
 
-/// Filter applied to the conversation list before search.
+/// Status axis: read-state filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConversationFilter {
-    /// Active conversations the user is still a member of.
+pub enum StatusFilter {
+    /// Every active conversation.
     All,
     /// Conversations with `unread = true`.
     Unread,
+}
+
+/// Type axis: conversation-kind filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeFilter {
+    /// Every kind (DMs + teams).
+    All,
     /// DMs only (impteam — one-to-one or small groups).
     Dms,
     /// Conversations inside an explicit team.
     Teams,
 }
 
-/// Ordered set of all filters — drives sidebar rendering and arrow-key
-/// cycling.
-pub type ConversationFilters = [ConversationFilter; 4];
+/// Status filters in sidebar (top-to-bottom) order.
+pub const STATUS_FILTERS: [StatusFilter; 2] = [StatusFilter::All, StatusFilter::Unread];
 
-/// Filters in display order. The sidebar renders them top-to-bottom in
-/// this exact sequence.
-pub const CONVERSATION_FILTERS: ConversationFilters = [
-    ConversationFilter::All,
-    ConversationFilter::Unread,
-    ConversationFilter::Dms,
-    ConversationFilter::Teams,
-];
+/// Type filters in sidebar (top-to-bottom) order.
+pub const TYPE_FILTERS: [TypeFilter; 3] = [TypeFilter::All, TypeFilter::Dms, TypeFilter::Teams];
 
-impl ConversationFilter {
+impl StatusFilter {
     /// Sidebar label.
     pub fn label(self) -> &'static str {
         match self {
-            ConversationFilter::All => "All",
-            ConversationFilter::Unread => "Unread",
-            ConversationFilter::Dms => "DMs",
-            ConversationFilter::Teams => "Teams",
+            StatusFilter::All => "All",
+            StatusFilter::Unread => "Unread",
         }
     }
 
-    /// Whether `conv` should appear in the list with this filter active.
-    pub fn matches(self, conv: &Conversation) -> bool {
-        let active = conv.member_status == MemberStatus::Active;
+    /// Whether `conv` passes the status axis (no active-membership check).
+    pub fn includes(self, conv: &Conversation) -> bool {
         match self {
-            ConversationFilter::All => active,
-            ConversationFilter::Unread => active && conv.unread,
-            ConversationFilter::Dms => active && conv.channel.members_type.is_dm(),
-            ConversationFilter::Teams => active && conv.channel.members_type.is_team(),
+            StatusFilter::All => true,
+            StatusFilter::Unread => conv.unread,
+        }
+    }
+}
+
+impl TypeFilter {
+    /// Sidebar label.
+    pub fn label(self) -> &'static str {
+        match self {
+            TypeFilter::All => "All",
+            TypeFilter::Dms => "DMs",
+            TypeFilter::Teams => "Teams",
+        }
+    }
+
+    /// Whether `conv` passes the type axis (no active-membership check).
+    pub fn includes(self, conv: &Conversation) -> bool {
+        match self {
+            TypeFilter::All => true,
+            TypeFilter::Dms => conv.channel.members_type.is_dm(),
+            TypeFilter::Teams => conv.channel.members_type.is_team(),
         }
     }
 }
@@ -54,9 +74,9 @@ impl ConversationFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::conversation::{Channel, MembersType, TopicType};
+    use crate::domain::conversation::{Channel, MemberStatus, MembersType, TopicType};
 
-    fn conv(members: MembersType, status: MemberStatus, unread: bool) -> Conversation {
+    fn conv(members: MembersType, unread: bool) -> Conversation {
         Conversation {
             id: "x".into(),
             channel: Channel {
@@ -70,42 +90,42 @@ mod tests {
             unread,
             active_at: 0,
             active_at_ms: 0,
-            member_status: status,
+            member_status: MemberStatus::Active,
             creator_info: None,
         }
     }
 
     #[test]
-    fn all_filter_matches_active_only() {
-        let c1 = conv(MembersType::Team, MemberStatus::Active, false);
-        let c2 = conv(MembersType::Team, MemberStatus::Left, false);
-        assert!(ConversationFilter::All.matches(&c1));
-        assert!(!ConversationFilter::All.matches(&c2));
+    fn status_axis() {
+        let unread = conv(MembersType::Team, true);
+        let read = conv(MembersType::Team, false);
+        assert!(StatusFilter::All.includes(&read));
+        assert!(StatusFilter::All.includes(&unread));
+        assert!(StatusFilter::Unread.includes(&unread));
+        assert!(!StatusFilter::Unread.includes(&read));
     }
 
     #[test]
-    fn unread_filter_requires_active_and_unread() {
-        let c1 = conv(MembersType::Team, MemberStatus::Active, true);
-        let c2 = conv(MembersType::Team, MemberStatus::Active, false);
-        let c3 = conv(MembersType::Team, MemberStatus::Left, true);
-        assert!(ConversationFilter::Unread.matches(&c1));
-        assert!(!ConversationFilter::Unread.matches(&c2));
-        assert!(!ConversationFilter::Unread.matches(&c3));
+    fn type_axis() {
+        let dm = conv(MembersType::ImpTeamNative, false);
+        let team = conv(MembersType::Team, false);
+        assert!(TypeFilter::All.includes(&dm));
+        assert!(TypeFilter::All.includes(&team));
+        assert!(TypeFilter::Dms.includes(&dm));
+        assert!(!TypeFilter::Dms.includes(&team));
+        assert!(TypeFilter::Teams.includes(&team));
+        assert!(!TypeFilter::Teams.includes(&dm));
     }
 
     #[test]
-    fn dms_filter_excludes_teams() {
-        let c1 = conv(MembersType::ImpTeamNative, MemberStatus::Active, false);
-        let c2 = conv(MembersType::Team, MemberStatus::Active, false);
-        assert!(ConversationFilter::Dms.matches(&c1));
-        assert!(!ConversationFilter::Dms.matches(&c2));
-    }
-
-    #[test]
-    fn teams_filter_excludes_dms() {
-        let c1 = conv(MembersType::Team, MemberStatus::Active, false);
-        let c2 = conv(MembersType::ImpTeamNative, MemberStatus::Active, false);
-        assert!(ConversationFilter::Teams.matches(&c1));
-        assert!(!ConversationFilter::Teams.matches(&c2));
+    fn axes_intersect() {
+        let unread_dm = conv(MembersType::ImpTeamNative, true);
+        let read_dm = conv(MembersType::ImpTeamNative, false);
+        let unread_team = conv(MembersType::Team, true);
+        let pass =
+            |c: &Conversation| StatusFilter::Unread.includes(c) && TypeFilter::Dms.includes(c);
+        assert!(pass(&unread_dm));
+        assert!(!pass(&read_dm));
+        assert!(!pass(&unread_team));
     }
 }

@@ -1104,25 +1104,58 @@ fn unpin_calls_adapter_once() {
 // ── filter cycling ────────────────────────────────────────────────────
 
 #[test]
-fn filter_cycle_next_wraps() {
+fn status_axis_cycles_and_wraps() {
+    use crate::domain::StatusFilter;
     let mut rig = build_rig();
-    use crate::domain::{CONVERSATION_FILTERS, ConversationFilter};
-    let last = CONVERSATION_FILTERS[CONVERSATION_FILTERS.len() - 1];
-    rig.app.active_filter = last;
-    cycle_filter_next(&mut rig.app);
-    assert_eq!(rig.app.active_filter, ConversationFilter::All);
+    rig.app.status_filter = StatusFilter::All;
+    cycle_status(&mut rig.app, 1);
+    assert_eq!(rig.app.status_filter, StatusFilter::Unread);
+    cycle_status(&mut rig.app, 1); // wraps back to All
+    assert_eq!(rig.app.status_filter, StatusFilter::All);
+    cycle_status(&mut rig.app, -1); // wraps to last
+    assert_eq!(rig.app.status_filter, StatusFilter::Unread);
 }
 
 #[test]
-fn filter_cycle_prev_wraps() {
+fn type_axis_cycles_independently_of_status() {
+    use crate::domain::{StatusFilter, TypeFilter};
     let mut rig = build_rig();
-    use crate::domain::{CONVERSATION_FILTERS, ConversationFilter};
-    rig.app.active_filter = ConversationFilter::All;
-    cycle_filter_prev(&mut rig.app);
-    assert_eq!(
-        rig.app.active_filter,
-        CONVERSATION_FILTERS[CONVERSATION_FILTERS.len() - 1]
+    rig.app.status_filter = StatusFilter::Unread;
+    rig.app.type_filter = TypeFilter::All;
+    cycle_type(&mut rig.app, 1);
+    assert_eq!(rig.app.type_filter, TypeFilter::Dms);
+    cycle_type(&mut rig.app, 1);
+    assert_eq!(rig.app.type_filter, TypeFilter::Teams);
+    // The status axis is untouched by type cycling.
+    assert_eq!(rig.app.status_filter, StatusFilter::Unread);
+}
+
+#[test]
+fn filter_axes_intersect_in_the_inbox() {
+    use crate::domain::{StatusFilter, TypeFilter};
+    let mut rig = build_rig();
+    let mut unread_dm = conv("d", "alice", MembersType::ImpTeamNative);
+    unread_dm.unread = true;
+    let read_dm = conv("d2", "bob", MembersType::ImpTeamNative);
+    let mut unread_team = conv("t", "team#general", MembersType::Team);
+    unread_team.unread = true;
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![unread_dm, read_dm, unread_team],
+        "d",
     );
+    // Unread × DMs → only the unread DM survives.
+    rig.app.status_filter = StatusFilter::Unread;
+    rig.app.type_filter = TypeFilter::Dms;
+    rig.app.rebuild_filter();
+    let ids: Vec<&str> = rig
+        .app
+        .filtered_cache
+        .iter()
+        .map(|&i| rig.app.conversations[i].id.as_str())
+        .collect();
+    assert_eq!(ids, vec!["d"]);
 }
 
 // ── search query helpers ──────────────────────────────────────────────
@@ -1897,8 +1930,12 @@ fn input_tab_steps_forward_through_non_search_focuses() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
 
-    // FOCUS_ORDER = [Search, Filters, List, CmdLog].
+    // FOCUS_ORDER = [Search, Filters, ByType, List, CmdLog].
     rig.app.focus = Focus::Filters;
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::ByType);
+
+    rig.app.focus = Focus::ByType;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::List);
 

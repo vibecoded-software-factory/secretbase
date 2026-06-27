@@ -11,8 +11,9 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    CONVERSATION_FILTERS, ChatEvent, Conversation, ConversationFilter, Emoji, IdentityInfo,
-    InboxHit, LineEditor, LoweredConversation, Message, TeamMembership, fuzzy_score_lowered,
+    ChatEvent, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
+    MemberStatus, Message, STATUS_FILTERS, StatusFilter, TYPE_FILTERS, TeamMembership, TypeFilter,
+    fuzzy_score_lowered,
 };
 use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
@@ -160,7 +161,11 @@ pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
     pub screen: Screen,
     pub focus: Focus,
-    pub active_filter: ConversationFilter,
+    /// Status axis of the inbox filter (All / Unread).
+    pub status_filter: StatusFilter,
+    /// Type axis of the inbox filter (All / DMs / Teams). Independent of
+    /// `status_filter` — the inbox shows the intersection of both.
+    pub type_filter: TypeFilter,
 
     // ── Identity (from `keybase status --json`) ───────────────────────────
     pub identity: IdentityInfo,
@@ -173,11 +178,12 @@ pub struct App {
     pub conversations_lowered: Vec<LoweredConversation>,
     /// Indices into `conversations` after filter + search are applied.
     pub filtered_cache: Vec<usize>,
-    /// Per-filter count of matching conversations. Indexed by
-    /// position inside [`crate::domain::CONVERSATION_FILTERS`].
-    /// Precomputed at load time so the sidebar render path doesn't
-    /// scan `conversations` once per filter per frame.
-    pub filter_counts: [usize; CONVERSATION_FILTERS.len()],
+    /// Per-filter counts (active conversations only), indexed by position
+    /// inside [`STATUS_FILTERS`] / [`TYPE_FILTERS`]. Precomputed at load time
+    /// so the sidebar render path doesn't scan `conversations` per filter per
+    /// frame. Counts are per-axis totals (independent of the other axis).
+    pub status_counts: [usize; STATUS_FILTERS.len()],
+    pub type_counts: [usize; TYPE_FILTERS.len()],
     /// Selected row inside `filtered_cache`. Reset on filter/search
     /// changes.
     pub list_selected: usize,
@@ -454,12 +460,14 @@ impl App {
         Self {
             screen: Screen::Splash,
             focus: Focus::List,
-            active_filter: ConversationFilter::All,
+            status_filter: StatusFilter::All,
+            type_filter: TypeFilter::All,
             identity: IdentityInfo::default(),
             conversations: Vec::new(),
             conversations_lowered: Vec::new(),
             filtered_cache: Vec::new(),
-            filter_counts: [0; CONVERSATION_FILTERS.len()],
+            status_counts: [0; STATUS_FILTERS.len()],
+            type_counts: [0; TYPE_FILTERS.len()],
             list_selected: 0,
             list_scroll: 0,
             teams: Vec::new(),
@@ -780,13 +788,24 @@ impl App {
             .map(|c| LoweredConversation::from(c, me))
             .collect();
 
-        // Per-filter totals (5 filters × N convs = one O(N) pass each
-        // — vs an O(F·N) scan at render time).
-        let mut counts = [0usize; CONVERSATION_FILTERS.len()];
-        for (idx, f) in CONVERSATION_FILTERS.iter().enumerate() {
-            counts[idx] = self.conversations.iter().filter(|c| f.matches(c)).count();
+        // Per-axis totals over the active conversations (one O(N) pass) —
+        // so the sidebar renders counts at O(1) per filter per frame.
+        let mut status = [0usize; STATUS_FILTERS.len()];
+        let mut typ = [0usize; TYPE_FILTERS.len()];
+        for c in self
+            .conversations
+            .iter()
+            .filter(|c| c.member_status == MemberStatus::Active)
+        {
+            for (i, f) in STATUS_FILTERS.iter().enumerate() {
+                status[i] += f.includes(c) as usize;
+            }
+            for (i, f) in TYPE_FILTERS.iter().enumerate() {
+                typ[i] += f.includes(c) as usize;
+            }
         }
-        self.filter_counts = counts;
+        self.status_counts = status;
+        self.type_counts = typ;
     }
 
     /// Recomputes [`Self::pinned_msg_id`] by scanning the loaded
@@ -839,7 +858,11 @@ impl App {
         let query_lc = self.search.text().to_lowercase();
         let mut indices: Vec<usize> = Vec::new();
         for (idx, conv) in self.conversations.iter().enumerate() {
-            if !self.active_filter.matches(conv) {
+            // Two independent axes intersect, over active conversations only.
+            if conv.member_status != MemberStatus::Active
+                || !self.status_filter.includes(conv)
+                || !self.type_filter.includes(conv)
+            {
                 continue;
             }
             if !query_lc.is_empty() {
@@ -866,14 +889,21 @@ impl App {
             .and_then(|&i| self.conversations.get(i))
     }
 
-    /// Counts how many conversations match a given filter. Reads from
-    /// [`Self::filter_counts`] which is precomputed at load time so
-    /// the sidebar renderer pays O(1) per filter per frame.
-    pub fn count_for(&self, filter: &ConversationFilter) -> usize {
-        CONVERSATION_FILTERS
+    /// Active-conversation count matching a status filter (precomputed).
+    pub fn count_status(&self, filter: StatusFilter) -> usize {
+        STATUS_FILTERS
             .iter()
-            .position(|f| f == filter)
-            .and_then(|idx| self.filter_counts.get(idx).copied())
+            .position(|f| *f == filter)
+            .and_then(|idx| self.status_counts.get(idx).copied())
+            .unwrap_or(0)
+    }
+
+    /// Active-conversation count matching a type filter (precomputed).
+    pub fn count_type(&self, filter: TypeFilter) -> usize {
+        TYPE_FILTERS
+            .iter()
+            .position(|f| *f == filter)
+            .and_then(|idx| self.type_counts.get(idx).copied())
             .unwrap_or(0)
     }
 

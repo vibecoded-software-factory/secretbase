@@ -70,8 +70,8 @@ pub trait KeybasePort {
     // ── Chat — inbox / read ───────────────────────────────────────────────
 
     /// `{"method":"list"}` — returns every conversation the user can
-    /// see, regardless of member-status. The TUI filters with
-    /// [`crate::domain::ConversationFilter`].
+    /// see, regardless of member-status. The TUI filters with the status +
+    /// type axes ([`crate::domain::StatusFilter`] / [`crate::domain::TypeFilter`]).
     ///
     /// Rows that fail to decode end up in [`ListConversationsOk::skipped`]
     /// rather than aborting the whole call: one corrupted row should

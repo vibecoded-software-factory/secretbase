@@ -250,28 +250,31 @@ fn resolve_channel_or_fail(
 
 // ── Filter / search query helpers (pure, sync) ───────────────────────
 
-/// Cycles `app.active_filter` forward by one and refreshes the cache.
-pub fn cycle_filter_next(app: &mut App) {
-    use crate::domain::CONVERSATION_FILTERS;
-    let cur = CONVERSATION_FILTERS
+/// Cycles the **status** axis (All ↔ Unread) by `delta` and refreshes.
+pub fn cycle_status(app: &mut App, delta: isize) {
+    use crate::domain::STATUS_FILTERS;
+    let cur = STATUS_FILTERS
         .iter()
-        .position(|f| *f == app.active_filter)
-        .unwrap_or(0);
-    let next = (cur + 1) % CONVERSATION_FILTERS.len();
-    app.active_filter = CONVERSATION_FILTERS[next];
+        .position(|f| *f == app.status_filter)
+        .unwrap_or(0) as isize;
+    let n = STATUS_FILTERS.len() as isize;
+    let next = (cur + delta).rem_euclid(n) as usize;
+    app.status_filter = STATUS_FILTERS[next];
     app.list_selected = 0;
     app.list_scroll = 0;
     app.rebuild_filter();
 }
 
-pub fn cycle_filter_prev(app: &mut App) {
-    use crate::domain::CONVERSATION_FILTERS;
-    let cur = CONVERSATION_FILTERS
+/// Cycles the **type** axis (All ↔ DMs ↔ Teams) by `delta` and refreshes.
+pub fn cycle_type(app: &mut App, delta: isize) {
+    use crate::domain::TYPE_FILTERS;
+    let cur = TYPE_FILTERS
         .iter()
-        .position(|f| *f == app.active_filter)
-        .unwrap_or(0);
-    let prev = (cur + CONVERSATION_FILTERS.len() - 1) % CONVERSATION_FILTERS.len();
-    app.active_filter = CONVERSATION_FILTERS[prev];
+        .position(|f| *f == app.type_filter)
+        .unwrap_or(0) as isize;
+    let n = TYPE_FILTERS.len() as isize;
+    let next = (cur + delta).rem_euclid(n) as usize;
+    app.type_filter = TYPE_FILTERS[next];
     app.list_selected = 0;
     app.list_scroll = 0;
     app.rebuild_filter();

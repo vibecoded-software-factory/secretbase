@@ -14,7 +14,13 @@ use crate::tui::input::nav;
 use crate::tui::screens::{Focus, Screen};
 
 /// Focus cycle order — visual top-to-bottom reading order of the inbox.
-const FOCUS_ORDER: [Focus; 4] = [Focus::Search, Focus::Filters, Focus::List, Focus::CmdLog];
+const FOCUS_ORDER: [Focus; 5] = [
+    Focus::Search,
+    Focus::Filters,
+    Focus::ByType,
+    Focus::List,
+    Focus::CmdLog,
+];
 
 pub fn handle(app: &mut App, key: KeyEvent) {
     let alt = key.modifiers.contains(KeyModifiers::ALT);
@@ -97,6 +103,7 @@ pub fn handle(app: &mut App, key: KeyEvent) {
     match app.focus {
         Focus::List => handle_list(app, key),
         Focus::Filters => handle_filters(app, key),
+        Focus::ByType => handle_bytype(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         Focus::Search => unreachable!("handled above"),
     }
@@ -159,8 +166,17 @@ fn handle_list(app: &mut App, key: KeyEvent) {
 
 fn handle_filters(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => chat::cycle_filter_prev(app),
-        KeyCode::Down | KeyCode::Char('j') => chat::cycle_filter_next(app),
+        KeyCode::Up | KeyCode::Char('k') => chat::cycle_status(app, -1),
+        KeyCode::Down | KeyCode::Char('j') => chat::cycle_status(app, 1),
+        KeyCode::Enter => app.focus = Focus::List,
+        _ => {}
+    }
+}
+
+fn handle_bytype(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') => chat::cycle_type(app, -1),
+        KeyCode::Down | KeyCode::Char('j') => chat::cycle_type(app, 1),
         KeyCode::Enter => app.focus = Focus::List,
         _ => {}
     }

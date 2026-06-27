@@ -39,12 +39,15 @@ Every signed-in screen is built from the same vertical stack via
   Screens without a filter (Teams) drop this slot.
 - **body** — the list/table (see below) or a detail layout. The inbox splits
   it 22 % / 78 % into the filter sidebar and the conversation list. The
-  sidebar is **two stacked `list_table` panels**: `─[1]-Filters` (All,
-  Unread) on top and `─[2]-By type` (DMs, Teams) below, so the type split
-  reads as its own group. `↑/↓` cycle across **all four** (navigation is over
-  `CONVERSATION_FILTERS`, panel-agnostic); only the panel holding the active
-  filter shows the selection highlight (the other passes `usize::MAX`, which
-  `list_table` renders unselected).
+  sidebar is **two independent `list_table` panels** — two filter **axes**
+  that intersect: `─[1]-Filters` = status (`All`/`Unread`,
+  `domain::StatusFilter`) and `─[2]-By type` = kind (`All`/`DMs`/`Teams`,
+  `domain::TypeFilter`). Each is its own **focus target** (`Focus::Filters`
+  / `Focus::ByType`) in the Tab order; `↑/↓` cycle within the focused axis
+  (`chat::cycle_status` / `cycle_type`). The inbox shows the **intersection**
+  (`App::rebuild_filter` over active conversations: `status.includes &&
+  type.includes`); each panel always shows its current selection
+  highlighted, accent border only when focused.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom; `cmd_log_scroll`
   walks back). Worker ops carry their duration (request → response),
@@ -161,8 +164,8 @@ which action to fire. The module depends only on `ratatui` + the shared
 ## Panels & focus
 
 The inbox's focusable panels are the `screens::Focus` variants: `Search`,
-`Filters`, `List`, `CmdLog` (the identity bar and status strip are chrome,
-not focus targets). Conventions:
+`Filters` (status axis), `ByType` (type axis), `List`, `CmdLog` (the identity
+bar and status strip are chrome, not focus targets). Conventions:
 
 - `/` jumps to Search; `Tab`/`Shift+Tab` cycle focus via
   `input::common::cycle_focus` over `FOCUS_ORDER`.
