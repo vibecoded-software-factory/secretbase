@@ -321,6 +321,8 @@ fn enter_conversation(app: &mut App, id: String) {
     app.compose_open = true;
     app.edit_target_id = None;
     app.reply_to_id = None;
+    app.selected_msg_idx = None;
+    app.pending_search_jump = None;
     restore_draft(app, &id);
     app.screen = crate::tui::screens::Screen::Conversation;
     request_load_messages(app);
@@ -352,6 +354,7 @@ fn restore_draft(app: &mut App, id: &str) {
 
 pub fn close_conversation(app: &mut App) {
     stash_draft(app);
+    app.pending_search_jump = None;
     app.open_conv_id = None;
     app.messages.clear();
     app.messages_scroll = 0;
@@ -477,9 +480,11 @@ pub fn handle_load_messages_response(
             }
             app.set_action(ActionState::Done(format!("Loaded {n} messages")));
             app.push_cmd("keybase chat api read", true, format!("{n} messages"));
+            try_jump_to_search_target(app);
         }
         Err(e) => {
             app.messages_loading_older = false;
+            app.pending_search_jump = None;
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api read", false, e.to_string());
         }
@@ -609,9 +614,11 @@ pub fn handle_load_older_messages_response(
                 true,
                 format!("{n} messages"),
             );
+            try_jump_to_search_target(app);
         }
         Err(e) => {
             app.messages_loading_older = false;
+            app.pending_search_jump = None;
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api read (older)", false, e.to_string());
         }
@@ -769,6 +776,7 @@ pub fn open_selected_search_result(app: &mut App) {
         return;
     };
     let conv_id = hit_ref.conv_id.clone();
+    let target = hit_ref.message_id;
     if !app.conversations.iter().any(|c| c.id == conv_id) {
         app.set_action(ActionState::Error(
             "Conversation not in cached inbox — refresh first".into(),
@@ -776,13 +784,34 @@ pub fn open_selected_search_result(app: &mut App) {
         return;
     }
     close_search_global(app);
-    app.open_conv_id = Some(conv_id);
-    app.messages.clear();
-    app.messages_scroll = 0;
-    app.compose_open = true;
-    app.compose_clear();
-    app.screen = crate::tui::screens::Screen::Conversation;
-    request_load_messages(app);
+    enter_conversation(app, conv_id);
+    // Land on the matched message once the history loads (try_jump_to_search
+    // _target, called from the read handlers, paginates older if needed).
+    app.pending_search_jump = Some(target);
+}
+
+/// After a (paginated) read, jump to + highlight the message the global
+/// search targeted. If it's older than what's loaded, pull the next older
+/// page and re-check when it arrives; give up once history is exhausted.
+fn try_jump_to_search_target(app: &mut App) {
+    let Some(target) = app.pending_search_jump else {
+        return;
+    };
+    if let Some(idx) = app.messages.iter().position(|m| m.id == target) {
+        // Selecting the message makes the renderer scroll it into view and
+        // highlight it (same as Select mode).
+        app.pending_search_jump = None;
+        app.compose_open = false;
+        app.select_from_compose = false;
+        app.selected_msg_idx = Some(idx);
+        app.set_action(ActionState::Done("Jumped to message".into()));
+    } else if app.messages_next.is_some() && !app.messages_loading_older {
+        app.messages_loading_older = true;
+        request_load_older_messages(app);
+    } else if !app.messages_loading_older {
+        app.pending_search_jump = None;
+        app.set_action(ActionState::Error("Message not found in history".into()));
+    }
 }
 
 // ── Message selection (Compose ↔ Select modes) ──────────────────────

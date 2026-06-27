@@ -1515,6 +1515,46 @@ fn quick_switcher_lists_all_then_filters_by_name() {
 }
 
 #[test]
+fn search_jump_selects_matched_message_when_in_loaded_page() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("a", "alice", MembersType::ImpTeamNative)],
+        "a",
+    );
+    rig.app.open_conv_id = Some("a".into());
+    rig.app.pending_search_jump = Some(42);
+    // The read handler reverses (keybase returns newest-first).
+    let page = vec![
+        text_msg(45, "alice", "newest"),
+        text_msg(42, "alice", "match"),
+        text_msg(40, "alice", "older"),
+    ];
+    handle_load_messages_response(&mut rig.app, Ok((page, None)));
+    let idx = rig.app.selected_msg_idx.expect("a message is selected");
+    assert_eq!(rig.app.messages[idx].id, 42);
+    assert_eq!(rig.app.pending_search_jump, None);
+    assert!(!rig.app.compose_open);
+}
+
+#[test]
+fn search_jump_gives_up_when_message_absent_and_no_more_history() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("a", "alice", MembersType::ImpTeamNative)],
+        "a",
+    );
+    rig.app.open_conv_id = Some("a".into());
+    rig.app.pending_search_jump = Some(999);
+    handle_load_messages_response(&mut rig.app, Ok((vec![text_msg(1, "alice", "hi")], None)));
+    assert_eq!(rig.app.pending_search_jump, None);
+    assert_eq!(rig.app.selected_msg_idx, None);
+}
+
+#[test]
 fn switcher_sections_group_drafts_unread_recent_without_repeats() {
     use crate::tui::app::SwitcherRow;
     let mut rig = build_rig();

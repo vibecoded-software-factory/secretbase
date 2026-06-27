@@ -285,6 +285,10 @@ pub struct App {
     /// Per-conversation unsent draft text (in memory only — not persisted
     /// across restarts). Keyed by conversation id.
     pub drafts: HashMap<String, String>,
+    /// When opening a conversation from a global-search hit, the message id
+    /// to scroll to + highlight once it's loaded (paginating older if the
+    /// match is below the first page). Cleared once landed or exhausted.
+    pub pending_search_jump: Option<u64>,
 
     // ── New-conversation popup ──────────────────────────────────────────
     /// Comma-separated usernames typed by the user in the Alt+N popup.
@@ -478,6 +482,7 @@ impl App {
             switcher_selected: 0,
             switcher_from: Screen::Inbox,
             drafts: HashMap::new(),
+            pending_search_jump: None,
             new_conv: LineEditor::default(),
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),

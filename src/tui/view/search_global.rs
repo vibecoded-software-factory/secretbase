@@ -99,7 +99,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            " Enter: open   |   ↑/↓: navigate   |   Esc: close ",
+            " Enter: jump to message   |   ↑/↓: navigate   |   Esc: close ",
             Style::default().fg(t.dim),
         ))),
         layout[2],

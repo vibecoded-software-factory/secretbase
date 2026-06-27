@@ -244,7 +244,11 @@ under react/delete/download).
 - **Input popups** (`NewConversation`, `React`, `DownloadAttachment`,
   `SearchGlobal`): a centered box with an `editor_spans` field and
   self-contained `Enter: … | Esc: cancel` instructions. Keys route through
-  `input::common::route_line_editor`.
+  `input::common::route_line_editor`. `SearchGlobal`'s `Enter` opens the
+  hit's conversation **and jumps to the matched message**: it stamps
+  `App::pending_search_jump`, then the read handlers select+highlight that
+  message once loaded, paginating older pages until it's found (or history
+  is exhausted — then a "not found" toast).
 
 ## Help popup
 
