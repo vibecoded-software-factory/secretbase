@@ -17,7 +17,7 @@ use crate::tui::input::common;
 
 /// Queues a pagination fetch when the user has scrolled past the top
 /// of the currently-loaded history and more is available.
-fn maybe_queue_older(app: &mut App) {
+pub(crate) fn maybe_queue_older(app: &mut App) {
     if app.messages_scroll <= app.messages_max_back {
         return;
     }
@@ -38,8 +38,35 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_compose(app: &mut App, key: KeyEvent) {
+    use crate::tui::app::ComposeFocus;
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
+
+    // Tab cycles focus across the input and the Send / Attach buttons.
+    if key.code == KeyCode::Tab {
+        app.compose_focus = app.compose_focus.next();
+        return;
+    }
+    if key.code == KeyCode::BackTab {
+        app.compose_focus = app.compose_focus.prev();
+        return;
+    }
+    // While a button has focus, Enter/Space activates it; Esc (or any other
+    // key) returns focus to the input — other keys then fall through so
+    // typing immediately resumes editing.
+    if app.compose_focus != ComposeFocus::Input {
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                activate_focused_button(app);
+                return;
+            }
+            KeyCode::Esc => {
+                app.compose_focus = ComposeFocus::Input;
+                return;
+            }
+            _ => app.compose_focus = ComposeFocus::Input,
+        }
+    }
 
     match key.code {
         // ── lifecycle ───────────────────────────────────────────────────
@@ -52,19 +79,7 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
                 app.compose_clear();
             }
         }
-        KeyCode::Enter => {
-            if app.compose.text().trim().is_empty() {
-                app.set_action(crate::tui::action::ActionState::Error(
-                    "Message is empty".into(),
-                ));
-                return;
-            }
-            if app.edit_target_id.is_some() {
-                chat::request_save_edit(app);
-            } else {
-                chat::request_send_message(app);
-            }
-        }
+        KeyCode::Enter => submit_compose(app),
 
         // ── history viewport scroll ────────────────────────────────────
         KeyCode::Up => {
@@ -89,17 +104,48 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Char('u') | KeyCode::Char('U') if alt => chat::request_unpin_conversation(app),
         KeyCode::Char('v') | KeyCode::Char('V') if alt => chat::enter_select_mode(app),
         KeyCode::Char('r') | KeyCode::Char('R') if alt => chat::request_resend_message(app),
-        KeyCode::Char('a') | KeyCode::Char('A') if alt => {
-            let start = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            app.picker_action = crate::tui::app::PickerAction::Upload;
-            app.file_picker = Some(crate::tui::file_picker::FilePicker::new(&start));
-        }
+        KeyCode::Char('a') | KeyCode::Char('A') if alt => open_attach_picker(app),
 
         // ── text input (cursor moves + edits) ──────────────────────────
         _ => {
             common::route_line_editor(&mut app.compose, key);
         }
     }
+}
+
+/// Sends the compose buffer (or saves the edit). Shared by the `Enter` key,
+/// the Send button (keyboard activate) and the Send button click.
+pub(crate) fn submit_compose(app: &mut App) {
+    if app.compose.text().trim().is_empty() {
+        app.set_action(crate::tui::action::ActionState::Error(
+            "Message is empty".into(),
+        ));
+        return;
+    }
+    if app.edit_target_id.is_some() {
+        chat::request_save_edit(app);
+    } else {
+        chat::request_send_message(app);
+    }
+}
+
+/// Opens the file picker to attach a file. Shared by `Alt+A`, the Attach
+/// button (keyboard activate) and the Attach button click.
+pub(crate) fn open_attach_picker(app: &mut App) {
+    let start = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    app.picker_action = crate::tui::app::PickerAction::Upload;
+    app.file_picker = Some(crate::tui::file_picker::FilePicker::new(&start));
+}
+
+/// Activates the focused compose button, then returns focus to the input.
+fn activate_focused_button(app: &mut App) {
+    use crate::tui::app::ComposeFocus;
+    match app.compose_focus {
+        ComposeFocus::Send => submit_compose(app),
+        ComposeFocus::Attach => open_attach_picker(app),
+        ComposeFocus::Input => {}
+    }
+    app.compose_focus = ComposeFocus::Input;
 }
 
 fn handle_select(app: &mut App, key: KeyEvent) {

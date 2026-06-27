@@ -26,6 +26,14 @@ pub struct MouseAreas {
     pub filters: Rect,
     pub list: Rect,
     pub cmd_log: Rect,
+    /// Conversation-screen compose buttons (click = same as Enter / Alt+A).
+    pub compose_send: Rect,
+    pub compose_attach: Rect,
+    /// The conversation message viewport (for click-to-select + scroll).
+    pub messages: Rect,
+    /// One screen rect per visible message line, paired with its index in
+    /// `App::messages` — for click-to-select. Built fresh each render.
+    pub message_rows: Vec<(Rect, usize)>,
     /// `(width, height)` of the frame these rects were computed
     /// against. `(0, 0)` for a freshly-reset bag.
     pub frame_size: (u16, u16),

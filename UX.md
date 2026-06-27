@@ -50,7 +50,13 @@ Every signed-in screen is built from the same vertical stack via
 
 The **conversation** screen uses a custom layout (identity · header ·
 messages · compose · status) because the message stream is a *viewer*, not
-a grid. The **login** screen is the signed-out exception: it omits the
+a grid. The compose row has a right-hand column with **Send** / **Attach**
+buttons: clickable, and keyboard-reachable via `Tab` (cycles input → Send →
+Attach) with `Enter`/`Space` to activate — visual affordances that mirror
+the `Enter` and `Alt+A` shortcuts. The whole screen is mouse-interactive:
+click a message to select it (enters select mode on that row), scroll the
+wheel to page history, click the buttons. (`App::compose_focus` tracks the
+focused element; `mouse_areas` carries the button + per-message rects.) The **login** screen is the signed-out exception: it omits the
 identity bar and shows the figlet/starfield backdrop with a "run `keybase
 login`, then R" hint.
 

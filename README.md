@@ -89,6 +89,8 @@ In the **Filters** panel, `↑` / `↓` change the active filter.
 | `Enter`                 | Send / save edit |
 | `↑` / `↓` · `PgUp` / `PgDn` | Scroll history |
 | `←` / `→` · `Home` / `End`  | Compose cursor |
+| `Tab`                   | Focus input ↔ Send / Attach buttons (Enter activates) |
+| mouse                   | Click Send/Attach, click a message to select, scroll history |
 | `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
 | `Alt+U`                 | Unpin channel |
 | `Alt+R`                 | Resend failed message |

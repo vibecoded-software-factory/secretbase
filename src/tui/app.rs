@@ -148,6 +148,38 @@ pub enum PickerAction {
     Download { message_id: u64, filename: String },
 }
 
+/// Which compose-area element holds keyboard focus in a conversation.
+/// `Tab` cycles through them; the buttons are also clickable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ComposeFocus {
+    /// The text input (the default — typing goes here).
+    #[default]
+    Input,
+    /// The Send button.
+    Send,
+    /// The Attach button.
+    Attach,
+}
+
+impl ComposeFocus {
+    /// Next element in Tab order (Input → Send → Attach → Input).
+    pub fn next(self) -> Self {
+        match self {
+            ComposeFocus::Input => ComposeFocus::Send,
+            ComposeFocus::Send => ComposeFocus::Attach,
+            ComposeFocus::Attach => ComposeFocus::Input,
+        }
+    }
+    /// Previous element (reverse Tab order).
+    pub fn prev(self) -> Self {
+        match self {
+            ComposeFocus::Input => ComposeFocus::Attach,
+            ComposeFocus::Send => ComposeFocus::Input,
+            ComposeFocus::Attach => ComposeFocus::Send,
+        }
+    }
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -225,6 +257,9 @@ pub struct App {
     // ── Compose ──────────────────────────────────────────────────────────
     /// Whether the compose pane is open (user is typing a new message).
     pub compose_open: bool,
+    /// Which compose element has keyboard focus (input vs the Send/Attach
+    /// buttons). `Tab` cycles it.
+    pub compose_focus: ComposeFocus,
     /// Current draft, held in the shared [`LineEditor`] so every text
     /// input across the app edits identically (UTF-8-safe cursor,
     /// mid-string editing).
@@ -438,6 +473,7 @@ impl App {
             messages_max_back: 0,
             pinned_msg_id: None,
             compose_open: false,
+            compose_focus: ComposeFocus::default(),
             compose: LineEditor::default(),
             edit_target_id: None,
             reply_to_id: None,

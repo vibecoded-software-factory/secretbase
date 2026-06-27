@@ -47,10 +47,36 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_status_strip(frame, app, layout[4], hint);
 }
 
-fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
+fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
+    use crate::tui::app::ComposeFocus;
+    let t = app.theme.clone();
     let editing = app.edit_target_id.is_some();
     let replying = app.reply_to_id;
+
+    // Split off a right-hand column for the Send / Attach buttons.
+    let cols = Layout::horizontal([Constraint::Min(10), Constraint::Length(14)]).split(area);
+    let input_area = cols[0];
+    let btn_area = cols[1];
+
+    // Button labels + clickable rects (stored for the mouse layer).
+    let send_label = if editing {
+        "[ ⏎ Save ]"
+    } else {
+        "[ ⏎ Send ]"
+    };
+    let attach_label = "[ + Attach ]";
+    app.mouse_areas.compose_send = Rect {
+        x: btn_area.x,
+        y: btn_area.y,
+        width: (send_label.chars().count() as u16).min(btn_area.width),
+        height: 1,
+    };
+    app.mouse_areas.compose_attach = Rect {
+        x: btn_area.x,
+        y: btn_area.y + 1,
+        width: (attach_label.chars().count() as u16).min(btn_area.width),
+        height: 1,
+    };
 
     let (title, _border_focus) = if let Some(id) = app.edit_target_id {
         (format!("Editing msg #{id}"), true)
@@ -72,11 +98,37 @@ fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(t.placeholder),
         ))
     } else {
-        Line::from(editor_spans(&app.compose, true, t))
+        Line::from(editor_spans(&app.compose, true, &t))
+    };
+    let input_focused = app.compose_focus == ComposeFocus::Input;
+    frame.render_widget(
+        Paragraph::new(line).block(titled_block(&title, input_focused, app)),
+        input_area,
+    );
+
+    // Render the two buttons, highlighting whichever has focus.
+    let btn_style = |focused: bool| {
+        if focused {
+            Style::default()
+                .fg(t.accent)
+                .bg(t.selected_bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(t.accent)
+        }
     };
     frame.render_widget(
-        Paragraph::new(line).block(titled_block(&title, true, app)),
-        area,
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                send_label,
+                btn_style(app.compose_focus == ComposeFocus::Send),
+            )),
+            Line::from(Span::styled(
+                attach_label,
+                btn_style(app.compose_focus == ComposeFocus::Attach),
+            )),
+        ]),
+        btn_area,
     );
 }
 
@@ -198,10 +250,13 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let mut selected_line: Option<usize> = None;
+    // Line span [start, end) each message occupies, for click-to-select.
+    let mut spans_map: Vec<(usize, usize, usize)> = Vec::with_capacity(app.messages.len());
     for (idx, m) in app.messages.iter().enumerate() {
+        let start = lines.len();
         let is_selected = app.selected_msg_idx == Some(idx);
         if is_selected {
-            selected_line = Some(lines.len());
+            selected_line = Some(start);
         }
         let mut block = message_lines(m, now_s, app, &t);
         if is_selected {
@@ -225,6 +280,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             lines.push(select_actions_line(m, app, &t));
         }
         lines.push(Line::from(Span::raw("")));
+        spans_map.push((start, lines.len(), idx));
     }
 
     // Optimistic sends sit at the very bottom, after the loaded history.
@@ -288,6 +344,29 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     );
 
     app.messages_max_back = max_back;
+
+    // Mouse hit-testing: the viewport (for scroll) + a screen rect per
+    // visible message (for click-to-select). Content starts one row inside
+    // the top border; line `L` shows at `area.y + 1 + (L - scroll_y)`.
+    app.mouse_areas.messages = area;
+    let inner_top = area.y + 1;
+    let mut rows = Vec::new();
+    for (start, end, idx) in spans_map {
+        let vis_start = start.max(scroll_y);
+        let vis_end = end.min(scroll_y + viewport);
+        if vis_start < vis_end {
+            rows.push((
+                Rect {
+                    x: area.x,
+                    y: inner_top + (vis_start - scroll_y) as u16,
+                    width: area.width,
+                    height: (vis_end - vis_start) as u16,
+                },
+                idx,
+            ));
+        }
+    }
+    app.mouse_areas.message_rows = rows;
 }
 
 /// Builds the bubbles for the optimistic outbox entries targeting the open
