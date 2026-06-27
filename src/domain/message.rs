@@ -214,6 +214,11 @@ pub struct Message {
     /// service's `reactions.reactions` map. Empty when nobody has
     /// reacted yet.
     pub reactions: Vec<Reaction>,
+
+    /// Message id this is a threaded reply to (`content.text.replyTo`),
+    /// `None` for non-reply messages.
+    #[zeroize(skip)]
+    pub reply_to: Option<u64>,
 }
 
 /// Lightweight reaction summary as exposed to the view layer (kept

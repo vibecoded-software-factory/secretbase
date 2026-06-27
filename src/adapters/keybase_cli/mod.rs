@@ -695,6 +695,8 @@ pub(crate) fn parse_message(msg: &Value) -> Option<Message> {
         .unwrap_or(0);
     let content = parse_content(msg.get("content").unwrap_or(&Value::Null));
     let reactions = parse_reactions(msg.get("reactions").unwrap_or(&Value::Null));
+    // Threaded-reply target lives at `content.text.replyTo` (a message id).
+    let reply_to = msg.pointer("/content/text/replyTo").and_then(Value::as_u64);
     Some(Message {
         id,
         sender,
@@ -703,6 +705,7 @@ pub(crate) fn parse_message(msg: &Value) -> Option<Message> {
         sent_at_ms,
         content,
         reactions,
+        reply_to,
     })
 }
 

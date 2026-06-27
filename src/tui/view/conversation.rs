@@ -382,11 +382,44 @@ fn message_lines(
     }
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(3);
     lines.push(Line::from(header_spans));
+    // Threaded reply: quote the message being replied to, above the body.
+    if let Some(target) = m.reply_to {
+        lines.push(reply_quote_line(target, app, t));
+    }
     lines.extend(body_lines(&m.content, t));
     if !m.reactions.is_empty() {
         lines.push(reactions_line(&m.reactions, app, t));
     }
     lines
+}
+
+/// A dim, italic quote of the message a reply targets (`↩ sender · snippet`),
+/// rendered just above the reply's own body. Falls back to `↩ #id` when the
+/// parent isn't in the loaded history.
+fn reply_quote_line(target: u64, app: &App, t: &crate::tui::theme::Theme) -> Line<'static> {
+    let label = app
+        .messages
+        .iter()
+        .find(|m| m.id == target)
+        .map(|m| {
+            let body = match &m.content {
+                MessageContent::Text(b) => b.as_str(),
+                MessageContent::Edit { body, .. } => body.as_str(),
+                MessageContent::Attachment(a) => a.filename.as_str(),
+                _ => "",
+            };
+            let snippet: String = body.lines().next().unwrap_or("").chars().take(48).collect();
+            if snippet.is_empty() {
+                format!("#{target}")
+            } else {
+                format!("{} · {snippet}", m.sender)
+            }
+        })
+        .unwrap_or_else(|| format!("#{target}"));
+    Line::from(Span::styled(
+        format!("   ↩ {label}"),
+        Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
+    ))
 }
 
 fn reactions_line(
