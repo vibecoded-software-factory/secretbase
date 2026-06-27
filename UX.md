@@ -197,6 +197,15 @@ starfield colors `star_dim`/`star_mid`/`star_bright`, and the conversation
 marker colors `conv_dm` / `conv_team` / `conv_unread`. **Don't hardcode
 colors — use these.**
 
+**Presets.** Themes are built from a shared `Palette` (13 named roles) via
+`Theme::from_palette`, which maps the core roles identically to bytewarden and
+jewel and derives secretbase's starfield + conversation-marker colors. Four
+presets ship (`Preset::ALL`: `catppuccin-mocha` (default), `dracula`, `nord`,
+`catppuccin-latte`); `name = "<preset>"` in `[theme]` picks the base and per-key
+hex entries override it. The in-app picker cycles `Preset::next/prev` and applies
+live. Adding a preset = one `Palette` arm in `Preset::palette` (mirror it in all
+three apps).
+
 ## Golden rules
 
 1. **Reuse, don't reinvent** — a new list = `list_table`; a new input =
