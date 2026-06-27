@@ -546,10 +546,7 @@ fn select_actions_line(m: &Message, app: &App, t: &crate::tui::theme::Theme) -> 
     if is_attachment {
         actions.push(("s", "download"));
     }
-    let mut spans: Vec<Span<'static>> = vec![Span::styled(
-        "    ▸ ".to_string(),
-        Style::default().fg(t.accent),
-    )];
+    let mut spans: Vec<Span<'static>> = vec![Span::raw("    ")];
     for (i, (k, label)) in actions.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("  "));
