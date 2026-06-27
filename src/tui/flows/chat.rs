@@ -307,34 +307,64 @@ pub fn open_selected_conversation(app: &mut App) {
         app.set_action(ActionState::Error("No conversation selected".into()));
         return;
     };
-    app.open_conv_id = Some(conv.id.clone());
+    let id = conv.id.clone();
+    enter_conversation(app, id);
+}
+
+/// Shared conversation-open path: stash the previously-open draft, switch to
+/// `id`, restore its draft, and load its messages.
+fn enter_conversation(app: &mut App, id: String) {
+    stash_draft(app);
+    app.open_conv_id = Some(id.clone());
     app.messages.clear();
     app.messages_scroll = 0;
     app.compose_open = true;
-    app.compose_clear();
+    app.edit_target_id = None;
+    app.reply_to_id = None;
+    restore_draft(app, &id);
     app.screen = crate::tui::screens::Screen::Conversation;
     request_load_messages(app);
 }
 
+/// Saves the open conversation's compose text as its draft (in memory).
+/// No-op while editing an existing message (that isn't a draft).
+fn stash_draft(app: &mut App) {
+    if app.edit_target_id.is_some() {
+        return;
+    }
+    if let Some(id) = app.open_conv_id.clone() {
+        let txt = app.compose.text().to_string();
+        if txt.trim().is_empty() {
+            app.drafts.remove(&id);
+        } else {
+            app.drafts.insert(id, txt);
+        }
+    }
+}
+
+/// Loads the conversation's saved draft into the compose (or clears it).
+fn restore_draft(app: &mut App, id: &str) {
+    match app.drafts.get(id) {
+        Some(d) => app.compose.set(d.clone()),
+        None => app.compose.clear(),
+    }
+}
+
 pub fn close_conversation(app: &mut App) {
+    stash_draft(app);
     app.open_conv_id = None;
     app.messages.clear();
     app.messages_scroll = 0;
     app.messages_next = None;
     app.messages_loading_older = false;
+    app.compose_clear();
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
 /// Opens a conversation directly by id (used by the quick switcher, which
 /// may target a conversation outside the current inbox filter).
 pub fn open_conversation_by_id(app: &mut App, id: String) {
-    app.open_conv_id = Some(id);
-    app.messages.clear();
-    app.messages_scroll = 0;
-    app.compose_open = true;
-    app.compose_clear();
-    app.screen = crate::tui::screens::Screen::Conversation;
-    request_load_messages(app);
+    enter_conversation(app, id);
 }
 
 // ── Quick switcher (Ctrl+K) ──────────────────────────────────────────
@@ -353,8 +383,8 @@ pub fn close_quick_switcher(app: &mut App) {
 
 /// Jumps to the highlighted conversation in the switcher.
 pub fn quick_switcher_open_selected(app: &mut App) {
-    let results = app.switcher_results();
-    let Some(&i) = results.get(app.switcher_selected) else {
+    let selectable = app.switcher_selectable();
+    let Some(&i) = selectable.get(app.switcher_selected) else {
         close_quick_switcher(app);
         return;
     };
@@ -1391,6 +1421,8 @@ pub fn request_send_message(app: &mut App) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
+    // The draft is being sent — drop any saved copy for this conversation.
+    app.drafts.remove(&conv_id);
     app.outbox.push(PendingSend {
         conv_id,
         body: body.clone(),

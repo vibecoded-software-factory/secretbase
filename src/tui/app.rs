@@ -6,7 +6,7 @@
 //! [`input`](crate::tui::input), [`view`](crate::tui::view)) read and
 //! mutate `App` through `&mut App`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -148,6 +148,13 @@ pub enum PickerAction {
     Download { message_id: u64, filename: String },
 }
 
+/// A row in the quick switcher: a non-selectable section header, or a
+/// conversation (index into `conversations`).
+pub enum SwitcherRow {
+    Header(&'static str),
+    Conv(usize),
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -275,6 +282,9 @@ pub struct App {
     pub switcher_selected: usize,
     /// Screen the switcher was opened from, restored on cancel.
     pub switcher_from: Screen,
+    /// Per-conversation unsent draft text (in memory only — not persisted
+    /// across restarts). Keyed by conversation id.
+    pub drafts: HashMap<String, String>,
 
     // ── New-conversation popup ──────────────────────────────────────────
     /// Comma-separated usernames typed by the user in the Alt+N popup.
@@ -463,6 +473,7 @@ impl App {
             switcher: LineEditor::default(),
             switcher_selected: 0,
             switcher_from: Screen::Inbox,
+            drafts: HashMap::new(),
             new_conv: LineEditor::default(),
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
@@ -554,6 +565,60 @@ impl App {
             scored.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
             scored.into_iter().map(|(i, _)| i).collect()
         }
+    }
+
+    /// Rows for the quick switcher. With a query it's a flat fuzzy list;
+    /// empty, it's Discord-style sections: Drafts, Unread, then Recent
+    /// (each by recency, no conversation repeated across sections).
+    pub fn switcher_rows(&self) -> Vec<SwitcherRow> {
+        if !self.switcher.text().trim().is_empty() {
+            return self
+                .switcher_results()
+                .into_iter()
+                .map(SwitcherRow::Conv)
+                .collect();
+        }
+        let by_recency = |idxs: &mut Vec<usize>| {
+            idxs.sort_by_key(|&i| std::cmp::Reverse(self.conversations[i].active_at_ms));
+        };
+        let mut drafts: Vec<usize> = (0..self.conversations.len())
+            .filter(|&i| {
+                self.drafts
+                    .get(&self.conversations[i].id)
+                    .is_some_and(|d| !d.trim().is_empty())
+            })
+            .collect();
+        by_recency(&mut drafts);
+        let mut unread: Vec<usize> = (0..self.conversations.len())
+            .filter(|&i| self.conversations[i].unread && !drafts.contains(&i))
+            .collect();
+        by_recency(&mut unread);
+        let shown: HashSet<usize> = drafts.iter().chain(unread.iter()).copied().collect();
+        let mut recent: Vec<usize> = (0..self.conversations.len())
+            .filter(|i| !shown.contains(i))
+            .collect();
+        by_recency(&mut recent);
+
+        let mut rows = Vec::new();
+        for (label, group) in [("Drafts", drafts), ("Unread", unread), ("Recent", recent)] {
+            if !group.is_empty() {
+                rows.push(SwitcherRow::Header(label));
+                rows.extend(group.into_iter().map(SwitcherRow::Conv));
+            }
+        }
+        rows
+    }
+
+    /// The selectable conversation indices of [`Self::switcher_rows`], in
+    /// display order — what `switcher_selected` indexes.
+    pub fn switcher_selectable(&self) -> Vec<usize> {
+        self.switcher_rows()
+            .into_iter()
+            .filter_map(|r| match r {
+                SwitcherRow::Conv(i) => Some(i),
+                SwitcherRow::Header(_) => None,
+            })
+            .collect()
     }
 
     /// Opens the Settings overlay over the current screen. Stashes the

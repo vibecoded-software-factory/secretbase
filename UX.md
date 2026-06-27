@@ -107,12 +107,20 @@ badge clears as soon as a conversation is read (not on the next resync).
 
 Discord-style jump-to-conversation modal (`Screen::QuickSwitcher`), opened
 with `Ctrl+K` from the inbox or an open conversation (returns to wherever it
-was opened — `App::switcher_from`). A search box over **all** conversations:
-empty query lists them most-recent first, typing fuzzy-ranks them via the
-same `fuzzy_score_lowered` the inbox uses (`App::switcher_results`). `↑/↓`
-select, `Enter` jumps (opens by conv id, bypassing the inbox filter), `Esc`
-cancels. It's navigation, distinct from `/` (inbox filter) and `Ctrl+G`
-(message-content search).
+was opened — `App::switcher_from`). With an **empty** query it shows
+Discord-style sections — **Drafts**, **Unread**, **Recent** — each by
+recency, no conversation repeated (`App::switcher_rows` →
+`SwitcherRow::{Header,Conv}`); **typing** collapses to a flat fuzzy list
+(`fuzzy_score_lowered`). Unread rows carry a `●`. `↑/↓` select (over the
+selectable convs, `switcher_selectable`), `Enter` jumps (opens by conv id,
+bypassing the inbox filter), `Esc` cancels. The footer degrades to
+`↑↓ select · Enter` when the modal is too narrow for the full hint.
+
+**Drafts** (`App::drafts`, in memory only — not persisted): the compose text
+you leave unsent is stashed per conversation when you switch/close, restored
+on reopen, and dropped on send. Editing an existing message isn't stashed.
+It's navigation, distinct from `/` (inbox filter) and `Ctrl+G` (message
+search).
 
 ## File picker (`tui::file_picker`)
 

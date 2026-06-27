@@ -118,7 +118,7 @@ pub fn quick_switcher(app: &mut App, key: KeyEvent) {
 }
 
 fn switcher_move(app: &mut App, delta: isize) {
-    let len = app.switcher_results().len();
+    let len = app.switcher_selectable().len();
     if len == 0 {
         return;
     }

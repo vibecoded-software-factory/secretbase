@@ -121,53 +121,90 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
     search.extend(editor_spans(&app.switcher, true, t));
     frame.render_widget(Paragraph::new(Line::from(search)), rows[0]);
 
-    let results = app.switcher_results();
-    let vh = rows[1].height as usize;
+    let switcher_rows = app.switcher_rows();
+    let vh = rows[1].height.max(1) as usize;
+    // Display-row index of the selected conversation, for windowing.
+    let mut sel_row = 0usize;
+    let mut cc = 0usize;
+    for (ri, r) in switcher_rows.iter().enumerate() {
+        if matches!(r, crate::tui::app::SwitcherRow::Conv(_)) {
+            if cc == app.switcher_selected {
+                sel_row = ri;
+            }
+            cc += 1;
+        }
+    }
+    let scroll = if sel_row >= vh { sel_row + 1 - vh } else { 0 };
+
     let mut lines: Vec<Line<'static>> = Vec::new();
-    if results.is_empty() {
+    if switcher_rows.is_empty() {
         lines.push(Line::from(Span::styled(
             "  no conversation matches".to_string(),
             Style::default().fg(t.dim),
         )));
     } else {
-        let sel = app.switcher_selected.min(results.len() - 1);
-        let scroll = if vh > 0 && sel >= vh { sel + 1 - vh } else { 0 };
-        for (row, &ci) in results.iter().enumerate().skip(scroll).take(vh.max(1)) {
-            let label = app
-                .conversations_lowered
-                .get(ci)
-                .map(|l| l.display_label.clone())
-                .unwrap_or_default();
-            let mut spans = vec![
-                Span::styled(
-                    if row == sel { "▶ " } else { "  " }.to_string(),
-                    Style::default().fg(t.accent),
-                ),
-                Span::styled(
-                    label,
-                    if row == sel {
-                        Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(t.foreground)
-                    },
-                ),
-            ];
-            if row == sel {
-                for s in &mut spans {
-                    s.style = s.style.bg(t.selected_bg);
+        let mut conv_i = 0usize;
+        for (ri, r) in switcher_rows.iter().enumerate() {
+            let visible = ri >= scroll && ri < scroll + vh;
+            match r {
+                crate::tui::app::SwitcherRow::Header(h) => {
+                    if visible {
+                        lines.push(Line::from(Span::styled(
+                            format!(" {}", h.to_uppercase()),
+                            Style::default().fg(t.dim).add_modifier(Modifier::BOLD),
+                        )));
+                    }
+                }
+                crate::tui::app::SwitcherRow::Conv(ci) => {
+                    let selected = conv_i == app.switcher_selected;
+                    conv_i += 1;
+                    if !visible {
+                        continue;
+                    }
+                    let unread = app.conversations.get(*ci).is_some_and(|c| c.unread);
+                    let label = app
+                        .conversations_lowered
+                        .get(*ci)
+                        .map(|l| l.display_label.clone())
+                        .unwrap_or_default();
+                    let mut spans = vec![Span::styled(
+                        if selected { "▶ " } else { "  " }.to_string(),
+                        Style::default().fg(t.accent),
+                    )];
+                    if unread {
+                        spans.push(Span::styled("● ", Style::default().fg(t.conv_unread)));
+                    }
+                    spans.push(Span::styled(
+                        label,
+                        if selected {
+                            Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(t.foreground)
+                        },
+                    ));
+                    if selected {
+                        for s in &mut spans {
+                            s.style = s.style.bg(t.selected_bg);
+                        }
+                    }
+                    lines.push(Line::from(spans));
                 }
             }
-            lines.push(Line::from(spans));
         }
     }
     frame.render_widget(Paragraph::new(lines), rows[1]);
 
+    // Footer degrades to a short hint when the modal is too narrow.
+    let full = "↑↓ select · Enter go · type to search · Esc cancel";
+    let short = "↑↓ select · Enter";
+    let hint = if full.chars().count() <= rows[2].width as usize {
+        full
+    } else {
+        short
+    };
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "↑↓ select · Enter go · type to search · Esc cancel",
-            Style::default().fg(t.dim),
-        )))
-        .alignment(Alignment::Center),
+        Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(t.dim))))
+            .alignment(Alignment::Center),
         rows[2],
     );
 }

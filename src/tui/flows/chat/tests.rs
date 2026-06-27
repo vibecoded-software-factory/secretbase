@@ -1514,6 +1514,64 @@ fn quick_switcher_lists_all_then_filters_by_name() {
     assert_eq!(rig.app.conversations[r[0]].id, "b");
 }
 
+#[test]
+fn switcher_sections_group_drafts_unread_recent_without_repeats() {
+    use crate::tui::app::SwitcherRow;
+    let mut rig = build_rig();
+    let mut unread_conv = conv("u", "uconv", MembersType::ImpTeamNative);
+    unread_conv.unread = true;
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("a", "alice", MembersType::ImpTeamNative),
+            conv("b", "bob", MembersType::ImpTeamNative),
+            unread_conv,
+        ],
+        "a",
+    );
+    rig.app.drafts.insert("a".into(), "wip".into());
+    rig.app.switcher.clear();
+    let rows = rig.app.switcher_rows();
+    let headers: Vec<&str> = rows
+        .iter()
+        .filter_map(|r| match r {
+            SwitcherRow::Header(h) => Some(*h),
+            _ => None,
+        })
+        .collect();
+    assert!(headers.contains(&"Drafts"));
+    assert!(headers.contains(&"Unread"));
+    assert!(headers.contains(&"Recent"));
+    // Every conversation is listed exactly once across the sections.
+    let sel = rig.app.switcher_selectable();
+    let unique: std::collections::HashSet<_> = sel.iter().collect();
+    assert_eq!(sel.len(), unique.len());
+    assert_eq!(sel.len(), 3);
+}
+
+#[test]
+fn drafts_are_stashed_and_restored_per_conversation() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("a", "alice", MembersType::ImpTeamNative),
+            conv("b", "bob", MembersType::ImpTeamNative),
+        ],
+        "a",
+    );
+    open_conversation_by_id(&mut rig.app, "a".into());
+    rig.app.compose.set("hi from a");
+    // Switch away → 'a' stashes its draft; 'b' has none.
+    open_conversation_by_id(&mut rig.app, "b".into());
+    assert_eq!(rig.app.compose.text(), "");
+    // Back to 'a' → the draft is restored.
+    open_conversation_by_id(&mut rig.app, "a".into());
+    assert_eq!(rig.app.compose.text(), "hi from a");
+}
+
 // ── Unread counter ────────────────────────────────────────────────────
 
 #[test]
