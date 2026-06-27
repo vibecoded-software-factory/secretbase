@@ -38,35 +38,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_compose(app: &mut App, key: KeyEvent) {
-    use crate::tui::app::ComposeFocus;
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
-
-    // Tab cycles focus across the input and the Send / Attach buttons.
-    if key.code == KeyCode::Tab {
-        app.compose_focus = app.compose_focus.next();
-        return;
-    }
-    if key.code == KeyCode::BackTab {
-        app.compose_focus = app.compose_focus.prev();
-        return;
-    }
-    // While a button has focus, Enter/Space activates it; Esc (or any other
-    // key) returns focus to the input — other keys then fall through so
-    // typing immediately resumes editing.
-    if app.compose_focus != ComposeFocus::Input {
-        match key.code {
-            KeyCode::Enter | KeyCode::Char(' ') => {
-                activate_focused_button(app);
-                return;
-            }
-            KeyCode::Esc => {
-                app.compose_focus = ComposeFocus::Input;
-                return;
-            }
-            _ => app.compose_focus = ComposeFocus::Input,
-        }
-    }
 
     match key.code {
         // ── lifecycle ───────────────────────────────────────────────────
@@ -135,17 +108,6 @@ pub(crate) fn open_attach_picker(app: &mut App) {
     let start = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     app.picker_action = crate::tui::app::PickerAction::Upload;
     app.file_picker = Some(crate::tui::file_picker::FilePicker::new(&start));
-}
-
-/// Activates the focused compose button, then returns focus to the input.
-fn activate_focused_button(app: &mut App) {
-    use crate::tui::app::ComposeFocus;
-    match app.compose_focus {
-        ComposeFocus::Send => submit_compose(app),
-        ComposeFocus::Attach => open_attach_picker(app),
-        ComposeFocus::Input => {}
-    }
-    app.compose_focus = ComposeFocus::Input;
 }
 
 fn handle_select(app: &mut App, key: KeyEvent) {

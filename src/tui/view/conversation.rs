@@ -47,39 +47,17 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_status_strip(frame, app, layout[4], hint);
 }
 
-fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
-    use crate::tui::app::ComposeFocus;
-    let t = app.theme.clone();
+fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
     let editing = app.edit_target_id.is_some();
     let replying = app.reply_to_id;
 
-    // Right-hand column for the compose buttons, rendered as padded "pills"
-    // (` ⏎ ` / ` 📎 `) — the same idiom as the confirm-popup buttons — and
-    // vertically centred. The focused one gets a highlight background.
-    let cols = Layout::horizontal([Constraint::Min(10), Constraint::Length(10)]).split(area);
-    let input_area = cols[0];
-    let btn_area = cols[1];
-    let btn_y = btn_area.y + btn_area.height / 2; // middle row
-    // Row: ` ⏎ `(3) + `  `(2) + ` 📎 `(4). The rects cover the whole pill.
-    app.mouse_areas.compose_send = Rect {
-        x: btn_area.x,
-        y: btn_y,
-        width: 3,
-        height: 1,
-    };
-    app.mouse_areas.compose_attach = Rect {
-        x: btn_area.x + 5,
-        y: btn_y,
-        width: 4,
-        height: 1,
-    };
-
-    let (title, _border_focus) = if let Some(id) = app.edit_target_id {
-        (format!("Editing msg #{id}"), true)
+    let title = if let Some(id) = app.edit_target_id {
+        format!("Editing msg #{id}")
     } else if let Some(id) = replying {
-        (format!("Replying to #{id}"), true)
+        format!("Replying to #{id}")
     } else {
-        ("Compose".to_string(), true)
+        "Compose".to_string()
     };
     let placeholder = if editing {
         "edit text below — Enter saves, Esc cancels"
@@ -94,39 +72,11 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
             Style::default().fg(t.placeholder),
         ))
     } else {
-        Line::from(editor_spans(&app.compose, true, &t))
+        Line::from(editor_spans(&app.compose, true, t))
     };
-    let input_focused = app.compose_focus == ComposeFocus::Input;
     frame.render_widget(
-        Paragraph::new(line).block(titled_block(&title, input_focused, app)),
-        input_area,
-    );
-
-    // Pill buttons: padded label with a highlight background when focused
-    // (matches `widgets::draw_confirm_popup`).
-    let pill = |focused: bool| {
-        if focused {
-            Style::default()
-                .fg(t.accent)
-                .bg(t.selected_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(t.foreground)
-        }
-    };
-    let buttons = Line::from(vec![
-        Span::styled(" ⏎ ", pill(app.compose_focus == ComposeFocus::Send)),
-        Span::raw("  "),
-        Span::styled(" 📎 ", pill(app.compose_focus == ComposeFocus::Attach)),
-    ]);
-    frame.render_widget(
-        Paragraph::new(buttons),
-        Rect {
-            x: btn_area.x,
-            y: btn_y,
-            width: btn_area.width,
-            height: 1,
-        },
+        Paragraph::new(line).block(titled_block(&title, true, app)),
+        area,
     );
 }
 

@@ -26,9 +26,6 @@ pub struct MouseAreas {
     pub filters: Rect,
     pub list: Rect,
     pub cmd_log: Rect,
-    /// Conversation-screen compose buttons (click = same as Enter / Alt+A).
-    pub compose_send: Rect,
-    pub compose_attach: Rect,
     /// The conversation message viewport (for click-to-select + scroll).
     pub messages: Rect,
     /// One screen rect per visible message line, paired with its index in

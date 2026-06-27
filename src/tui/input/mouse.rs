@@ -56,15 +56,6 @@ fn handle_conversation(app: &mut App, ev: MouseEvent) {
     let (c, r) = (ev.column, ev.row);
     match ev.kind {
         MouseEventKind::Down(_) => {
-            // Compose buttons.
-            if hit_test(c, r, app.mouse_areas.compose_send) {
-                conversation::submit_compose(app);
-                return;
-            }
-            if hit_test(c, r, app.mouse_areas.compose_attach) {
-                conversation::open_attach_picker(app);
-                return;
-            }
             // Click a message to select it (enters select mode on that row).
             let clicked = app
                 .mouse_areas
