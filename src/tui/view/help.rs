@@ -70,6 +70,7 @@ fn screen_label(screen: Screen) -> &'static str {
         Screen::Conversation => "Conversation",
         Screen::Teams => "Teams",
         Screen::Login => "Login",
+        Screen::Settings => "Settings",
         _ => "Global",
     }
 }
@@ -131,6 +132,26 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 lines.push(help_line(k, d, t));
             }
         }
+        Screen::Settings => {
+            lines.push(section("Settings (F9)", t));
+            for (k, d) in [
+                ("Tab", "switch sidebar / panel"),
+                ("↑/↓ k/j", "move within pane"),
+                ("→ / Enter", "open section (from sidebar)"),
+                ("← / h", "back to sidebar (from panel)"),
+            ] {
+                lines.push(help_line(k, d, t));
+            }
+            lines.push(Line::raw(""));
+            lines.push(section("Theme", t));
+            for (k, d) in [
+                ("↑/↓", "preview a preset live"),
+                ("Enter", "apply + save to config.toml"),
+                ("Esc / F9", "cancel — restore previous theme"),
+            ] {
+                lines.push(help_line(k, d, t));
+            }
+        }
         _ => {
             lines.push(section("Inbox", t));
             for (k, d) in [
@@ -171,6 +192,7 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
     lines.push(section("Global", t));
     for (k, d) in [
         ("F1", "toggle help"),
+        ("F9", "settings (theme…)"),
         ("↑/↓ j/k", "scroll help"),
         ("q / Esc", "close help"),
         ("Ctrl+C", "quit"),

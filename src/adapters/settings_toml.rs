@@ -239,6 +239,13 @@ impl SettingsPort for TomlSettingsAdapter {
         });
     }
 
+    fn write_theme_name(&self, name: &str) {
+        let name = name.to_string();
+        self.rewrite(move |buf| {
+            buf.set_theme_name(&name);
+        });
+    }
+
     fn config_dir(&self) -> PathBuf {
         self.dir.clone()
     }
@@ -343,6 +350,35 @@ impl UpdateBuffer {
             existing.1 = value.to_string();
         } else {
             self.owned.push((key.to_string(), value.to_string()));
+        }
+    }
+
+    /// Sets `name = "<name>"` inside the preserved `[theme]` section,
+    /// replacing any existing `name` line there; creates the section
+    /// when absent. The `[theme]` block belongs to the theme loader, so
+    /// we touch only the single `name` line.
+    fn set_theme_name(&mut self, name: &str) {
+        match self.preserved.iter().position(|l| l.trim() == "[theme]") {
+            Some(h) => {
+                // Drop an existing `name` line within this section.
+                let mut i = h + 1;
+                while i < self.preserved.len() {
+                    let t = self.preserved[i].trim();
+                    if t.starts_with('[') {
+                        break; // next section starts
+                    }
+                    if t.split_once('=').is_some_and(|(k, _)| k.trim() == "name") {
+                        self.preserved.remove(i);
+                        continue;
+                    }
+                    i += 1;
+                }
+                self.preserved.insert(h + 1, format!("name = \"{name}\""));
+            }
+            None => {
+                self.preserved.push("[theme]".to_string());
+                self.preserved.push(format!("name = \"{name}\""));
+            }
         }
     }
 
@@ -651,5 +687,43 @@ mod tests {
         assert_eq!(strip_inline_comment("\"#abcdef\" # color"), "\"#abcdef\"");
         // No comment — returns input.
         assert_eq!(strip_inline_comment("no hash here"), "no hash here");
+    }
+
+    #[test]
+    fn write_theme_name_inserts_into_section_preserving_overrides() {
+        let tmp = TempDir::new().unwrap();
+        let a = adapter_in(&tmp);
+        a.ensure_dir();
+        fs::write(
+            a.file(),
+            "auto_mark_read = true\n[theme]\naccent = \"#ff0000\"\n",
+        )
+        .unwrap();
+        a.write_theme_name("dracula");
+        let out = fs::read_to_string(a.file()).unwrap();
+        assert!(out.contains("name = \"dracula\""));
+        assert!(out.contains("accent = \"#ff0000\""));
+        assert!(out.contains("auto_mark_read = true"));
+        let theme_at = out.find("[theme]").unwrap();
+        let name_at = out.find("name = \"dracula\"").unwrap();
+        assert!(name_at > theme_at, "name must sit inside [theme]");
+        // A second write replaces, not duplicates.
+        a.write_theme_name("nord");
+        let out2 = fs::read_to_string(a.file()).unwrap();
+        assert_eq!(out2.matches("name = ").count(), 1);
+        assert!(out2.contains("name = \"nord\""));
+    }
+
+    #[test]
+    fn write_theme_name_creates_section_when_absent() {
+        let tmp = TempDir::new().unwrap();
+        let a = adapter_in(&tmp);
+        a.ensure_dir();
+        fs::write(a.file(), "auto_mark_read = true\n").unwrap();
+        a.write_theme_name("nord");
+        let out = fs::read_to_string(a.file()).unwrap();
+        assert!(out.contains("[theme]"));
+        assert!(out.contains("name = \"nord\""));
+        assert!(out.contains("auto_mark_read = true"));
     }
 }

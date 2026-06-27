@@ -19,6 +19,9 @@ pub enum Screen {
     Conversation,
     /// Help popup overlay.
     Help,
+    /// Settings overlay — a sectioned preferences screen (Theme first),
+    /// opened with `F9` from any base screen.
+    Settings,
     /// Confirm-logout popup overlay.
     ConfirmLogout,
     /// Confirm a status action (ignore/…) on the selected conversation.

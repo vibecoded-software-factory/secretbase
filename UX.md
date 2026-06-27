@@ -174,7 +174,8 @@ filter box, `input::common::search_key`/`SearchAction`. Rendering is always
 
 ## Keybindings (global conventions)
 
-- `/` focus search · `Esc`/`h` back · `F1` help · `Tab`/`Shift+Tab` cycle
+- `/` focus search · `Esc`/`h` back · `F1` help · `F9` Settings ·
+  `Tab`/`Shift+Tab` cycle
   focus · **only `Ctrl+C` quits** (everything else is free for navigation /
   type-to-search).
 - `j/k` + `↑/↓` navigate · `PgUp/PgDn` page · `g/G` top/bottom ·
@@ -200,11 +201,24 @@ colors — use these.**
 **Presets.** Themes are built from a shared `Palette` (13 named roles) via
 `Theme::from_palette`, which maps the core roles identically to bytewarden and
 jewel and derives secretbase's starfield + conversation-marker colors. Four
-presets ship (`Preset::ALL`: `catppuccin-mocha` (default), `dracula`, `nord`,
-`catppuccin-latte`); `name = "<preset>"` in `[theme]` picks the base and per-key
-hex entries override it. The in-app picker cycles `Preset::next/prev` and applies
-live. Adding a preset = one `Palette` arm in `Preset::palette` (mirror it in all
-three apps).
+presets ship (`Preset::ALL`: `catppuccin-mocha`, `dracula`, `nord` (default —
+`Preset::DEFAULT`), `catppuccin-latte`); `name = "<preset>"` in `[theme]` picks
+the base and per-key hex entries override it. The Settings picker applies live.
+Adding a preset = one `Palette` arm in `Preset::palette` (mirror it in all three
+apps).
+
+## Settings overlay (`F9`)
+
+`F9` opens a centered **Settings** overlay (`Screen::Settings`, drawn over
+`settings_from` like Help) — `view::settings::draw_popup`, input in
+`input::settings`. Layout: a left **section sidebar** + the active section's
+**panel**, `Tab`/arrows move between and within them. It's **sectioned so the
+preferences surface can grow** (Clipboard, Notifications…) without changing the
+chrome; today the only section is **Theme**, a preset picker that **previews
+live** as you move (`App::settings_preview_theme`) — `Enter` applies + persists
+`name = "<preset>"` to `config.toml` (`SettingsPort::write_theme_name`), `Esc`/`F9`
+cancels and restores the pre-open theme. Shared verbatim with jewel; add a new
+section by extending `SettingsSection`.
 
 ## Golden rules
 

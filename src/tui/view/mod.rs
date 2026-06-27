@@ -13,6 +13,7 @@ pub mod logo;
 pub mod new_conversation;
 pub mod popups;
 pub mod search_global;
+pub mod settings;
 pub mod splash;
 pub mod starfield;
 pub mod teams;
@@ -58,12 +59,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // from — use `help_from`, not an open-conversation heuristic, so
         // e.g. Teams isn't drawn as Inbox underneath.
         Screen::Help => app.help_from,
+        Screen::Settings => app.settings_from,
         other => other,
     };
     draw_screen(frame, app, base);
 
     match app.screen {
         Screen::Help => help::draw(frame, app),
+        Screen::Settings => settings::draw_popup(frame, app),
         Screen::ConfirmLogout => widgets::draw_confirm_popup(
             frame,
             frame.area(),

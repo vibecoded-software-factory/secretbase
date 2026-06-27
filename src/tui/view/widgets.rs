@@ -480,8 +480,8 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, area: Rect, footer_hint: 
         return;
     }
 
-    const HELP_ANCHOR: &str = "F1 help";
-    let anchor_block = HELP_ANCHOR.len() + 2;
+    const HELP_ANCHOR: &str = "F1 help · F9 settings";
+    let anchor_block = HELP_ANCHOR.chars().count() + 2;
     let avail = (area.width as usize).saturating_sub(anchor_block);
     let hint: String = footer_hint.chars().take(avail).collect();
     frame.render_widget(

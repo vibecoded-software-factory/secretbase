@@ -106,6 +106,7 @@ edit / delete / react / pin · `r` / `s` reply / download ·
 | Key | Action |
 |---|---|
 | `F1`                    | Toggle help |
+| `F9`                    | Open Settings (Theme preset picker; more sections coming) |
 | `Ctrl+C`                | Quit |
 
 ## Configuration
@@ -119,8 +120,8 @@ download_timeout_secs = 300        # wall-clock budget for attachment downloads
 auto_mark_read = true              # mark conversations as read when opened
 
 [theme]
-name         = "catppuccin-mocha"  # bundled preset: catppuccin-mocha (default),
-                                    # dracula, nord, catppuccin-latte (light)
+name         = "nord"              # bundled preset: nord (default),
+                                    # catppuccin-mocha, dracula, catppuccin-latte (light)
 accent       = "#cba6f7"           # optional per-key overrides on top of the preset
 inactive     = "#6c7086"
 selected_bg  = "#313244"
@@ -128,9 +129,9 @@ selected_bg  = "#313244"
 ```
 
 Pick a bundled palette with `name`, then override individual keys if you want.
-Omitting `name` keeps the shared default (Catppuccin Mocha with terminal-inherited
-text). You can also switch presets live in-app. The same four presets ship in
-bytewarden and jewel, so the three look identical.
+Omitting `name` keeps the shared default (Nord with terminal-inherited text).
+You can also switch presets live in-app from the **Settings** screen (`F9`). The
+same four presets ship in bytewarden and jewel, so the three look identical.
 
 ## Architecture
 

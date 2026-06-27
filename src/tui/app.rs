@@ -72,6 +72,35 @@ impl ConvAction {
     }
 }
 
+/// Which pane of the Settings overlay currently holds focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsFocus {
+    /// The left-hand list of sections.
+    Sidebar,
+    /// The right-hand panel showing the active section's options.
+    Panel,
+}
+
+/// A section of the Settings overlay. Sectioned so the preferences
+/// surface can grow (Clipboard, Notifications…) without changing the
+/// layout. Today only [`SettingsSection::Theme`] exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsSection {
+    Theme,
+}
+
+impl SettingsSection {
+    /// Every section, in sidebar order.
+    pub const ALL: [SettingsSection; 1] = [SettingsSection::Theme];
+
+    /// The sidebar label.
+    pub fn label(self) -> &'static str {
+        match self {
+            SettingsSection::Theme => "Theme",
+        }
+    }
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -233,6 +262,21 @@ pub struct App {
     pub settings_cache: UserSettings,
     pub theme: Theme,
 
+    // ── Settings overlay (F9) ──────────────────────────────────────────────
+    /// Which pane of the Settings overlay holds focus.
+    pub settings_focus: SettingsFocus,
+    /// Highlighted section in the sidebar (index into
+    /// [`SettingsSection::ALL`]).
+    pub settings_section: usize,
+    /// Highlighted preset in the Theme panel (index into
+    /// [`theme::Preset::ALL`]). Previews live as it moves.
+    pub settings_theme_idx: usize,
+    /// Theme active when the Settings overlay opened — restored if the
+    /// user cancels (`Esc`/`F9`) instead of confirming.
+    pub theme_before_settings: Theme,
+    /// Screen the Settings overlay was opened from (returned to on close).
+    pub settings_from: Screen,
+
     // ── Lifecycle ─────────────────────────────────────────────────────────
     pub should_quit: bool,
     pub last_activity: Instant,
@@ -293,6 +337,12 @@ impl App {
     ) -> Self {
         let settings_cache = settings.read();
         let theme = theme::load(&settings.config_dir());
+        // Preselect the picker on the configured preset, else the shared
+        // default (Nord).
+        let settings_theme_idx = theme::configured_preset(&settings.config_dir())
+            .or(Some(theme::Preset::DEFAULT))
+            .and_then(|p| theme::Preset::ALL.iter().position(|&q| q == p))
+            .unwrap_or(0);
         Self {
             screen: Screen::Splash,
             focus: Focus::List,
@@ -339,7 +389,12 @@ impl App {
             cmd_log: Vec::new(),
             cmd_log_scroll: 0,
             settings_cache,
-            theme,
+            theme: theme.clone(),
+            settings_focus: SettingsFocus::Sidebar,
+            settings_section: 0,
+            settings_theme_idx,
+            theme_before_settings: theme,
+            settings_from: Screen::Inbox,
             should_quit: false,
             last_activity: Instant::now(),
             start_time: Instant::now(),
@@ -356,6 +411,44 @@ impl App {
             clipboard,
             settings,
         }
+    }
+
+    /// Opens the Settings overlay over the current screen. Stashes the
+    /// originating screen and the active theme (so `Esc`/`F9` can restore
+    /// it), and starts focus on the section sidebar.
+    pub fn open_settings(&mut self) {
+        self.settings_from = self.screen;
+        self.theme_before_settings = self.theme.clone();
+        self.settings_focus = SettingsFocus::Sidebar;
+        self.settings_section = 0;
+        self.screen = Screen::Settings;
+    }
+
+    /// Applies the highlighted preset to [`Self::theme`] as a live
+    /// preview — no persistence. Called whenever the picker moves.
+    pub fn settings_preview_theme(&mut self) {
+        if let Some(&p) = theme::Preset::ALL.get(self.settings_theme_idx) {
+            self.theme = Theme::from_palette(&p.palette());
+        }
+    }
+
+    /// Confirms the highlighted preset: applies it, persists
+    /// `name = "<preset>"` to `config.toml`, and closes the overlay.
+    pub fn settings_confirm_theme(&mut self) {
+        if let Some(&p) = theme::Preset::ALL.get(self.settings_theme_idx) {
+            self.theme = Theme::from_palette(&p.palette());
+            self.settings.write_theme_name(p.name());
+            self.push_cmd("theme", true, format!("saved {}", p.name()));
+            self.set_action(ActionState::Done(format!("Theme: {}", p.label())));
+        }
+        self.screen = self.settings_from;
+    }
+
+    /// Cancels the Settings overlay: restores the theme that was active
+    /// when it opened (dropping any live preview) and closes it.
+    pub fn settings_cancel(&mut self) {
+        self.theme = self.theme_before_settings.clone();
+        self.screen = self.settings_from;
     }
 
     /// Convenience: whether the worker is currently processing a
@@ -591,6 +684,7 @@ mod tests {
         }
         fn write_auto_mark_read(&self, _: bool) {}
         fn write_clipboard_clear_secs(&self, _: u64) {}
+        fn write_theme_name(&self, _: &str) {}
         fn config_dir(&self) -> PathBuf {
             PathBuf::from(".")
         }
@@ -611,6 +705,36 @@ mod tests {
             Box::new(FakeClipboard),
             Box::new(FakeSettings),
         )
+    }
+
+    #[test]
+    fn settings_open_preview_cancel_restores_theme() {
+        let mut app = fresh_app();
+        app.screen = Screen::Inbox;
+        let original = app.theme.accent;
+        app.open_settings();
+        assert_eq!(app.screen, Screen::Settings);
+        assert_eq!(app.settings_from, Screen::Inbox);
+        app.settings_theme_idx = 1; // dracula
+        app.settings_preview_theme();
+        assert_ne!(app.theme.accent, original);
+        app.settings_cancel();
+        assert_eq!(app.theme.accent, original);
+        assert_eq!(app.screen, Screen::Inbox);
+    }
+
+    #[test]
+    fn settings_confirm_applies_and_closes() {
+        let mut app = fresh_app();
+        app.screen = Screen::Teams;
+        app.open_settings();
+        app.settings_theme_idx = 1; // dracula
+        app.settings_confirm_theme();
+        assert_eq!(app.screen, Screen::Teams);
+        assert_eq!(
+            app.theme.accent,
+            Theme::from_palette(&theme::Preset::Dracula.palette()).accent
+        );
     }
 
     #[test]

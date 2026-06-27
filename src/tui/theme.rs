@@ -102,6 +102,10 @@ impl Preset {
         Preset::CatppuccinLatte,
     ];
 
+    /// The shared default preset across the three TUIs — used when the
+    /// config names no preset.
+    pub const DEFAULT: Preset = Preset::Nord;
+
     /// The stable config key (lower-kebab) written to `config.toml`.
     pub fn name(self) -> &'static str {
         match self {
@@ -258,7 +262,7 @@ impl Default for Theme {
         // but `foreground` stays `Reset` so text inherits the terminal
         // until the user opts into a full preset (via `name = …` or the
         // in-app picker).
-        let mut t = Theme::from_palette(&Preset::CatppuccinMocha.palette());
+        let mut t = Theme::from_palette(&Preset::DEFAULT.palette());
         t.foreground = Color::Reset;
         t
     }
@@ -274,6 +278,14 @@ pub fn load(config_dir: &Path) -> Theme {
         return Theme::default();
     };
     parse_theme_section(&text)
+}
+
+/// Returns the [`Preset`] named in the `[theme]` section of
+/// `<config_dir>/config.toml`, if it resolves. Used to preselect the
+/// in-app theme picker on the Settings screen.
+pub fn configured_preset(config_dir: &Path) -> Option<Preset> {
+    let text = std::fs::read_to_string(config_dir.join("config.toml")).ok()?;
+    theme_name(&text).as_deref().and_then(Preset::from_name)
 }
 
 /// Extracts the raw `name = "<preset>"` value from the `[theme]`

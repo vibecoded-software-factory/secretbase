@@ -268,6 +268,7 @@ impl SettingsPort for FakeSettings {
     }
     fn write_auto_mark_read(&self, _: bool) {}
     fn write_clipboard_clear_secs(&self, _: u64) {}
+    fn write_theme_name(&self, _: &str) {}
     fn config_dir(&self) -> PathBuf {
         PathBuf::from(".")
     }

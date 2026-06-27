@@ -54,6 +54,11 @@ pub trait SettingsPort {
     /// Writes the `clipboard_clear_secs` value.
     fn write_clipboard_clear_secs(&self, secs: u64);
 
+    /// Persists the chosen theme preset as `name = "<preset>"` inside the
+    /// `[theme]` section, preserving every other key (incl. per-color
+    /// overrides). Best-effort, like the other writers.
+    fn write_theme_name(&self, name: &str);
+
     /// Directory the config file lives in — used by the theme loader.
     fn config_dir(&self) -> PathBuf;
 }

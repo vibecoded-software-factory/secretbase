@@ -12,6 +12,7 @@ pub mod login;
 pub mod mouse;
 pub mod nav;
 pub mod popups;
+pub mod settings;
 pub mod teams;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -61,6 +62,21 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         return;
     }
 
+    if matches!(key.code, KeyCode::F(9)) {
+        // F9 toggles the Settings overlay. It opens only from the base
+        // screens (never stacked on another overlay) and closes (cancel)
+        // when already open.
+        if app.screen == Screen::Settings {
+            app.settings_cancel();
+        } else if matches!(
+            app.screen,
+            Screen::Login | Screen::Inbox | Screen::Teams | Screen::Conversation
+        ) {
+            app.open_settings();
+        }
+        return;
+    }
+
     match app.screen {
         Screen::Splash => {} // pre-status, no input accepted
         Screen::Login => login::handle(app, key),
@@ -68,6 +84,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::Teams => teams::handle(app, key),
         Screen::Conversation => conversation::handle(app, key),
         Screen::Help => handle_help(app, key),
+        Screen::Settings => settings::handle(app, key),
         Screen::ConfirmLogout => {
             use common::ConfirmInput;
             let commit = |app: &mut App| {
