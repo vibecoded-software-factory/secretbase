@@ -35,29 +35,29 @@ Every signed-in screen is built from the same vertical stack via
 - **identity** — `widgets::draw_identity_bar`: `user <name> · device <dev> ·
   N unread`. Size the slot with `widgets::identity_content_rows(app, width)`
   (+2 for borders); it is currently always 1 row.
-- **header** — the search box (`widgets::draw_search_box`) on the inbox.
-  Screens without a filter (Teams) drop this slot.
-- **header** — split horizontally: a compact `─[1]-Filter` status bar on the
-  left (`Length(28)`, `render_filters_bar`) + the `─[/]-Search` box filling
-  the rest. The filter bar is the **status** axis (`domain::StatusFilter`:
-  `All`/`Unread`) as inline pills, scoped to the active source
-  (`Focus::Filters`, `←/→` via `chat::cycle_status`).
-- **body** — split 22 % / 78 % into the **source** rail and the list. The two
-  filter axes intersect (`App::rebuild_filter` over active conversations:
-  `inbox_source.includes && status.includes`):
-  - `─[2]-Spaces` (`Focus::Source`) — the **source** axis
-    (`domain::InboxSource`): `Direct messages` (everything that isn't a team)
-    + **one row per team**, built dynamically by `App::inbox_sources`;
-    `chat::cycle_source` walks it.
-  While the **first** (slow) `list` fetch is in flight and no conversations
-  have arrived yet, the Spaces rail and the Inbox both render a
-  `widgets::draw_skeleton` — dim placeholder bars with a shimmer row that
-  walks as `App::action_tick` advances — instead of empty panels.
-  - `─[3]-Inbox` — the conversation list: a **single label column** so the
-    `▶ ` cursor sits tight against the name (jewel-style); unread is shown by
-    colour + bold, not a marker column. Inside a team source the redundant
-    `team#` prefix is dropped — rows show just the channel name. Counts are
-    computed live, scoped to the active source.
+The inbox is a **unified two-pane "Home"** (Discord-style): the conversation
+tree on the left, the open chat on the right — no separate full-screen
+conversation on normal terminals.
+- **header** — split horizontally: a compact `─[1]-Filter` status bar
+  (`Length(28)`, `render_filters_bar`) + the `─[/]-Search` box filling the
+  rest. The filter bar is the **status** axis (`domain::StatusFilter`:
+  `All`/`Unread`) as inline pills (`Focus::Filters`, `←/→` via
+  `chat::cycle_status`).
+- **body** — `─[2]-Chats` tree (`Length(28)`) on the left, the chat
+  (`Min(24)`) on the right:
+  - `─[2]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
+    → `TreeRow::{Group,Conv}`): a "Direct messages" group then one
+    **collapsible** group per team, each (unless folded) followed by its
+    conversations (channel name only, no `team#` prefix). `App::collapsed`
+    holds folded groups; a non-empty search force-expands all. `↑/↓` move
+    (`chat::tree_move`); `Enter` folds a group or **opens a conversation in
+    the right pane** (`chat::tree_activate` → `enter_conversation`, which stays
+    on `Screen::Inbox` and moves focus to `Chat`). The first (slow) load shows
+    a `widgets::draw_skeleton`.
+  - the right pane is `conversation::draw_chat` (header + messages + compose)
+    when a conversation is open, else a placeholder. `Focus::Chat` routes keys
+    to `input::conversation::handle` (compose / select / in-conv search); `Esc`
+    on an empty compose closes the conversation (focus back to `Tree`).
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom; `cmd_log_scroll`
   walks back). Worker ops carry their duration (request → response),
@@ -174,7 +174,8 @@ which action to fire. The module depends only on `ratatui` + the shared
 ## Panels & focus
 
 The inbox's focusable panels are the `screens::Focus` variants: `Search`,
-`Filters` (status bar in the header), `Source` (DMs + teams rail), `List`,
+`Filters` (status bar in the header), `Tree` (conversation tree), `Chat` (the
+open chat — skipped in the Tab cycle when no conversation is open),
 `CmdLog` (the identity bar and status strip are chrome, not focus targets).
 Conventions:
 
@@ -188,7 +189,7 @@ Conventions:
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
-its panels `─[/]-Search`, `─[1]-Filter`, `─[2]-Spaces`, `─[3]-Inbox`, `─[4]-Command log`; Teams
+its panels `─[/]-Search`, `─[1]-Filter`, `─[2]-Chats`, `─[3]-Chat`, `─[4]-Command log`; Teams
 uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.

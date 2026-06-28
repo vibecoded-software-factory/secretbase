@@ -9,12 +9,12 @@ use ratatui::{
     widgets::{Paragraph, Row},
 };
 
-use crate::domain::{InboxSource, STATUS_FILTERS, StatusFilter};
-use crate::tui::app::App;
+use crate::domain::{STATUS_FILTERS, StatusFilter};
+use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
 use crate::tui::view::widgets::{
     draw_cmd_log, draw_identity_bar, draw_search_box, draw_skeleton, draw_status_strip,
-    identity_content_rows, list_table, list_title, middle_ellipsis,
+    identity_content_rows, list_table, middle_ellipsis,
 };
 use crate::tui::view::{split_main, titled_block};
 
@@ -30,35 +30,43 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let filters_area = head[0];
     let search_area = head[1];
 
-    // Body: a compact source rail (just wide enough for "Direct messages")
-    // on the left, the list filling the rest.
-    let cols = Layout::horizontal([Constraint::Length(26), Constraint::Min(20)]).split(body);
-    let source_area = cols[0];
-    let list_area = cols[1];
+    // Body: the conversation tree (DMs + teams) on the left, the open chat
+    // on the right — the unified two-pane "Home".
+    let cols = Layout::horizontal([Constraint::Length(28), Constraint::Min(24)]).split(body);
+    let tree_area = cols[0];
+    let chat_area = cols[1];
 
     draw_identity_bar(frame, app, identity);
     render_filters_bar(frame, app, filters_area);
     render_search(frame, app, search_area);
-    render_source(frame, app, source_area);
-    render_list(frame, app, list_area);
+    render_tree(frame, app, tree_area);
+    if app.open_conv_id.is_some() {
+        crate::tui::view::conversation::draw_chat(frame, app, chat_area);
+    } else {
+        render_chat_placeholder(frame, app, chat_area);
+    }
     let cmdlog_focused = app.focus == Focus::CmdLog;
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, 4);
-    let hint = footer_hint(app);
+    let hint = if app.focus == Focus::Chat && app.open_conv_id.is_some() {
+        crate::tui::view::conversation::chat_hint(app)
+    } else {
+        footer_hint(app)
+    };
     draw_status_strip(frame, app, status, hint);
 
     app.mouse_areas.search = search_area;
-    app.mouse_areas.source = source_area;
+    app.mouse_areas.source = tree_area;
     app.mouse_areas.filters = filters_area;
-    app.mouse_areas.list = list_area;
+    app.mouse_areas.list = chat_area;
     app.mouse_areas.cmd_log = cmdlog;
 }
 
 fn footer_hint(app: &App) -> &'static str {
     match app.focus {
         Focus::Search => "type to filter · Enter/Esc leave",
-        Focus::Source => "↑/↓ pick DMs / a team · Enter apply",
         Focus::Filters => "←/→ All / Unread · Enter apply",
-        Focus::List => "↑/↓ nav · Enter open · Alt+N new · Tab focus",
+        Focus::Tree => "↑/↓ nav · Enter open / fold · Alt+N new · Tab focus",
+        Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::CmdLog => "↑/↓ scroll · Tab focus",
     }
 }
@@ -77,45 +85,110 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-/// Far-left rail: the source picker — "Direct messages" + one row per team.
-fn render_source(frame: &mut Frame, app: &mut App, area: Rect) {
+/// Left pane: the conversation **tree** — Direct messages + a group per team,
+/// collapsible, each (unless folded) followed by its conversations.
+fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
-    // First (expensive) inbox load — show a skeleton instead of an empty rail.
+    // First (expensive) inbox load — show a skeleton instead of an empty tree.
     if app.conversations.is_empty() && app.is_busy() {
-        draw_skeleton(frame, &t, area, "─[2]-Spaces", app.anim_tick);
+        draw_skeleton(frame, &t, area, "─[2]-Chats", app.anim_tick);
         return;
     }
-    let sources = app.inbox_sources();
-    let label_budget = (area.width as usize).saturating_sub(9).max(6);
+    let model = app.tree_rows();
+    let budget = (area.width as usize).saturating_sub(7).max(6);
 
-    let rows: Vec<Row<'static>> = sources
+    let rows: Vec<Row<'static>> = model
         .iter()
-        .map(|s| {
-            let (icon, color) = match s {
-                InboxSource::Dms => ("󰭹 ", t.conv_dm),
-                InboxSource::Team(_) => ("󰀎 ", t.conv_team),
-            };
-            let label = middle_ellipsis(s.label(), label_budget);
-            filter_row(format!("{icon}{label}"), color, app.count_source(s), &t)
+        .map(|r| match r {
+            TreeRow::Group {
+                label,
+                is_team,
+                collapsed,
+                unread,
+                ..
+            } => {
+                let arrow = if *collapsed { "▸" } else { "▾" };
+                let icon = if *is_team { "󰀎" } else { "󰭹" };
+                let color = if *is_team { t.conv_team } else { t.conv_dm };
+                let count = if *unread > 0 {
+                    unread.to_string()
+                } else {
+                    String::new()
+                };
+                Row::new(vec![
+                    ratatui::widgets::Cell::from(Span::styled(
+                        format!("{arrow} {icon} {label}"),
+                        Style::default().fg(color).add_modifier(Modifier::BOLD),
+                    )),
+                    ratatui::widgets::Cell::from(Span::styled(
+                        count,
+                        Style::default().fg(t.conv_unread),
+                    )),
+                ])
+            }
+            TreeRow::Conv { idx } => {
+                let conv = &app.conversations[*idx];
+                let raw = if conv.channel.members_type.is_team() {
+                    conv.channel.topic_name.clone().filter(|s| !s.is_empty())
+                } else {
+                    None
+                }
+                .or_else(|| {
+                    app.conversations_lowered
+                        .get(*idx)
+                        .map(|l| l.display_label.clone())
+                })
+                .unwrap_or_default();
+                let label = middle_ellipsis(&raw, budget.saturating_sub(2));
+                let style = if conv.unread {
+                    Style::default()
+                        .fg(t.conv_unread)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(t.foreground)
+                };
+                Row::new(vec![
+                    ratatui::widgets::Cell::from(Span::styled(format!("  {label}"), style)),
+                    ratatui::widgets::Cell::from(Span::raw("")),
+                ])
+            }
         })
         .collect();
-    let sel = sources
-        .iter()
-        .position(|s| *s == app.inbox_source)
-        .unwrap_or(0);
-    let mut scroll = 0usize;
+
+    let mut scroll = app.list_scroll;
     list_table(
         frame,
         &t,
         area,
-        "─[2]-Spaces",
-        app.focus == Focus::Source,
-        &["Space", "#"],
-        &[Constraint::Length(label_budget as u16), Constraint::Min(2)],
+        "─[2]-Chats",
+        app.focus == Focus::Tree,
+        &["Chats", "#"],
+        &[Constraint::Length(budget as u16), Constraint::Min(2)],
         rows,
-        sel,
+        app.tree_selected,
         &mut scroll,
     );
+    app.list_scroll = scroll;
+}
+
+/// Right pane shown when no conversation is open.
+fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
+    let block = titled_block("─[3]-Chat", app.focus == Focus::Chat, app);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let lines = vec![
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            "  Select a conversation to start chatting",
+            Style::default().fg(t.dim),
+        )),
+        Line::from(Span::styled(
+            "  Tab to Chats · ↑/↓ pick · Enter to open",
+            Style::default().fg(t.placeholder),
+        )),
+    ];
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// Compact horizontal status filter in the header (left of search): the
@@ -144,19 +217,6 @@ fn render_filters_bar(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(Line::from(spans)).block(block), area);
 }
 
-/// Builds one filter row: `<icon+label>` (colored) + a dim count.
-fn filter_row(
-    label: String,
-    color: ratatui::style::Color,
-    count: usize,
-    t: &crate::tui::theme::Theme,
-) -> Row<'static> {
-    Row::new(vec![
-        ratatui::widgets::Cell::from(Span::styled(label, Style::default().fg(color))),
-        ratatui::widgets::Cell::from(Span::styled(count.to_string(), Style::default().fg(t.dim))),
-    ])
-}
-
 fn status_icon_color(
     f: StatusFilter,
     t: &crate::tui::theme::Theme,
@@ -165,68 +225,4 @@ fn status_icon_color(
         StatusFilter::All => ("  ", t.foreground),
         StatusFilter::Unread => ("● ", t.conv_unread),
     }
-}
-
-fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
-    let t = app.theme.clone();
-    // First (expensive) inbox load — show a skeleton instead of an empty list.
-    if app.conversations.is_empty() && app.is_busy() {
-        draw_skeleton(frame, &t, area, "─[3]-Inbox", app.anim_tick);
-        return;
-    }
-    let total = app.conversations.len();
-    let shown = app.filtered_cache.len();
-
-    // Single label column so the `▶ ` cursor sits right against the name
-    // (jewel-style). Unread is shown by colour + bold, not a marker column.
-    let label_budget = (area.width as usize).saturating_sub(6).max(12);
-    // Inside a team source the rows are that team's channels, so drop the
-    // redundant "team#" prefix and show just the channel name.
-    let in_team = matches!(app.inbox_source, InboxSource::Team(_));
-
-    let rows: Vec<Row<'static>> = app
-        .filtered_cache
-        .iter()
-        .map(|&idx| {
-            let conv = &app.conversations[idx];
-            let raw_label = conv
-                .channel
-                .topic_name
-                .clone()
-                .filter(|s| in_team && !s.is_empty())
-                .or_else(|| {
-                    app.conversations_lowered
-                        .get(idx)
-                        .map(|l| l.display_label.clone())
-                })
-                .unwrap_or_default();
-            let label = middle_ellipsis(&raw_label, label_budget);
-            let style = if conv.unread {
-                Style::default()
-                    .fg(t.conv_unread)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(t.foreground)
-            };
-            Row::new(vec![ratatui::widgets::Cell::from(Span::styled(
-                label, style,
-            ))])
-        })
-        .collect();
-
-    let title = format!("─[3]-{}", list_title("Inbox", shown, total));
-    let mut scroll = app.list_scroll;
-    list_table(
-        frame,
-        &t,
-        area,
-        &title,
-        app.focus == Focus::List,
-        &["Conversation"],
-        &[Constraint::Min(10)],
-        rows,
-        app.list_selected,
-        &mut scroll,
-    );
-    app.list_scroll = scroll;
 }

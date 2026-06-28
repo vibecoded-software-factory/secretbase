@@ -53,13 +53,13 @@ impl MouseAreas {
             return Some(Focus::Search);
         }
         if rect_contains(self.source, col, row) {
-            return Some(Focus::Source);
+            return Some(Focus::Tree);
         }
         if rect_contains(self.filters, col, row) {
             return Some(Focus::Filters);
         }
         if rect_contains(self.list, col, row) {
-            return Some(Focus::List);
+            return Some(Focus::Chat);
         }
         if rect_contains(self.cmd_log, col, row) {
             return Some(Focus::CmdLog);

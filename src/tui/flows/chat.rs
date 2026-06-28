@@ -260,28 +260,41 @@ pub fn cycle_status(app: &mut App, delta: isize) {
     let n = STATUS_FILTERS.len() as isize;
     let next = (cur + delta).rem_euclid(n) as usize;
     app.status_filter = STATUS_FILTERS[next];
-    app.list_selected = 0;
+    app.tree_selected = 0;
     app.list_scroll = 0;
     app.rebuild_filter();
 }
 
-/// Cycles the **source** axis (Direct messages ↔ each team) by `delta` and
-/// refreshes — the source list is dynamic, built from the loaded teams.
-pub fn cycle_source(app: &mut App, delta: isize) {
-    let sources = app.inbox_sources();
-    if sources.is_empty() {
+/// Tree navigation: moves the cursor by `delta` over the visible tree rows.
+pub fn tree_move(app: &mut App, delta: isize) {
+    let len = app.tree_rows().len();
+    if len == 0 {
         return;
     }
-    let cur = sources
-        .iter()
-        .position(|s| *s == app.inbox_source)
-        .unwrap_or(0) as isize;
-    let n = sources.len() as isize;
-    let next = (cur + delta).rem_euclid(n) as usize;
-    app.inbox_source = sources[next].clone();
-    app.list_selected = 0;
-    app.list_scroll = 0;
-    app.rebuild_filter();
+    let last = (len - 1) as isize;
+    app.tree_selected = (app.tree_selected as isize + delta).clamp(0, last) as usize;
+}
+
+/// Activates the selected tree row: toggles a group's collapse, or opens a
+/// conversation. Returns `true` if a conversation was opened.
+pub fn tree_activate(app: &mut App) -> bool {
+    match app.tree_rows().get(app.tree_selected) {
+        Some(crate::tui::app::TreeRow::Group { key, .. }) => {
+            let key = key.clone();
+            app.toggle_collapsed(&key);
+            let len = app.tree_rows().len();
+            if app.tree_selected >= len {
+                app.tree_selected = len.saturating_sub(1);
+            }
+            false
+        }
+        Some(crate::tui::app::TreeRow::Conv { idx }) => {
+            let id = app.conversations[*idx].id.clone();
+            open_conversation_by_id(app, id);
+            true
+        }
+        None => false,
+    }
 }
 
 pub fn search_push(app: &mut App, c: char) {
@@ -335,7 +348,10 @@ fn enter_conversation(app: &mut App, id: String) {
     app.conv_search_results.clear();
     app.conv_search_selected = 0;
     restore_draft(app, &id);
-    app.screen = crate::tui::screens::Screen::Conversation;
+    // The unified Home keeps everything on the inbox screen — the chat shows
+    // in the right pane and takes focus.
+    app.screen = crate::tui::screens::Screen::Inbox;
+    app.focus = crate::tui::screens::Focus::Chat;
     request_load_messages(app);
 }
 
@@ -374,6 +390,7 @@ pub fn close_conversation(app: &mut App) {
     app.messages_loading_older = false;
     app.compose_clear();
     app.screen = crate::tui::screens::Screen::Inbox;
+    app.focus = crate::tui::screens::Focus::Tree;
 }
 
 /// Opens a conversation directly by id (used by the quick switcher, which

@@ -432,9 +432,8 @@ fn load_inbox_populates_conversations_and_rebuilds_filter() {
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.app.conversations.len(), 2);
-    // Default source is Direct messages, so only the DM shows (the team
-    // lives under its own source entry).
-    assert_eq!(rig.app.filtered_cache.len(), 1);
+    // Default filter is All → both the DM and the team conversation match.
+    assert_eq!(rig.app.filtered_cache.len(), 2);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
 }
 
@@ -508,8 +507,8 @@ fn load_inbox_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
     pump_until_idle(&mut rig.app);
     // Good rows must load — the bad one must not block them.
     assert_eq!(rig.app.conversations.len(), 2);
-    // Default source = Direct messages → only the DM is in the filtered view.
-    assert_eq!(rig.app.filtered_cache.len(), 1);
+    // Default filter is All → both good rows are in the filtered view.
+    assert_eq!(rig.app.filtered_cache.len(), 2);
     // The feedback strip stays Done (load succeeded) but mentions
     // the count of skipped rows.
     match &rig.app.action_state {
@@ -1051,7 +1050,8 @@ fn open_search_result_jumps_to_conversation() {
     }];
     rig.app.search_global_selected = 0;
     open_selected_search_result(&mut rig.app);
-    assert_eq!(rig.app.screen, Screen::Conversation);
+    // The unified Home opens the chat in-place (stays on the inbox screen).
+    assert_eq!(rig.app.screen, Screen::Inbox);
     assert_eq!(rig.app.open_conv_id.as_deref(), Some("c1"));
     // The open chains a request_load_messages call.
     assert!(matches!(rig.app.in_flight, Some(InFlight::LoadMessages)));
@@ -1120,59 +1120,8 @@ fn status_axis_cycles_and_wraps() {
 }
 
 #[test]
-fn source_cycles_dms_then_teams_independently_of_status() {
-    use crate::domain::{InboxSource, StatusFilter};
-    let mut rig = build_rig();
-    preload_inbox(
-        &mut rig.app,
-        &rig.mock,
-        vec![
-            conv("d", "alice", MembersType::ImpTeamNative),
-            conv("t", "acme", MembersType::Team),
-        ],
-        "d",
-    );
-    rig.app.status_filter = StatusFilter::Unread;
-    rig.app.inbox_source = InboxSource::Dms;
-    cycle_source(&mut rig.app, 1);
-    assert_eq!(rig.app.inbox_source, InboxSource::Team("acme".into()));
-    cycle_source(&mut rig.app, 1); // wraps back to DMs
-    assert_eq!(rig.app.inbox_source, InboxSource::Dms);
-    // The status axis is untouched by source cycling.
-    assert_eq!(rig.app.status_filter, StatusFilter::Unread);
-}
-
-#[test]
-fn source_and_status_intersect_in_the_inbox() {
-    use crate::domain::{InboxSource, StatusFilter};
-    let mut rig = build_rig();
-    let mut unread_dm = conv("d", "alice", MembersType::ImpTeamNative);
-    unread_dm.unread = true;
-    let read_dm = conv("d2", "bob", MembersType::ImpTeamNative);
-    let mut unread_team = conv("t", "acme", MembersType::Team);
-    unread_team.unread = true;
-    preload_inbox(
-        &mut rig.app,
-        &rig.mock,
-        vec![unread_dm, read_dm, unread_team],
-        "d",
-    );
-    // Direct messages × Unread → only the unread DM survives.
-    rig.app.inbox_source = InboxSource::Dms;
-    rig.app.status_filter = StatusFilter::Unread;
-    rig.app.rebuild_filter();
-    let ids: Vec<&str> = rig
-        .app
-        .filtered_cache
-        .iter()
-        .map(|&i| rig.app.conversations[i].id.as_str())
-        .collect();
-    assert_eq!(ids, vec!["d"]);
-}
-
-#[test]
-fn inbox_sources_lists_dms_then_each_team() {
-    use crate::domain::InboxSource;
+fn tree_groups_dms_then_teams_with_conversations_nested() {
+    use crate::tui::app::TreeRow;
     let mut rig = build_rig();
     preload_inbox(
         &mut rig.app,
@@ -1184,15 +1133,74 @@ fn inbox_sources_lists_dms_then_each_team() {
         ],
         "d",
     );
-    let sources = rig.app.inbox_sources();
+    let labels: Vec<String> = rig
+        .app
+        .tree_rows()
+        .iter()
+        .map(|r| match r {
+            TreeRow::Group { label, .. } => format!("[{label}]"),
+            TreeRow::Conv { idx } => rig.app.conversations[*idx].id.clone(),
+        })
+        .collect();
+    // DMs group + its conv, then teams (alpha) each with their conv.
     assert_eq!(
-        sources,
-        vec![
-            InboxSource::Dms,
-            InboxSource::Team("acme".into()),
-            InboxSource::Team("globex".into()),
-        ]
+        labels,
+        vec!["[Direct messages]", "d", "[acme]", "t2", "[globex]", "t1"]
     );
+}
+
+#[test]
+fn collapsed_group_hides_its_conversations() {
+    use crate::tui::app::TreeRow;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("d", "alice", MembersType::ImpTeamNative),
+            conv("t", "acme", MembersType::Team),
+        ],
+        "d",
+    );
+    // Collapse the DMs group → its conversation disappears from the rows.
+    rig.app.toggle_collapsed(crate::tui::app::App::DMS_KEY);
+    let has_dm_conv = rig
+        .app
+        .tree_rows()
+        .iter()
+        .any(|r| matches!(r, TreeRow::Conv { idx } if rig.app.conversations[*idx].id == "d"));
+    assert!(!has_dm_conv);
+    // Toggling back reveals it again.
+    rig.app.toggle_collapsed(crate::tui::app::App::DMS_KEY);
+    let has_dm_conv = rig
+        .app
+        .tree_rows()
+        .iter()
+        .any(|r| matches!(r, TreeRow::Conv { idx } if rig.app.conversations[*idx].id == "d"));
+    assert!(has_dm_conv);
+}
+
+#[test]
+fn status_filter_narrows_the_tree_to_unread() {
+    use crate::domain::StatusFilter;
+    use crate::tui::app::TreeRow;
+    let mut rig = build_rig();
+    let mut unread_dm = conv("d", "alice", MembersType::ImpTeamNative);
+    unread_dm.unread = true;
+    let read_dm = conv("d2", "bob", MembersType::ImpTeamNative);
+    preload_inbox(&mut rig.app, &rig.mock, vec![unread_dm, read_dm], "d");
+    rig.app.status_filter = StatusFilter::Unread;
+    rig.app.rebuild_filter();
+    let convs: Vec<&str> = rig
+        .app
+        .tree_rows()
+        .iter()
+        .filter_map(|r| match r {
+            TreeRow::Conv { idx } => Some(rig.app.conversations[*idx].id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(convs, vec!["d"]);
 }
 
 // ── search query helpers ──────────────────────────────────────────────
@@ -1967,18 +1975,19 @@ fn input_tab_steps_forward_through_non_search_focuses() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
 
-    // FOCUS_ORDER = [Search, Filters, Source, List, CmdLog].
+    // FOCUS_ORDER = [Search, Filters, Tree, Chat, CmdLog]; Chat is skipped
+    // with no open conversation.
     rig.app.focus = Focus::Filters;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Source);
+    assert_eq!(rig.app.focus, Focus::Tree);
 
-    rig.app.focus = Focus::Source;
+    rig.app.focus = Focus::Tree;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::List);
+    assert_eq!(rig.app.focus, Focus::CmdLog); // Chat skipped (no conv open)
 
-    rig.app.focus = Focus::List;
+    rig.app.focus = Focus::CmdLog;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::CmdLog);
+    assert_eq!(rig.app.focus, Focus::Search, "wraps around");
 
     rig.app.focus = Focus::CmdLog;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
@@ -2003,7 +2012,7 @@ fn input_slash_jumps_to_search_focus() {
     use crate::tui::screens::Focus;
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
-    rig.app.focus = Focus::List;
+    rig.app.focus = Focus::Tree;
     press(&mut rig.app, KeyCode::Char('/'), KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::Search);
 }
@@ -2118,9 +2127,10 @@ fn input_enter_on_list_opens_selected_conversation() {
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     rig.app.screen = Screen::Inbox;
-    rig.app.focus = crate::tui::screens::Focus::List;
+    rig.app.focus = crate::tui::screens::Focus::Tree;
     press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
-    assert_eq!(rig.app.screen, Screen::Conversation);
+    // Opens the chat in-place on the unified Home (no screen switch).
+    assert_eq!(rig.app.screen, Screen::Inbox);
     assert_eq!(rig.app.open_conv_id.as_deref(), Some("c1"));
 }
 
@@ -2284,7 +2294,8 @@ fn mouse_handler_honors_clicks_when_rects_are_fresh() {
         },
     );
 
-    assert_eq!(rig.app.focus, crate::tui::screens::Focus::List);
+    // Clicking the (chat) pane rect focuses the chat.
+    assert_eq!(rig.app.focus, crate::tui::screens::Focus::Chat);
 }
 
 #[test]

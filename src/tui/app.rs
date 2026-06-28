@@ -11,8 +11,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    ChatEvent, Conversation, Emoji, IdentityInfo, InboxHit, InboxSource, LineEditor,
-    LoweredConversation, MemberStatus, Message, StatusFilter, TeamMembership, fuzzy_score_lowered,
+    ChatEvent, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
+    MemberStatus, Message, StatusFilter, TeamMembership, fuzzy_score_lowered,
 };
 use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
@@ -155,6 +155,22 @@ pub enum SwitcherRow {
     Conv(usize),
 }
 
+/// A row of the inbox conversation tree: a collapsible group header
+/// (Direct messages / a team) or a conversation leaf.
+pub enum TreeRow {
+    /// Group header. `key` is the collapse key ([`App::DMS_KEY`] or the team
+    /// name); `unread` is the count of unread conversations in the group.
+    Group {
+        key: String,
+        label: String,
+        is_team: bool,
+        collapsed: bool,
+        unread: usize,
+    },
+    /// A conversation leaf — index into [`App::conversations`].
+    Conv { idx: usize },
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -162,9 +178,10 @@ pub struct App {
     pub focus: Focus,
     /// Status axis of the inbox filter (All / Unread).
     pub status_filter: StatusFilter,
-    /// Source axis: which space the inbox shows — all DMs, or one team
-    /// (Discord-style picker). Intersects with `status_filter`.
-    pub inbox_source: InboxSource,
+    /// Collapsed tree groups (by key: [`Self::DMS_KEY`] or a team name).
+    pub collapsed: HashSet<String>,
+    /// Cursor into [`Self::tree_rows`] — the selected tree row.
+    pub tree_selected: usize,
 
     // ── Identity (from `keybase status --json`) ───────────────────────────
     pub identity: IdentityInfo,
@@ -456,9 +473,10 @@ impl App {
             .unwrap_or(0);
         Self {
             screen: Screen::Splash,
-            focus: Focus::List,
+            focus: Focus::Tree,
             status_filter: StatusFilter::All,
-            inbox_source: InboxSource::Dms,
+            collapsed: HashSet::new(),
+            tree_selected: 0,
             identity: IdentityInfo::default(),
             conversations: Vec::new(),
             conversations_lowered: Vec::new(),
@@ -836,11 +854,7 @@ impl App {
         let query_lc = self.search.text().to_lowercase();
         let mut indices: Vec<usize> = Vec::new();
         for (idx, conv) in self.conversations.iter().enumerate() {
-            // Source × status intersect, over active conversations only.
-            if conv.member_status != MemberStatus::Active
-                || !self.inbox_source.includes(conv)
-                || !self.status_filter.includes(conv)
-            {
+            if conv.member_status != MemberStatus::Active || !self.status_filter.includes(conv) {
                 continue;
             }
             if !query_lc.is_empty() {
@@ -854,17 +868,23 @@ impl App {
         // Most-recent first — `active_at_ms` is monotonically growing.
         indices.sort_by_key(|&i| std::cmp::Reverse(self.conversations[i].active_at_ms));
         self.filtered_cache = indices;
-        if self.list_selected >= self.filtered_cache.len() {
-            self.list_selected = self.filtered_cache.len().saturating_sub(1);
-        }
+        // Land the tree cursor on the first conversation (skipping the leading
+        // group header) so actions that need a selected conversation work
+        // right after a load / filter / search change.
+        let rows = self.tree_rows();
+        self.tree_selected = rows
+            .iter()
+            .position(|r| matches!(r, TreeRow::Conv { .. }))
+            .unwrap_or(0);
     }
 
-    /// Convenience: returns the currently selected conversation, if
-    /// the list is non-empty.
+    /// The conversation under the tree cursor, if it's on a conversation row
+    /// (not a group header).
     pub fn selected_conversation(&self) -> Option<&Conversation> {
-        self.filtered_cache
-            .get(self.list_selected)
-            .and_then(|&i| self.conversations.get(i))
+        match self.tree_rows().get(self.tree_selected) {
+            Some(TreeRow::Conv { idx }) => self.conversations.get(*idx),
+            _ => None,
+        }
     }
 
     /// Whether a conversation counts toward the sidebar tallies.
@@ -872,39 +892,82 @@ impl App {
         c.member_status == MemberStatus::Active
     }
 
-    /// Count of active conversations matching `filter` **within the current
-    /// source** (so e.g. "Unread" reflects the open team, not the whole app).
+    /// Count of active conversations matching `filter` (whole inbox).
     pub fn count_status(&self, filter: StatusFilter) -> usize {
         self.conversations
             .iter()
-            .filter(|c| Self::is_active(c) && self.inbox_source.includes(c) && filter.includes(c))
+            .filter(|c| Self::is_active(c) && filter.includes(c))
             .count()
     }
 
-    /// Count of active conversations belonging to `source`.
-    pub fn count_source(&self, source: &InboxSource) -> usize {
-        self.conversations
-            .iter()
-            .filter(|c| Self::is_active(c) && source.includes(c))
-            .count()
-    }
+    /// Sentinel collapse-key for the Direct-messages group (a NUL byte can't
+    /// occur in a team name, so it never collides).
+    pub const DMS_KEY: &'static str = "\u{0}dms";
 
-    /// The source picker's entries: "Direct messages" first, then one per
-    /// team (distinct `Channel::name`, alphabetical), built from the loaded
-    /// active conversations.
-    pub fn inbox_sources(&self) -> Vec<InboxSource> {
-        let mut teams: Vec<String> = self
-            .conversations
+    /// Flattened rows of the conversation **tree**: a "Direct messages" group
+    /// then one group per team, each (unless collapsed) followed by its
+    /// conversations. Built from `filtered_cache` (already status/search
+    /// filtered, recency-sorted). A non-empty search force-expands all groups.
+    pub fn tree_rows(&self) -> Vec<TreeRow> {
+        let leaves = &self.filtered_cache;
+        let is_team = |i: usize| self.conversations[i].channel.members_type.is_team();
+        let force_expand = !self.search.text().trim().is_empty();
+
+        // Teams present among the leaves, alphabetical.
+        let mut teams: Vec<String> = leaves
             .iter()
-            .filter(|c| Self::is_active(c) && c.channel.members_type.is_team())
-            .map(|c| c.channel.name.clone())
+            .filter(|&&i| is_team(i))
+            .map(|&i| self.conversations[i].channel.name.clone())
             .collect();
         teams.sort();
         teams.dedup();
-        let mut sources = Vec::with_capacity(teams.len() + 1);
-        sources.push(InboxSource::Dms);
-        sources.extend(teams.into_iter().map(InboxSource::Team));
-        sources
+
+        let mut rows: Vec<TreeRow> = Vec::new();
+        let push_group = |rows: &mut Vec<TreeRow>, key: String, label: String, team: bool| {
+            let members: Vec<usize> = leaves
+                .iter()
+                .copied()
+                .filter(|&i| {
+                    is_team(i) == team && (!team || self.conversations[i].channel.name == key)
+                })
+                .collect();
+            if members.is_empty() {
+                return;
+            }
+            let unread = members
+                .iter()
+                .filter(|&&i| self.conversations[i].unread)
+                .count();
+            let collapsed = !force_expand && self.collapsed.contains(&key);
+            rows.push(TreeRow::Group {
+                key,
+                label,
+                is_team: team,
+                collapsed,
+                unread,
+            });
+            if !collapsed {
+                rows.extend(members.into_iter().map(|idx| TreeRow::Conv { idx }));
+            }
+        };
+
+        push_group(
+            &mut rows,
+            Self::DMS_KEY.to_string(),
+            "Direct messages".to_string(),
+            false,
+        );
+        for team in teams {
+            push_group(&mut rows, team.clone(), team, true);
+        }
+        rows
+    }
+
+    /// Toggles a tree group's collapsed state.
+    pub fn toggle_collapsed(&mut self, key: &str) {
+        if !self.collapsed.remove(key) {
+            self.collapsed.insert(key.to_string());
+        }
     }
 
     /// Total number of conversations flagged as unread. Surfaced in

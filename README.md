@@ -22,8 +22,9 @@ End-to-end feature working: **chat inbox list** (read-only).
 
 * `keybase status --json` on boot to detect the session.
 * `keybase chat api {"method":"list"}` to load conversations.
-* Discord-style sidebar: a **Spaces** rail (Direct messages + one entry per
-  team) and a **Filters** rail (All / Unread), intersected.
+* Discord-style unified two-pane Home: a collapsible **conversation tree**
+  (Direct messages + a group per team) on the left, the open **chat** on the
+  right; a compact All / Unread status filter in the header.
 * Local fuzzy search (channel name, topic name, creator).
 * Mark conversation as read (`m`).
 * Copy conversation label to clipboard (`y`).
@@ -67,7 +68,7 @@ tables.
 | `↑` / `↓` · `k` / `j`   | Navigate |
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
-| `Tab` / `Shift+Tab`     | Cycle focus (search · filters · spaces · list · log) |
+| `Tab` / `Shift+Tab`     | Cycle focus (search · filters · tree · chat · log) |
 | `/`                     | Focus search |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |
@@ -81,9 +82,9 @@ tables.
 | `Ctrl+K`                | Quick switcher — jump to a conversation |
 | `Shift+L`               | Logout (confirmation) |
 
-In the **Spaces** rail, `↑` / `↓` pick Direct messages or a team; in the
-**Filters** rail, `↑` / `↓` switch All / Unread. The inbox shows the
-intersection of the two.
+In the **Chats** tree, `↑` / `↓` move and `Enter` folds a group or opens the
+selected conversation in the right pane; the header's `←` / `→` switch
+All / Unread.
 
 ### Conversation
 

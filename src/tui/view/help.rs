@@ -175,7 +175,7 @@ fn build_lines(from: Screen, t: &Theme) -> Vec<Line<'static>> {
                 ("g / G", "top / bottom"),
                 ("Tab / Shift+Tab", "cycle focus"),
                 ("/", "search"),
-                ("Enter / l", "open conversation"),
+                ("Enter / l", "open conversation / fold group"),
                 ("Alt+N", "new conversation"),
                 ("Alt+C", "copy label"),
                 ("Alt+M", "mark as read"),

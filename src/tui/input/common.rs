@@ -7,8 +7,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::domain::LineEditor;
-use crate::tui::App;
-use crate::tui::mouse_areas::hit_test;
 use crate::tui::screens::Focus;
 
 /// Clamps a list-selection move: `current + delta` bounded to
@@ -121,31 +119,6 @@ pub fn search_key(editor: &mut LineEditor, key: KeyEvent) -> SearchAction {
     }
 }
 
-/// Standard left-click routing for a search-box + list screen: click
-/// the search box → focus it; click a data row → focus the list and
-/// select that row (via `set_selected`). `scroll`/`len` describe the
-/// list as drawn.
-pub fn list_click(
-    app: &mut App,
-    x: u16,
-    y: u16,
-    scroll: usize,
-    len: usize,
-    set_selected: impl FnOnce(&mut App, usize),
-) {
-    if hit_test(x, y, app.mouse_areas.search) {
-        app.focus = Focus::Search;
-        return;
-    }
-    if hit_test(x, y, app.mouse_areas.list) {
-        app.focus = Focus::List;
-        let r = app.mouse_areas.list;
-        if let Some(idx) = crate::tui::view::widgets::table_row_at(r, y, scroll, len) {
-            set_selected(app, idx);
-        }
-    }
-}
-
 /// One key for a y/n confirm overlay, decoupled from which overlay it
 /// is. The caller maps each variant onto its own `*_yes` state + commit
 /// action.
@@ -193,9 +166,9 @@ mod tests {
 
     #[test]
     fn cycle_focus_wraps_both_ways() {
-        let order = [Focus::Search, Focus::List];
-        assert_eq!(cycle_focus(&order, Focus::Search, true), Focus::List);
-        assert_eq!(cycle_focus(&order, Focus::List, true), Focus::Search);
-        assert_eq!(cycle_focus(&order, Focus::Search, false), Focus::List);
+        let order = [Focus::Search, Focus::Tree];
+        assert_eq!(cycle_focus(&order, Focus::Search, true), Focus::Tree);
+        assert_eq!(cycle_focus(&order, Focus::Tree, true), Focus::Search);
+        assert_eq!(cycle_focus(&order, Focus::Search, false), Focus::Tree);
     }
 }

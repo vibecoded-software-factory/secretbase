@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
@@ -18,28 +18,40 @@ use crate::tui::view::widgets::{
     draw_identity_bar, draw_search_box, draw_status_strip, editor_lines, identity_content_rows,
 };
 
+/// Standalone (full-screen) conversation view — the narrow-terminal layout.
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let id_rows = identity_content_rows(app, area.width);
+    let layout = Layout::vertical([
+        Constraint::Length(id_rows + 2), // identity bar
+        Constraint::Min(3),              // chat (header + messages + compose)
+        Constraint::Length(1),           // status strip
+    ])
+    .split(area);
+
+    draw_identity_bar(frame, app, layout[0]);
+    draw_chat(frame, app, layout[1]);
+    draw_status_strip(frame, app, layout[2], chat_hint(app));
+}
+
+/// Renders a whole chat — header (name + in-conversation search), the message
+/// history and the compose box — into `area`. Used both full-screen and as
+/// the right pane of the unified [`Screen::Home`] layout.
+pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
     // Compose grows with its line count (multi-line via Alt+Enter), capped.
     let compose_lines = app.compose.text().split('\n').count().max(1) as u16;
     let compose_h = (compose_lines + 2).clamp(3, 8);
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(id_rows + 2), // identity bar
-            Constraint::Length(3),           // conversation header
-            Constraint::Min(3),              // messages
-            Constraint::Length(compose_h),   // compose pane (dynamic)
-            Constraint::Length(1),           // status strip
-        ])
-        .split(area);
+    let layout = Layout::vertical([
+        Constraint::Length(3),         // conversation header
+        Constraint::Min(3),            // messages
+        Constraint::Length(compose_h), // compose pane (dynamic)
+    ])
+    .split(area);
 
-    draw_identity_bar(frame, app, layout[0]);
     // Header row: the conversation name (left) + the in-conversation search
     // box (right, given the wider share — `searchregexp`, Ctrl+F).
     let header = Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(layout[1]);
+        .split(layout[0]);
     render_header(frame, app, header[0]);
     draw_search_box(
         frame,
@@ -50,10 +62,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         &app.conv_search,
         app.conv_search_active,
     );
-    render_messages(frame, app, layout[2]);
-    render_compose(frame, app, layout[3]);
+    render_messages(frame, app, layout[1]);
+    render_compose(frame, app, layout[2]);
+}
 
-    let hint = if app.conv_search_active {
+/// The status-strip hint for the chat, by interaction mode.
+pub(crate) fn chat_hint(app: &App) -> &'static str {
+    if app.conv_search_active {
         "type · Enter search/jump · ↑/↓ pick · Esc close"
     } else if app.selected_msg_idx.is_some() {
         "↑/↓ select · e edit · d delete · : react · p pin · Esc back"
@@ -61,8 +76,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         "Enter save edit · Esc cancel"
     } else {
         "Enter send · Ctrl+F search · Alt+A attach · Alt+V select · Esc back"
-    };
-    draw_status_strip(frame, app, layout[4], hint);
+    }
 }
 
 fn render_compose(frame: &mut Frame, app: &App, area: Rect) {

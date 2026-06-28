@@ -10,17 +10,26 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::tui::app::App;
 use crate::tui::flows::chat;
 use crate::tui::input::common::{self, SearchAction};
-use crate::tui::input::nav;
 use crate::tui::screens::{Focus, Screen};
 
-/// Focus cycle order — visual top-to-bottom reading order of the inbox.
+/// Focus cycle order — Search, the status filter, the conversation tree, the
+/// open chat, the command log. `Chat` is skipped while no conversation is open.
 const FOCUS_ORDER: [Focus; 5] = [
     Focus::Search,
     Focus::Filters,
-    Focus::Source,
-    Focus::List,
+    Focus::Tree,
+    Focus::Chat,
     Focus::CmdLog,
 ];
+
+/// Cycles focus, skipping `Chat` when there's no open conversation to focus.
+fn cycle(app: &App, forward: bool) -> Focus {
+    let mut f = common::cycle_focus(&FOCUS_ORDER, app.focus, forward);
+    if f == Focus::Chat && app.open_conv_id.is_none() {
+        f = common::cycle_focus(&FOCUS_ORDER, f, forward);
+    }
+    f
+}
 
 pub fn handle(app: &mut App, key: KeyEvent) {
     let alt = key.modifiers.contains(KeyModifiers::ALT);
@@ -68,11 +77,11 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::Tab => {
-            app.focus = common::cycle_focus(&FOCUS_ORDER, app.focus, true);
+            app.focus = cycle(app, true);
             return;
         }
         KeyCode::BackTab => {
-            app.focus = common::cycle_focus(&FOCUS_ORDER, app.focus, false);
+            app.focus = cycle(app, false);
             return;
         }
         _ => {}
@@ -101,8 +110,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
     }
 
     match app.focus {
-        Focus::List => handle_list(app, key),
-        Focus::Source => handle_source(app, key),
+        Focus::Tree => handle_tree(app, key),
+        Focus::Chat => crate::tui::input::conversation::handle(app, key),
         Focus::Filters => handle_filters(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         Focus::Search => unreachable!("handled above"),
@@ -114,21 +123,20 @@ fn handle_search(app: &mut App, key: KeyEvent) {
         SearchAction::Idle => {}
         SearchAction::Rebuild => {
             app.rebuild_filter();
-            // A changed query re-ranks the list — snap the cursor back
-            // to the top so the best match is selected.
-            app.list_selected = 0;
+            // A changed query re-ranks the tree — snap the cursor to the top.
+            app.tree_selected = 0;
             app.list_scroll = 0;
         }
         SearchAction::ClearAndExit => {
             app.rebuild_filter();
-            app.list_selected = 0;
+            app.tree_selected = 0;
             app.list_scroll = 0;
-            app.focus = Focus::List;
+            app.focus = Focus::Tree;
         }
-        SearchAction::Exit => app.focus = Focus::List,
+        SearchAction::Exit => app.focus = Focus::Tree,
         SearchAction::ToList(k) => {
-            app.focus = Focus::List;
-            handle_list(app, k);
+            app.focus = Focus::Tree;
+            handle_tree(app, k);
         }
     }
 }
@@ -149,16 +157,18 @@ fn handle_cmdlog(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn handle_list(app: &mut App, key: KeyEvent) {
+fn handle_tree(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => nav::move_up(app),
-        KeyCode::Down | KeyCode::Char('j') => nav::move_down(app),
-        KeyCode::PageUp => nav::page_up(app),
-        KeyCode::PageDown => nav::page_down(app),
-        KeyCode::Home | KeyCode::Char('g') => nav::home(app),
-        KeyCode::End | KeyCode::Char('G') => nav::end(app),
+        KeyCode::Up | KeyCode::Char('k') => chat::tree_move(app, -1),
+        KeyCode::Down | KeyCode::Char('j') => chat::tree_move(app, 1),
+        KeyCode::PageUp => chat::tree_move(app, -10),
+        KeyCode::PageDown => chat::tree_move(app, 10),
+        KeyCode::Home | KeyCode::Char('g') => app.tree_selected = 0,
+        KeyCode::End | KeyCode::Char('G') => chat::tree_move(app, isize::MAX),
+        // Enter / → opens a conversation (moving focus to the chat) or folds
+        // a group; `l` keeps the vim-style expand affordance.
         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
-            chat::open_selected_conversation(app);
+            chat::tree_activate(app);
         }
         _ => {}
     }
@@ -173,16 +183,7 @@ fn handle_filters(app: &mut App, key: KeyEvent) {
         KeyCode::Right | KeyCode::Down | KeyCode::Char('l') | KeyCode::Char('j') => {
             chat::cycle_status(app, 1)
         }
-        KeyCode::Enter => app.focus = Focus::List,
-        _ => {}
-    }
-}
-
-fn handle_source(app: &mut App, key: KeyEvent) {
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k') => chat::cycle_source(app, -1),
-        KeyCode::Down | KeyCode::Char('j') => chat::cycle_source(app, 1),
-        KeyCode::Enter => app.focus = Focus::List,
+        KeyCode::Enter => app.focus = Focus::Tree,
         _ => {}
     }
 }

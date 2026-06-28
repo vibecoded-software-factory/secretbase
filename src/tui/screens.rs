@@ -48,12 +48,12 @@ pub enum Screen {
 pub enum Focus {
     /// Search / filter box.
     Search,
-    /// Source picker — Direct messages + one entry per team (left rail).
-    Source,
-    /// Status-filter panel (All/Unread).
+    /// Status-filter bar (All/Unread).
     Filters,
-    /// Main conversation list.
-    List,
+    /// Conversation tree (Direct messages + teams) — the left pane.
+    Tree,
+    /// The chat (right pane) — compose / select / in-conversation search.
+    Chat,
     /// Bottom command-log panel.
     CmdLog,
 }
