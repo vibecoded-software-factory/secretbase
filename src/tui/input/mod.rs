@@ -76,7 +76,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     // conversation — pure navigation, allowed even while busy.
     if matches!(key.code, KeyCode::Char('k'))
         && key.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(app.screen, Screen::Inbox | Screen::Conversation)
+        && matches!(app.screen, Screen::Inbox)
     {
         crate::tui::flows::chat::open_quick_switcher(app);
         return;
@@ -109,10 +109,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         // when already open.
         if app.screen == Screen::Settings {
             app.settings_cancel();
-        } else if matches!(
-            app.screen,
-            Screen::Login | Screen::Inbox | Screen::Teams | Screen::Conversation
-        ) {
+        } else if matches!(app.screen, Screen::Login | Screen::Inbox | Screen::Teams) {
             app.open_settings();
         }
         return;
@@ -123,7 +120,6 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::Login => login::handle(app, key),
         Screen::Inbox => inbox::handle(app, key),
         Screen::Teams => teams::handle(app, key),
-        Screen::Conversation => conversation::handle(app, key),
         Screen::Help => handle_help(app, key),
         Screen::Settings => settings::handle(app, key),
         Screen::ConfirmLogout => {

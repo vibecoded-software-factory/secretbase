@@ -178,8 +178,10 @@ pub struct App {
     pub focus: Focus,
     /// Status axis of the inbox filter (All / Unread).
     pub status_filter: StatusFilter,
-    /// Collapsed tree groups (by key: [`Self::DMS_KEY`] or a team name).
-    pub collapsed: HashSet<String>,
+    /// **Expanded** tree groups (by key: [`Self::DMS_KEY`] or a team name).
+    /// Empty = everything collapsed, so the tree starts fully folded and a
+    /// user's expansions survive inbox refreshes.
+    pub expanded: HashSet<String>,
     /// Cursor into [`Self::tree_rows`] — the selected tree row.
     pub tree_selected: usize,
 
@@ -475,7 +477,7 @@ impl App {
             screen: Screen::Splash,
             focus: Focus::Tree,
             status_filter: StatusFilter::All,
-            collapsed: HashSet::new(),
+            expanded: HashSet::new(),
             tree_selected: 0,
             identity: IdentityInfo::default(),
             conversations: Vec::new(),
@@ -938,7 +940,7 @@ impl App {
                 .iter()
                 .filter(|&&i| self.conversations[i].unread)
                 .count();
-            let collapsed = !force_expand && self.collapsed.contains(&key);
+            let collapsed = !force_expand && !self.expanded.contains(&key);
             rows.push(TreeRow::Group {
                 key,
                 label,
@@ -963,10 +965,10 @@ impl App {
         rows
     }
 
-    /// Toggles a tree group's collapsed state.
+    /// Toggles a tree group's collapsed state (groups start collapsed).
     pub fn toggle_collapsed(&mut self, key: &str) {
-        if !self.collapsed.remove(key) {
-            self.collapsed.insert(key.to_string());
+        if !self.expanded.remove(key) {
+            self.expanded.insert(key.to_string());
         }
     }
 

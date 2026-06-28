@@ -51,8 +51,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::ConfirmLogout
         | Screen::ConfirmConvAction
         | Screen::NewConversation
-        | Screen::SearchGlobal => Screen::Inbox,
-        Screen::ConfirmDeleteMessage | Screen::React => Screen::Conversation,
+        | Screen::SearchGlobal
+        | Screen::ConfirmDeleteMessage
+        | Screen::React => Screen::Inbox,
         // The quick switcher floats over wherever it was opened.
         Screen::QuickSwitcher => app.switcher_from,
         // Help is scoped to (and renders over) the screen it was opened
@@ -155,7 +156,6 @@ fn draw_screen(frame: &mut Frame, app: &mut App, screen: Screen) {
         Screen::Login => login::draw(frame, app),
         Screen::Inbox => inbox::draw(frame, app),
         Screen::Teams => teams::draw(frame, app),
-        Screen::Conversation => conversation::draw(frame, app),
         // Overlays are never a base screen — fall back to the inbox.
         _ => inbox::draw(frame, app),
     }

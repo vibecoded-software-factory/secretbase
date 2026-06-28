@@ -413,11 +413,48 @@ fn set_identity(app: &mut App, username: &str) {
 
 /// Pre-loads the inbox synchronously (via `request_load_inbox` +
 /// `pump_until_idle`) and points `open_conv_id` at `target`.
+/// Expands every tree group and puts the cursor on the first conversation,
+/// so selection-based actions (mute / mark / ignore / open) have a target.
+/// The tree starts fully collapsed, so tests that act on a selection call this
+/// after loading.
+fn reveal_first(app: &mut App) {
+    let teams: Vec<String> = app
+        .conversations
+        .iter()
+        .filter(|c| c.channel.members_type.is_team())
+        .map(|c| c.channel.name.clone())
+        .collect();
+    app.expanded.insert(App::DMS_KEY.to_string());
+    for t in teams {
+        app.expanded.insert(t);
+    }
+    app.rebuild_filter(); // re-seats the cursor on the first conversation row
+}
+
 fn preload_inbox(app: &mut App, mock: &MockKeybase, convs: Vec<Conversation>, target: &str) {
     mock.st().conversations = convs;
     request_load_inbox(app);
     pump_until_idle(app);
     app.open_conv_id = Some(target.into());
+    // The tree starts fully collapsed; expand every group so tests see the
+    // conversations, then put the cursor on `target` (so selected_conversation
+    // resolves to it, like the old flat-list default did).
+    let teams: Vec<String> = app
+        .conversations
+        .iter()
+        .filter(|c| c.channel.members_type.is_team())
+        .map(|c| c.channel.name.clone())
+        .collect();
+    app.expanded.insert(App::DMS_KEY.to_string());
+    for t in teams {
+        app.expanded.insert(t);
+    }
+    app.rebuild_filter();
+    if let Some(pos) = app.tree_rows().iter().position(|r| {
+        matches!(r, crate::tui::app::TreeRow::Conv { idx } if app.conversations[*idx].id == target)
+    }) {
+        app.tree_selected = pos;
+    }
 }
 
 // ── do_load_inbox → request_load_inbox ───────────────────────────────
@@ -913,6 +950,7 @@ fn mute_sends_status_muted() {
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
+    reveal_first(&mut rig.app);
     request_mute_conversation(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let st = rig.mock.st();
@@ -928,6 +966,7 @@ fn unmute_sends_status_unfiled() {
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
+    reveal_first(&mut rig.app);
     request_unmute_conversation(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let st = rig.mock.st();
@@ -1069,7 +1108,8 @@ fn open_search_result_errors_when_conv_not_in_cache() {
     }];
     open_selected_search_result(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
-    assert_ne!(rig.app.screen, Screen::Conversation);
+    // The conversation isn't in the cached inbox, so nothing was opened.
+    assert!(rig.app.open_conv_id.is_none());
 }
 
 // ── pin / unpin ───────────────────────────────────────────────────────
@@ -1321,17 +1361,17 @@ fn cancel_edit_clears_target_and_buffer() {
 #[test]
 fn escape_clears_non_empty_draft_first() {
     let mut rig = build_rig();
-    rig.app.screen = Screen::Conversation;
+    rig.app.screen = Screen::Inbox;
     rig.app.compose.set("draft");
     escape_conversation(&mut rig.app);
     assert!(rig.app.compose.is_empty());
-    assert_eq!(rig.app.screen, Screen::Conversation);
+    assert_eq!(rig.app.screen, Screen::Inbox);
 }
 
 #[test]
 fn escape_on_empty_draft_closes_conversation() {
     let mut rig = build_rig();
-    rig.app.screen = Screen::Conversation;
+    rig.app.screen = Screen::Inbox;
     rig.app.compose.clear();
     escape_conversation(&mut rig.app);
     assert_eq!(rig.app.screen, Screen::Inbox);
@@ -1900,7 +1940,7 @@ fn render_perf_smoke_conversation_50_messages() {
         })
         .collect();
     rig.app.messages = msgs;
-    rig.app.screen = Screen::Conversation;
+    rig.app.screen = Screen::Inbox;
 
     let times = run_render_iterations(&mut rig.app, 100);
     print_timings("conv 50-msg", &times);
@@ -1948,7 +1988,7 @@ fn input_ctrl_c_quits_from_inbox() {
 #[test]
 fn input_ctrl_c_quits_from_conversation() {
     let mut rig = build_rig();
-    rig.app.screen = Screen::Conversation;
+    rig.app.screen = Screen::Inbox;
     press(&mut rig.app, KeyCode::Char('c'), KeyModifiers::CONTROL);
     assert!(rig.app.should_quit);
 }
@@ -2031,6 +2071,7 @@ fn input_alt_m_on_inbox_queues_mark_read() {
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
+    reveal_first(&mut rig.app);
     rig.app.screen = Screen::Inbox;
     press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::ALT);
     assert!(matches!(rig.app.in_flight, Some(InFlight::MarkRead { .. })));
@@ -2074,7 +2115,7 @@ fn ignore_conversation_confirm_flow() {
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    rig.app.list_selected = 0;
+    reveal_first(&mut rig.app);
 
     // Opening the action stages it behind the confirm popup.
     open_conv_action(&mut rig.app, ConvAction::Ignore);
@@ -2118,6 +2159,7 @@ fn input_enter_on_list_opens_selected_conversation() {
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
+    reveal_first(&mut rig.app); // cursor on the conversation, not its group header
     rig.app.screen = Screen::Inbox;
     rig.app.focus = crate::tui::screens::Focus::Tree;
     press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
@@ -2145,7 +2187,8 @@ fn input_conversation_enter_with_buffer_sends() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.screen = Screen::Conversation;
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = crate::tui::screens::Focus::Chat;
     rig.app.compose_open = true;
     rig.app.compose.set("hello");
     press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
@@ -2164,7 +2207,8 @@ fn input_conversation_enter_with_empty_buffer_errors() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.screen = Screen::Conversation;
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = crate::tui::screens::Focus::Chat;
     rig.app.compose_open = true;
     rig.app.compose.clear();
     press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
@@ -2487,6 +2531,7 @@ fn request_mark_read_surfaces_unknown_members_type() {
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // Now try to mark it read.
+    reveal_first(&mut rig.app);
     request_mark_read(&mut rig.app);
     // No worker call was queued.
     assert!(rig.app.in_flight.is_none());

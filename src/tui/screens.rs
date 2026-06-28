@@ -14,9 +14,6 @@ pub enum Screen {
     /// Teams screen — list of the user's team memberships with role
     /// and member count.
     Teams,
-    /// Single-conversation detail view — messages of the selected
-    /// conversation.
-    Conversation,
     /// Help popup overlay.
     Help,
     /// Settings overlay — a sectioned preferences screen (Theme first),

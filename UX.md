@@ -50,16 +50,24 @@ conversation on normal terminals.
     **collapsible** group per team, each (unless folded) followed by its
     conversations (channel name only, no `team#` prefix). **Unread** groups
     and conversations are **bold** (plus a `●` / unread count) so they stand
-    out. `App::collapsed` holds folded groups; a non-empty search
-    force-expands all. `↑/↓` move
+    out. The tree **starts fully collapsed** — `App::expanded` holds the
+    *expanded* groups (empty = all folded, so it persists across refreshes); a
+    non-empty search force-expands all. The border count is the **visible rows**
+    (headers + the conversations of expanded groups) of the total. `↑/↓` move
     (`chat::tree_move`); `Enter` folds a group or **opens a conversation in
     the right pane** (`chat::tree_activate` → `enter_conversation`, which stays
-    on `Screen::Inbox` and moves focus to `Chat`). The first (slow) load shows
-    a `widgets::draw_skeleton`.
-  - the right pane is `conversation::draw_chat` (header + messages + compose)
-    when a conversation is open, else a placeholder. `Focus::Chat` routes keys
-    to `input::conversation::handle` (compose / select / in-conv search); `Esc`
-    on an empty compose closes the conversation (focus back to `Tree`).
+    on `Screen::Inbox` and moves focus to `Chat`). Opening from the quick
+    switcher / global search **reveals** the conversation in the tree
+    (`chat::reveal_in_tree` — expand its group + move the cursor). The first
+    (slow) load shows a `widgets::draw_skeleton`.
+  - the right pane is `conversation::draw_chat` (messages + compose; the header
+    name/search are on the shared top row) when a conversation is open, else a
+    placeholder. `Focus::Chat` routes keys to `input::conversation::handle`
+    (compose / select / in-conv search); `Esc` on an empty compose closes the
+    conversation (focus back to `Tree`). Message bodies **wrap** to the panel
+    width (`conversation::wrap_line`) instead of being cut off. There is **no
+    standalone full-screen conversation screen** — the unified Home is the only
+    chat surface.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom; `cmd_log_scroll`
   walks back). Worker ops carry their duration (request → response),

@@ -15,27 +15,7 @@ use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo};
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
-use crate::tui::view::widgets::{
-    draw_identity_bar, draw_search_box, draw_status_strip, editor_lines, identity_content_rows,
-};
-
-/// Standalone (full-screen) conversation view — the narrow-terminal layout.
-pub fn draw(frame: &mut Frame, app: &mut App) {
-    let area = frame.area();
-    let id_rows = identity_content_rows(app, area.width);
-    let layout = Layout::vertical([
-        Constraint::Length(id_rows + 2), // identity bar
-        Constraint::Length(3),           // chat header (name + search)
-        Constraint::Min(3),              // messages + compose
-        Constraint::Length(1),           // status strip
-    ])
-    .split(area);
-
-    draw_identity_bar(frame, app, layout[0]);
-    draw_chat_header(frame, app, layout[1]);
-    draw_chat(frame, app, layout[2]);
-    draw_status_strip(frame, app, layout[3], chat_hint(app));
-}
+use crate::tui::view::widgets::{draw_search_box, editor_lines};
 
 /// Renders the chat's in-conversation **search** box (`searchregexp`, Ctrl+F)
 /// into `area`. The conversation name now lives on the Messages panel title
@@ -208,9 +188,11 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    // Content width inside the panel borders — message bodies wrap to it.
+    let body_width = area.width.saturating_sub(2) as usize;
     // Optimistic outbox bubbles for this conversation (sending / failed),
     // rendered below the loaded history.
-    let outbox = outbox_lines(app, now_s, &t);
+    let outbox = outbox_lines(app, now_s, &t, body_width);
 
     if app.messages.is_empty() && outbox.is_empty() {
         // Distinguish the initial fetch (LoadMessages in flight) from a
@@ -276,7 +258,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         if is_selected {
             selected_line = Some(start);
         }
-        let mut block = message_lines(m, now_s, app, &t);
+        let mut block = message_lines(m, now_s, app, &t, body_width);
         if is_selected {
             for line in &mut block {
                 let bg = t.selected_bg;
@@ -392,7 +374,12 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
 /// Builds the bubbles for the optimistic outbox entries targeting the open
 /// conversation: `○ sending…`, a delivered `→` (transient, pruned by the
 /// reconciling re-read), and a red `✗ failed · Alt+R to resend`.
-fn outbox_lines(app: &App, now_s: u64, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {
+fn outbox_lines(
+    app: &App,
+    now_s: u64,
+    t: &crate::tui::theme::Theme,
+    width: usize,
+) -> Vec<Line<'static>> {
     use crate::tui::app::SendState;
     let Some(conv_id) = app.open_conv_id.as_deref() else {
         return Vec::new();
@@ -432,7 +419,7 @@ fn outbox_lines(app: &App, now_s: u64, t: &crate::tui::theme::Theme) -> Vec<Line
             Span::styled(format!("{me} "), sender_style),
             status,
         ]));
-        lines.extend(body_lines(&MessageContent::Text(p.body.clone()), t));
+        lines.extend(body_lines(&MessageContent::Text(p.body.clone()), t, width));
         lines.push(Line::from(Span::raw("")));
     }
     lines
@@ -443,6 +430,7 @@ fn message_lines(
     now_s: u64,
     app: &App,
     t: &crate::tui::theme::Theme,
+    width: usize,
 ) -> Vec<Line<'static>> {
     let is_system = matches!(
         m.content,
@@ -485,7 +473,7 @@ fn message_lines(
     if let Some(target) = m.reply_to {
         lines.push(reply_quote_line(target, app, t));
     }
-    lines.extend(body_lines(&m.content, t));
+    lines.extend(body_lines(&m.content, t, width));
     if !m.reactions.is_empty() {
         lines.push(reactions_line(&m.reactions, app, t));
     }
@@ -605,16 +593,20 @@ fn content_icon(c: &MessageContent) -> &'static str {
     }
 }
 
-fn body_lines(content: &MessageContent, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {
+fn body_lines(
+    content: &MessageContent,
+    t: &crate::tui::theme::Theme,
+    width: usize,
+) -> Vec<Line<'static>> {
     match content {
-        MessageContent::Text(body) => render_text_body(body, t),
+        MessageContent::Text(body) => render_text_body(body, t, width),
         MessageContent::Edit { target_id, body } => {
             let label = format!("(edited msg #{target_id})");
             let mut lines = vec![Line::from(Span::styled(
                 format!("    {label}"),
                 Style::default().fg(t.dim),
             ))];
-            lines.extend(render_text_body(body, t));
+            lines.extend(render_text_body(body, t, width));
             lines
         }
         MessageContent::Delete { target_ids } => {
@@ -660,18 +652,67 @@ fn placeholder(s: &str, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {
     ))]
 }
 
-fn render_text_body(body: &str, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {
+fn render_text_body(body: &str, t: &crate::tui::theme::Theme, width: usize) -> Vec<Line<'static>> {
     if body.is_empty() {
         return placeholder("(empty)", t);
     }
-    body.lines()
-        .map(|l| {
-            Line::from(Span::styled(
-                format!("    {l}"),
+    // Wrap each line to the panel width (minus the 4-space body indent) so
+    // long messages flow onto continuation lines instead of being cut off.
+    let wrap_w = width.saturating_sub(4).max(8);
+    let mut lines = Vec::new();
+    for l in body.lines() {
+        for piece in wrap_line(l, wrap_w) {
+            lines.push(Line::from(Span::styled(
+                format!("    {piece}"),
                 Style::default().fg(t.foreground),
-            ))
-        })
-        .collect()
+            )));
+        }
+    }
+    lines
+}
+
+/// Word-wraps `line` to `width` columns (char-based; long words are
+/// hard-split). Returns at least one piece.
+fn wrap_line(line: &str, width: usize) -> Vec<String> {
+    if width == 0 || line.chars().count() <= width {
+        return vec![line.to_string()];
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut cur_w = 0usize;
+    for word in line.split(' ') {
+        let ww = word.chars().count();
+        if cur_w > 0 && cur_w + 1 + ww > width {
+            out.push(std::mem::take(&mut cur));
+            cur_w = 0;
+        }
+        if cur_w == 0 {
+            if ww > width {
+                // Hard-split a word longer than the whole width.
+                let mut chunk = String::new();
+                let mut cw = 0usize;
+                for ch in word.chars() {
+                    if cw == width {
+                        out.push(std::mem::take(&mut chunk));
+                        cw = 0;
+                    }
+                    chunk.push(ch);
+                    cw += 1;
+                }
+                cur = chunk;
+                cur_w = cw;
+            } else {
+                cur = word.to_string();
+                cur_w = ww;
+            }
+        } else {
+            cur.push(' ');
+            cur.push_str(word);
+            cur_w += 1 + ww;
+        }
+    }
+    out.push(cur);
+    out
 }
 
 fn render_attachment(att: &AttachmentInfo, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {

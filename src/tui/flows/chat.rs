@@ -350,11 +350,31 @@ fn enter_conversation(app: &mut App, id: String) {
     app.conv_search_results.clear();
     app.conv_search_selected = 0;
     restore_draft(app, &id);
+    // Reveal the conversation in the tree (expand its group + move the cursor),
+    // so opening from the quick switcher / global search keeps the tree in sync.
+    reveal_in_tree(app, &id);
     // The unified Home keeps everything on the inbox screen — the chat shows
     // in the right pane and takes focus.
     app.screen = crate::tui::screens::Screen::Inbox;
     app.focus = crate::tui::screens::Focus::Chat;
     request_load_messages(app);
+}
+
+/// Expands the group containing `conv_id` and selects its row in the tree.
+fn reveal_in_tree(app: &mut App, conv_id: &str) {
+    if let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) {
+        let key = if conv.channel.members_type.is_team() {
+            conv.channel.name.clone()
+        } else {
+            App::DMS_KEY.to_string()
+        };
+        app.expanded.insert(key);
+    }
+    if let Some(pos) = app.tree_rows().iter().position(|r| {
+        matches!(r, crate::tui::app::TreeRow::Conv { idx } if app.conversations[*idx].id == conv_id)
+    }) {
+        app.tree_selected = pos;
+    }
 }
 
 /// Saves the open conversation's compose text as its draft (in memory).
@@ -1482,7 +1502,7 @@ pub fn close_delete_confirm(app: &mut App) {
         app.compose_open = true;
         app.select_from_compose = false;
     }
-    app.screen = crate::tui::screens::Screen::Conversation;
+    app.screen = crate::tui::screens::Screen::Inbox;
 }
 
 pub fn request_delete_selected_message(app: &mut App) {
@@ -1524,7 +1544,7 @@ pub fn handle_delete_response(app: &mut App, result: Result<(), KeybaseError>, m
                 true,
                 format!("msg #{message_id}"),
             );
-            app.screen = crate::tui::screens::Screen::Conversation;
+            app.screen = crate::tui::screens::Screen::Inbox;
             app.selected_msg_idx = None;
             app.select_from_compose = false;
             app.compose_open = true;
@@ -1612,7 +1632,7 @@ pub fn close_react(app: &mut App) {
         app.compose_open = true;
         app.select_from_compose = false;
     }
-    app.screen = crate::tui::screens::Screen::Conversation;
+    app.screen = crate::tui::screens::Screen::Inbox;
 }
 
 pub fn request_send_reaction(app: &mut App) {
@@ -1667,7 +1687,7 @@ pub fn handle_react_response(app: &mut App, result: Result<(), KeybaseError>, bo
             }
             app.set_action(ActionState::Done("Reaction sent".into()));
             app.push_cmd("keybase chat api reaction", true, body);
-            app.screen = crate::tui::screens::Screen::Conversation;
+            app.screen = crate::tui::screens::Screen::Inbox;
             app.react.clear();
             app.selected_msg_idx = None;
             app.select_from_compose = false;
@@ -2063,7 +2083,7 @@ pub fn do_copy_conversation_label(app: &mut App) {
     // the inbox copy the cursor-selected one (Alt+C). Using the inbox
     // cursor on the conversation screen would copy the wrong label.
     let conv = match app.open_conv_id.as_deref() {
-        Some(id) if app.screen == crate::tui::screens::Screen::Conversation => {
+        Some(id) if app.focus == crate::tui::screens::Focus::Chat => {
             app.conversations.iter().find(|c| c.id == id)
         }
         _ => app.selected_conversation(),

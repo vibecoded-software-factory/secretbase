@@ -50,7 +50,8 @@ pub fn search_global(app: &mut App, key: KeyEvent) {
 
 pub fn confirm_delete_message(app: &mut App, key: KeyEvent) {
     let commit = |app: &mut App| {
-        app.screen = Screen::Conversation;
+        app.screen = Screen::Inbox;
+        app.focus = crate::tui::screens::Focus::Chat;
         chat::request_delete_selected_message(app);
     };
     match common::confirm_key(key) {

@@ -173,10 +173,12 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    // Count in the bottom-right border: matching conversations of the total.
+    // Count in the bottom-right border: rows currently visible in the tree
+    // (group headers + the conversations of any expanded group) of the total
+    // conversations — so it tracks what's actually shown as you fold/unfold.
     let title = format!(
         "─[2]-{}",
-        list_title("Chats", app.filtered_cache.len(), app.conversations.len())
+        list_title("Chats", model.len(), app.conversations.len())
     );
     let mut scroll = app.list_scroll;
     list_table(
