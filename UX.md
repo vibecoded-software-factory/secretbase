@@ -38,8 +38,11 @@ Every signed-in screen is built from the same vertical stack via
 The inbox is a **unified two-pane "Home"** (Discord-style): the conversation
 tree on the left, the open chat on the right — no separate full-screen
 conversation on normal terminals.
-- **header** — the `─[/]-Search` box (full width) is the **chat filter**:
-  it fuzzy-filters the tree (force-expanding groups with matches).
+- **header** — one shared row: the tree filter (`─[/]-Search`, above the
+  tree) + the in-chat search (`conversation::draw_chat_header`, above the
+  chat). The conversation **name lives on the Messages panel title**
+  (`Messages — <name>` via `conversation::chat_title`, plus `📌 #id` when
+  pinned) — no separate "Conversation" box.
 - **body** — `─[2]-Chats` tree (`Length(28)`) on the left, the chat
   (`Min(24)`) on the right:
   - `─[2]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
@@ -281,7 +284,9 @@ under react/delete/download).
 
 `view::help::draw` is **context-aware and scrollable**: it shows the
 shortcuts for the screen it was opened from (`App::help_from`, stamped on
-F1) plus a shared Global section. The renderer owns the viewport — it clamps
+F1) plus a shared Global section. On the unified Home it follows the focused
+pane — `Focus::Chat` shows the conversation shortcuts, otherwise the inbox
+ones. The renderer owns the viewport — it clamps
 `App::help_scroll` against the real overflow, so the input handler bumps the
 offset freely (`j/k`/arrows scroll, `PgUp/PgDn` page, `g/G` top/bottom,
 `q`/`Esc`/`F1` close); `▲`/`▼` border marks flag hidden content. Add a

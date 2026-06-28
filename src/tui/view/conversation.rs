@@ -13,6 +13,7 @@ use ratatui::{
 
 use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo};
 use crate::tui::app::App;
+use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
     draw_identity_bar, draw_search_box, draw_status_strip, editor_lines, identity_content_rows,
@@ -31,22 +32,19 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     .split(area);
 
     draw_identity_bar(frame, app, layout[0]);
-    let hdr = Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
-        .split(layout[1]);
-    draw_chat_header(frame, app, hdr[0], hdr[1]);
+    draw_chat_header(frame, app, layout[1]);
     draw_chat(frame, app, layout[2]);
     draw_status_strip(frame, app, layout[3], chat_hint(app));
 }
 
-/// Renders the chat header into two rects: the conversation **name** and the
-/// in-conversation **search** box (`searchregexp`, Ctrl+F). Split out so the
-/// unified Home can place it on the shared top row, above the chat pane.
-pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, name_area: Rect, search_area: Rect) {
-    render_header(frame, app, name_area);
+/// Renders the chat's in-conversation **search** box (`searchregexp`, Ctrl+F)
+/// into `area`. The conversation name now lives on the Messages panel title
+/// ([`chat_title`]), so the header is just this search box.
+pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
     draw_search_box(
         frame,
         app,
-        search_area,
+        area,
         "Search",
         "Ctrl+F — search this chat",
         &app.conv_search,
@@ -120,14 +118,16 @@ fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(
         Paragraph::new(lines)
             .scroll((scroll, 0))
-            .block(titled_block(&title, true, app)),
+            .block(titled_block(&title, app.focus == Focus::Chat, app)),
         area,
     );
 }
 
-fn render_header(frame: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
-    let label = app
+/// The Messages-panel title: `Messages — <conversation name>` (plus `📌 #id`
+/// when a message is pinned). Folding the name in here lets us drop the
+/// separate "Conversation" header box.
+fn chat_title(app: &App) -> String {
+    let name = app
         .open_conv_id
         .as_deref()
         .and_then(|id| {
@@ -140,42 +140,16 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
                         .map(|l| l.display_label.clone())
                 })
         })
-        .unwrap_or_else(|| "(no conversation)".to_string());
-
-    let mut spans = vec![Span::styled(
-        label,
-        Style::default()
-            .fg(t.foreground)
-            .add_modifier(Modifier::BOLD),
-    )];
-    if let Some(target_id) = app.pinned_msg_id {
-        let snippet = app
-            .messages
-            .iter()
-            .find(|m| m.id == target_id)
-            .and_then(|m| match &m.content {
-                MessageContent::Text(b) => Some(b.lines().next().unwrap_or("").to_string()),
-                MessageContent::Edit { body, .. } => {
-                    Some(body.lines().next().unwrap_or("").to_string())
-                }
-                _ => None,
-            })
-            .unwrap_or_default();
-        let banner = if snippet.is_empty() {
-            format!("  📌 pinned #{target_id}")
-        } else {
-            let s: String = snippet.chars().take(40).collect();
-            format!("  📌 #{target_id} {s}")
-        };
-        spans.push(Span::styled(banner, Style::default().fg(t.conv_unread)));
+        .unwrap_or_default();
+    let mut title = if name.is_empty() {
+        "Messages".to_string()
+    } else {
+        format!("Messages — {name}")
+    };
+    if let Some(pid) = app.pinned_msg_id {
+        title.push_str(&format!("  📌 #{pid}"));
     }
-
-    // The message count lives on the Messages panel's border, so the
-    // header stays a plain "Conversation" (no duplicate count).
-    frame.render_widget(
-        Paragraph::new(Line::from(spans)).block(titled_block("Conversation", true, app)),
-        area,
-    );
+    title
 }
 
 /// Renders the `searchregexp` match list in the message viewport while the
@@ -267,8 +241,9 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 )),
             ]
         };
+        let title = chat_title(app);
         frame.render_widget(
-            Paragraph::new(lines).block(titled_block("Messages", false, app)),
+            Paragraph::new(lines).block(titled_block(&title, app.focus == Focus::Chat, app)),
             area,
         );
         app.messages_max_back = 0;
@@ -380,7 +355,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // the offset to a tiny value via a truncating cast.
     let scroll_u16 = scroll_y.min(u16::MAX as usize) as u16;
     let dim = app.theme.dim;
-    let block = titled_block("Messages", false, app)
+    let title = chat_title(app);
+    let block = titled_block(&title, app.focus == Focus::Chat, app)
         .title_bottom(Line::from(Span::styled(counter, Style::default().fg(dim))).right_aligned());
     frame.render_widget(
         Paragraph::new(lines).scroll((scroll_u16, 0)).block(block),

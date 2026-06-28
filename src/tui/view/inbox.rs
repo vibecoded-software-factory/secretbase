@@ -31,13 +31,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     .split(area);
     let (header, body, cmdlog, status) = (main[0], main[1], main[2], main[3]);
 
-    // One shared header row: the tree filter (above the tree), then the
-    // conversation name + the in-chat search (above the chat) — so the chat
-    // pane gets a full extra row of height.
+    // One shared header row: the tree filter (above the tree) + the in-chat
+    // search (above the chat). The conversation name lives on the Messages
+    // panel title, so it doesn't need its own slot here.
     let head = Layout::horizontal([Constraint::Length(28), Constraint::Min(20)]).split(header);
     let search_area = head[0];
-    let chat_head =
-        Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]).split(head[1]);
+    let chat_search_area = head[1];
 
     // Body: the conversation tree (DMs + teams) on the left, the open chat
     // on the right — the unified two-pane "Home".
@@ -46,7 +45,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let chat_area = cols[1];
 
     render_search(frame, app, search_area);
-    crate::tui::view::conversation::draw_chat_header(frame, app, chat_head[0], chat_head[1]);
+    crate::tui::view::conversation::draw_chat_header(frame, app, chat_search_area);
     render_tree(frame, app, tree_area);
     if app.open_conv_id.is_some() {
         crate::tui::view::conversation::draw_chat(frame, app, chat_area);

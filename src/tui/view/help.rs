@@ -19,7 +19,13 @@ use crate::tui::view::widgets::{center_rect, help_line};
 /// the input handler can bump the offset without its own bookkeeping.
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let t = app.theme.clone();
-    let from = app.help_from;
+    // On the unified Home, the help follows the focused pane: the chat pane
+    // shows the conversation shortcuts, everything else the inbox ones.
+    let from = if app.help_from == Screen::Inbox && app.focus == crate::tui::screens::Focus::Chat {
+        Screen::Conversation
+    } else {
+        app.help_from
+    };
     let lines = build_lines(from, &t);
 
     let h = (frame.area().height.saturating_mul(82) / 100).max(8);
