@@ -54,9 +54,67 @@ fn set_focus(app: &mut App, f: Focus) {
     app.focus = f;
 }
 
+/// A spatial direction for `Ctrl+W` window navigation.
+#[derive(Clone, Copy)]
+enum Dir {
+    Left,
+    Down,
+    Up,
+    Right,
+}
+
+/// Maps a key to a direction (`h/j/k/l` or an arrow) for window nav.
+fn key_to_dir(code: KeyCode) -> Option<Dir> {
+    match code {
+        KeyCode::Left | KeyCode::Char('h') => Some(Dir::Left),
+        KeyCode::Down | KeyCode::Char('j') => Some(Dir::Down),
+        KeyCode::Up | KeyCode::Char('k') => Some(Dir::Up),
+        KeyCode::Right | KeyCode::Char('l') => Some(Dir::Right),
+        _ => None,
+    }
+}
+
+/// The panel reached by moving `dir` from `focus`, given the Home's spatial
+/// layout: filter / in-chat search on the top row, Chats / Chat in the body,
+/// command log spanning the bottom. `None` = no neighbour that way.
+fn pane_target(focus: Focus, dir: Dir, has_conv: bool) -> Option<Focus> {
+    use Dir::*;
+    use Focus::*;
+    match (focus, dir) {
+        (Search, Right) => has_conv.then_some(ChatSearch),
+        (Search, Down) => Some(Tree),
+        (ChatSearch, Left) => Some(Search),
+        (ChatSearch, Down) => Some(Chat),
+        (Tree, Up) => Some(Search),
+        (Tree, Right) => has_conv.then_some(Chat),
+        (Tree, Down) => Some(CmdLog),
+        (Chat, Up) => Some(ChatSearch),
+        (Chat, Left) => Some(Tree),
+        (Chat, Down) => Some(CmdLog),
+        (CmdLog, Up) => Some(Tree),
+        _ => None,
+    }
+}
+
 pub fn handle(app: &mut App, key: KeyEvent) {
+    // `Ctrl+W` window-nav leader: the next key is a direction (h/j/k/l or an
+    // arrow) that moves between panels positionally (vim-style). One-shot.
+    if app.pending_pane_nav {
+        app.pending_pane_nav = false;
+        if let Some(dir) = key_to_dir(key.code)
+            && let Some(target) = pane_target(app.focus, dir, app.open_conv_id.is_some())
+        {
+            set_focus(app, target);
+        }
+        return;
+    }
+
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    if ctrl && matches!(key.code, KeyCode::Char('w') | KeyCode::Char('W')) {
+        app.pending_pane_nav = true;
+        return;
+    }
 
     // Modifier-gated actions and focus cycling work regardless of focus,
     // INCLUDING while the search box is focused — they can't be confused

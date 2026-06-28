@@ -213,6 +213,11 @@ Conventions:
   modifier chords), so the tag always tells the truth. Re-homed to free the
   section letters: copy label `Alt+Y` (yank), mark read `Alt+E` (seen).
   `Tab`/`Shift+Tab` also cycle focus via `input::common::cycle_focus`.
+- **Positional pane navigation** — a `Ctrl+W` leader (vim window-nav) arms
+  `App::pending_pane_nav`; the next `h/j/k/l` or arrow moves to the
+  spatial neighbour (`input::inbox::pane_target`: filter/in-chat-search on the
+  top row, Chats/Chat in the body, command log across the bottom). One-shot;
+  any non-direction cancels. The status strip shows the armed hint.
 - A panel is "focused" → accent + bold border/title
   (`view::mod::titled_block(title, focused, app)`); otherwise the `inactive`
   tint.

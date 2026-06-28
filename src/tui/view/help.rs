@@ -183,6 +183,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     ("PgUp/PgDn", "page"),
                     ("g / G", "top / bottom"),
                     ("Tab / Shift+Tab", "cycle focus"),
+                    ("Ctrl+W then h/j/k/l", "move between panels (or arrows)"),
                     ("Alt+F", "[Alt+F] filter chats"),
                     ("Alt+C / Alt+M", "go to [Alt+C] chats / [Alt+M] chat"),
                     (

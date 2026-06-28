@@ -69,6 +69,7 @@ tables.
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
 | `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
+| `Ctrl+W` then `h`/`j`/`k`/`l` (or arrows) | Move between panels **positionally** (vim window-nav) |
 | `Alt+F`                 | `[Alt+F]` Focus the chat **F**ilter |
 | `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Chat (works mid-compose) |
 | `Ctrl+F` / `Alt+L`      | Go to `[Ctrl+F]` in-chat search / `[Alt+L]` Command log |

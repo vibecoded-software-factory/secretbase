@@ -391,6 +391,9 @@ pub struct App {
     pub cmdlog_marks: HashSet<usize>,
     /// Anchor for `Shift+↑/↓` range shading in the command log.
     pub cmdlog_anchor: Option<usize>,
+    /// `Ctrl+W` window-nav leader is armed — the next key is read as a
+    /// direction (`h/j/k/l` or an arrow) to move between panels positionally.
+    pub pending_pane_nav: bool,
 
     // ── Settings / theme ──────────────────────────────────────────────────
     pub settings_cache: UserSettings,
@@ -557,6 +560,7 @@ impl App {
             cmdlog_cursor: 0,
             cmdlog_marks: HashSet::new(),
             cmdlog_anchor: None,
+            pending_pane_nav: false,
             settings_cache,
             theme: theme.clone(),
             settings_focus: SettingsFocus::Sidebar,

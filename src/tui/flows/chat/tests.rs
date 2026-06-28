@@ -2243,6 +2243,38 @@ fn go_to_keys_focus_each_panel() {
 }
 
 #[test]
+fn ctrl_w_window_nav_moves_between_panels() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Tree;
+
+    // Ctrl+W arms the leader; the next key is a direction.
+    press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
+    assert!(rig.app.pending_pane_nav);
+    press(&mut rig.app, KeyCode::Char('j'), KeyModifiers::NONE); // down → log
+    assert_eq!(rig.app.focus, Focus::CmdLog);
+    assert!(!rig.app.pending_pane_nav);
+
+    // Up from the log → tree; right (l) → chat; up → chat search.
+    press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
+    press(&mut rig.app, KeyCode::Up, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::Tree);
+    press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
+    press(&mut rig.app, KeyCode::Char('l'), KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::Chat);
+    press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
+    press(&mut rig.app, KeyCode::Up, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::ChatSearch);
+}
+
+#[test]
 fn chat_multiselect_copies_messages() {
     use crate::domain::{Message, MessageContent};
     let mk = |id: u64, sender: &str, body: &str| {
