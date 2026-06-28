@@ -24,4 +24,9 @@ pub struct InboxHit {
     /// truncated by the renderer — the buffer carries the full
     /// `bodySummary` from Keybase.
     pub body_summary: String,
+    /// Message send time, **Unix seconds** (parsed from the hit's `ctime`
+    /// milliseconds). `0` when unknown. Shown under each in-conversation
+    /// search result for context.
+    #[zeroize(skip)]
+    pub sent_at: u64,
 }

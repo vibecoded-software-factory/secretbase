@@ -99,9 +99,11 @@ when no conversation is open); Tabbing in activates the search and Tabbing out
 closes it (`conv_search_active` stays in sync via `input::inbox::set_focus`).
 Typing + `Enter` runs `keybase chat api searchregexp`
 over the open conversation (full history), and the match list renders in the
-message viewport (`render_conv_search_results`) — `↑/↓` pick, `Enter` jumps
-to + highlights the message (via `pending_search_jump`, paginating older if
-needed), `Esc` closes. The **login** screen is the signed-out exception: it omits the
+message viewport (`render_conv_search_results`) — each hit is **two rows**:
+the sender + snippet, then a dim **day/time** line (`InboxHit::sent_at` from
+the hit's `ctime`, formatted by `message_time`) for context. `↑/↓` pick,
+`Enter` jumps to + highlights the message (via `pending_search_jump`,
+paginating older if needed), `Esc` closes. The **login** screen is the signed-out exception: it omits the
 identity bar and shows the figlet/starfield backdrop with a "run `keybase
 login`, then R" hint.
 

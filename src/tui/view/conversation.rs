@@ -136,16 +136,27 @@ fn chat_title(app: &App) -> String {
 /// in-conversation search is active. `Enter` jumps to the highlighted hit.
 fn render_conv_search_results(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
+    let now_s = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let results = &app.conv_search_results;
     let sel = app
         .conv_search_selected
         .min(results.len().saturating_sub(1));
+    // Each result spans two rows (snippet + a dim day/time line), so the
+    // viewport and scroll are computed in result units, not raw rows.
     let vh = area.height.saturating_sub(2).max(1) as usize;
-    let scroll = if sel >= vh { sel + 1 - vh } else { 0 };
+    let per_view = (vh / 2).max(1);
+    let scroll = if sel >= per_view {
+        sel + 1 - per_view
+    } else {
+        0
+    };
     let max_w = area.width.saturating_sub(6).max(8) as usize;
 
     let mut lines: Vec<Line<'static>> = Vec::new();
-    for (i, hit) in results.iter().enumerate().skip(scroll).take(vh) {
+    for (i, hit) in results.iter().enumerate().skip(scroll).take(per_view) {
         let selected = i == sel;
         let snippet: String = hit
             .body_summary
@@ -163,12 +174,26 @@ fn render_conv_search_results(frame: &mut Frame, app: &App, area: Rect) {
             Span::styled(format!("{}: ", hit.sender), Style::default().fg(t.dim)),
             Span::styled(snippet, Style::default().fg(t.foreground)),
         ];
+        // Day + time under the snippet, for context (à la the chat header).
+        let when = if hit.sent_at > 0 {
+            message_time(hit.sent_at, now_s)
+        } else {
+            "—".to_string()
+        };
+        let mut time_spans = vec![Span::styled(
+            format!("      {when}"),
+            Style::default().fg(t.placeholder),
+        )];
         if selected {
             for s in &mut spans {
                 s.style = s.style.bg(t.selected_bg);
             }
+            for s in &mut time_spans {
+                s.style = s.style.bg(t.selected_bg);
+            }
         }
         lines.push(Line::from(spans));
+        lines.push(Line::from(time_spans));
     }
     let title = format!("Matches · {}", results.len());
     frame.render_widget(

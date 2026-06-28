@@ -1056,6 +1056,7 @@ fn search_remote_populates_results() {
             message_id: 1,
             sender: "alice".into(),
             body_summary: "hola".into(),
+            sent_at: 0,
         },
         InboxHit {
             conv_id: "c2".into(),
@@ -1063,6 +1064,7 @@ fn search_remote_populates_results() {
             message_id: 2,
             sender: "bob".into(),
             body_summary: "chau".into(),
+            sent_at: 0,
         },
     ];
     rig.app.search_global_input.set("hola");
@@ -1086,6 +1088,7 @@ fn open_search_result_jumps_to_conversation() {
         message_id: 1,
         sender: "alice".into(),
         body_summary: "x".into(),
+        sent_at: 0,
     }];
     rig.app.search_global_selected = 0;
     open_selected_search_result(&mut rig.app);
@@ -1105,6 +1108,7 @@ fn open_search_result_errors_when_conv_not_in_cache() {
         message_id: 0,
         sender: "?".into(),
         body_summary: "?".into(),
+        sent_at: 0,
     }];
     open_selected_search_result(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
@@ -1713,6 +1717,7 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
         message_id: 7,
         sender: "alice".into(),
         body_summary: "needle".into(),
+        sent_at: 0,
     }];
     open_conv_search(&mut rig.app);
     rig.app.conv_search.set("needle");

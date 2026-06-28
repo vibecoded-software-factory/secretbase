@@ -172,12 +172,19 @@ pub trait KeybasePort {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
                 .to_string();
+            // `ctime` is the send time in milliseconds → Unix seconds.
+            let sent_at = valid
+                .get("ctime")
+                .and_then(serde_json::Value::as_u64)
+                .map(|ms| ms / 1000)
+                .unwrap_or(0);
             out.push(InboxHit {
                 conv_id: String::new(),
                 conv_name: String::new(),
                 message_id,
                 sender,
                 body_summary,
+                sent_at,
             });
         }
         Ok(out)
@@ -242,12 +249,18 @@ pub trait KeybasePort {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or_default()
                     .to_string();
+                let sent_at = valid
+                    .get("ctime")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|ms| ms / 1000)
+                    .unwrap_or(0);
                 out.push(InboxHit {
                     conv_id: conv_id.clone(),
                     conv_name: conv_name.clone(),
                     message_id,
                     sender,
                     body_summary,
+                    sent_at,
                 });
             }
         }
