@@ -49,6 +49,10 @@ Every signed-in screen is built from the same vertical stack via
     (`domain::InboxSource`): `Direct messages` (everything that isn't a team)
     + **one row per team**, built dynamically by `App::inbox_sources`;
     `chat::cycle_source` walks it.
+  While the **first** (slow) `list` fetch is in flight and no conversations
+  have arrived yet, the Spaces rail and the Inbox both render a
+  `widgets::draw_skeleton` — dim placeholder bars with a shimmer row that
+  walks as `App::action_tick` advances — instead of empty panels.
   - `─[3]-Inbox` — the conversation list: a **single label column** so the
     `▶ ` cursor sits tight against the name (jewel-style); unread is shown by
     colour + bold, not a marker column. Inside a team source the redundant

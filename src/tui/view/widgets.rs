@@ -138,6 +138,45 @@ pub fn list_table(
     *scroll = state.offset();
 }
 
+/// Loading-state **skeleton**: a bordered panel filled with dim placeholder
+/// bars of varied widths, with a single brighter "shimmer" row that walks
+/// down as `tick` advances. Shown in place of a list while its first
+/// (expensive) fetch is in flight, so the user sees a loading affordance
+/// instead of an empty panel. Reusable across the TUIs.
+pub fn draw_skeleton(frame: &mut Frame, theme: &Theme, area: Rect, title: &str, tick: u8) {
+    let border = Style::default().fg(theme.inactive);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled(title.to_string(), border))
+        .border_style(border);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.height == 0 || inner.width < 4 {
+        return;
+    }
+
+    // Pseudo-varied bar widths so it reads as a list of names, not a wall.
+    const WIDTHS: [u16; 8] = [16, 10, 22, 13, 8, 19, 11, 14];
+    let rows = (inner.height as usize).min(16);
+    let shimmer = (tick as usize) % rows.max(1);
+    let max_w = inner.width.saturating_sub(2);
+
+    let mut lines: Vec<Line<'static>> = Vec::with_capacity(rows);
+    for i in 0..rows {
+        let w = WIDTHS[i % WIDTHS.len()].min(max_w);
+        let color = if i == shimmer {
+            theme.dim
+        } else {
+            theme.inactive
+        };
+        lines.push(Line::from(Span::styled(
+            format!("  {}", "█".repeat(w as usize)),
+            Style::default().fg(color),
+        )));
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
 /// Width for a content column, sized to the *visible* rows (`indices`),
 /// clamped to `[lo, hi]`. `f` maps a row index to its content length.
 pub fn col_width(indices: &[usize], lo: u16, hi: u16, f: impl Fn(usize) -> usize) -> u16 {

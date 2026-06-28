@@ -13,8 +13,8 @@ use crate::domain::{InboxSource, STATUS_FILTERS, StatusFilter};
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::widgets::{
-    draw_cmd_log, draw_identity_bar, draw_search_box, draw_status_strip, identity_content_rows,
-    list_table, list_title, middle_ellipsis,
+    draw_cmd_log, draw_identity_bar, draw_search_box, draw_skeleton, draw_status_strip,
+    identity_content_rows, list_table, list_title, middle_ellipsis,
 };
 use crate::tui::view::{split_main, titled_block};
 
@@ -80,6 +80,11 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
 /// Far-left rail: the source picker — "Direct messages" + one row per team.
 fn render_source(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
+    // First (expensive) inbox load — show a skeleton instead of an empty rail.
+    if app.conversations.is_empty() && app.is_busy() {
+        draw_skeleton(frame, &t, area, "─[2]-Spaces", app.action_tick);
+        return;
+    }
     let sources = app.inbox_sources();
     let label_budget = (area.width as usize).saturating_sub(9).max(6);
 
@@ -164,6 +169,11 @@ fn status_icon_color(
 
 fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
+    // First (expensive) inbox load — show a skeleton instead of an empty list.
+    if app.conversations.is_empty() && app.is_busy() {
+        draw_skeleton(frame, &t, area, "─[3]-Inbox", app.action_tick);
+        return;
+    }
     let total = app.conversations.len();
     let shown = app.filtered_cache.len();
 
