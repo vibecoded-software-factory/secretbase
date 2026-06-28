@@ -582,7 +582,7 @@ pub fn editor_lines(editor: &LineEditor, theme: &Theme) -> Vec<Line<'static>> {
 /// the input handler can use a `usize::MAX` "jump to oldest" sentinel
 /// without the title showing a 20-digit number or the scroll getting
 /// stuck above the bottom.
-pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool, panel: u8) {
+pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool, tag: &str) {
     // Inner height = block area minus the two borders.
     let visible_rows = (area.height as usize).saturating_sub(2);
     let total = app.cmd_log.len();
@@ -599,7 +599,7 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
     app.cmd_log_scroll = total - end; // keep the field consistent for clicks
 
     // Title: show the cursor position + selection while focused.
-    let tag = if focused && total > 0 {
+    let pos = if focused && total > 0 {
         let marks = app.cmdlog_marks.len();
         let sel = if marks > 0 {
             format!(" · {marks} sel")
@@ -612,7 +612,7 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
     } else {
         String::new()
     };
-    let title = format!("─[{panel}]-Command log{tag}");
+    let title = format!("─[{tag}]-Command log{pos}");
     let block = titled_block(&title, focused, app);
     let inner = block.inner(area);
     frame.render_widget(block, area);

@@ -31,7 +31,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_identity_bar(frame, app, chunks[0]);
     render_list(frame, app, chunks[1]);
-    draw_cmd_log(frame, app, chunks[2], false, 2);
+    draw_cmd_log(frame, app, chunks[2], false, "2");
     draw_status_strip(
         frame,
         app,

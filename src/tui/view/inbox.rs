@@ -53,7 +53,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         render_chat_placeholder(frame, app, chat_area);
     }
     let cmdlog_focused = app.focus == Focus::CmdLog;
-    draw_cmd_log(frame, app, cmdlog, cmdlog_focused, 4);
+    draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+4");
     let hint = if matches!(app.focus, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_some()
     {
         crate::tui::view::conversation::chat_hint(app)
@@ -103,7 +103,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
             frame,
             &t,
             area,
-            "─[2]-Chats",
+            "─[Alt+2]-Chats",
             app.anim_tick,
             &["Chats", "#"],
             "Loading chats…",
@@ -188,7 +188,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     // (group headers + the conversations of any expanded group) of the total
     // conversations — so it tracks what's actually shown as you fold/unfold.
     let title = format!(
-        "─[2]-{}",
+        "─[Alt+2]-{}",
         list_title("Chats", model.len(), app.conversations.len())
     );
     let mut scroll = app.list_scroll;
@@ -210,7 +210,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
 /// Right pane shown when no conversation is open.
 fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let block = titled_block("─[3]-Chat", app.focus == Focus::Chat, app);
+    let block = titled_block("─[Alt+3]-Chat", app.focus == Focus::Chat, app);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let lines = vec![

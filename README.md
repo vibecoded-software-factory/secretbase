@@ -70,8 +70,8 @@ tables.
 | `g` / `G`               | Top / bottom |
 | `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
 | `/`                     | `[/]` Focus the chat filter |
-| `Alt+2` / `Alt+3` / `Alt+4` | Go to `[2]` Chats / `[3]` Chat / `[4]` Command log |
-| `Ctrl+F`                | `[^F]` Focus the in-chat search |
+| `Alt+2` / `Alt+3` / `Alt+4` | Go to `[Alt+2]` Chats / `[Alt+3]` Chat / `[Alt+4]` Command log |
+| `Ctrl+F`                | `[Ctrl+F]` Focus the in-chat search |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |
 | `Alt+C`                 | Copy label to clipboard |
