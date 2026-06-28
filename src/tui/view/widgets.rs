@@ -174,13 +174,14 @@ pub fn draw_skeleton(
     // "Loading chats…" instead of "Chats   #") — the real header only appears
     // once the list has loaded. Fall back to the header row when no legend.
     if !loading.is_empty() {
-        lines.push(Line::raw(""));
+        // Sits on the first row (exactly where the "Chats  #" header would be),
+        // then a blank row before the shimmer bars.
         lines.push(Line::from(Span::styled(
             format!("  {loading}"),
             Style::default().fg(theme.dim),
         )));
         lines.push(Line::raw(""));
-        bar_rows = bar_rows.saturating_sub(3);
+        bar_rows = bar_rows.saturating_sub(2);
     } else if !headers.is_empty() {
         let header_style = Style::default().fg(theme.dim).add_modifier(Modifier::BOLD);
         let left = format!("  {}", headers.first().copied().unwrap_or(""));
