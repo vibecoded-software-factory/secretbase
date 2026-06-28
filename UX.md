@@ -49,9 +49,11 @@ Every signed-in screen is built from the same vertical stack via
     (`domain::InboxSource`): `Direct messages` (everything that isn't a team)
     + **one row per team**, built dynamically by `App::inbox_sources`;
     `chat::cycle_source` walks it.
-  - `─[3]-Inbox` — the conversation list. The DM/team tag column is gone (the
-    Spaces rail already says which kind you're in); rows are just the unread
-    dot + label. Counts are computed live, scoped to the active source.
+  - `─[3]-Inbox` — the conversation list: a **single label column** so the
+    `▶ ` cursor sits tight against the name (jewel-style); unread is shown by
+    colour + bold, not a marker column. Inside a team source the redundant
+    `team#` prefix is dropped — rows show just the channel name. Counts are
+    computed live, scoped to the active source.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom; `cmd_log_scroll`
   walks back). Worker ops carry their duration (request → response),

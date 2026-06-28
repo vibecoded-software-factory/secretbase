@@ -167,35 +167,40 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let total = app.conversations.len();
     let shown = app.filtered_cache.len();
 
-    // Budget for the conversation-label column: total width minus the fixed
-    // chrome (border + `▶ ` + marker + spacing + border). The DM/team tag is
-    // gone — the Spaces rail already says which kind you're in.
-    let label_budget = (area.width as usize).saturating_sub(8).max(12);
+    // Single label column so the `▶ ` cursor sits right against the name
+    // (jewel-style). Unread is shown by colour + bold, not a marker column.
+    let label_budget = (area.width as usize).saturating_sub(6).max(12);
+    // Inside a team source the rows are that team's channels, so drop the
+    // redundant "team#" prefix and show just the channel name.
+    let in_team = matches!(app.inbox_source, InboxSource::Team(_));
 
     let rows: Vec<Row<'static>> = app
         .filtered_cache
         .iter()
         .map(|&idx| {
             let conv = &app.conversations[idx];
-            let unread_marker = if conv.unread { "●" } else { " " };
-            let raw_label = app
-                .conversations_lowered
-                .get(idx)
-                .map(|l| l.display_label.clone())
+            let raw_label = conv
+                .channel
+                .topic_name
+                .clone()
+                .filter(|s| in_team && !s.is_empty())
+                .or_else(|| {
+                    app.conversations_lowered
+                        .get(idx)
+                        .map(|l| l.display_label.clone())
+                })
                 .unwrap_or_default();
             let label = middle_ellipsis(&raw_label, label_budget);
-            Row::new(vec![
-                ratatui::widgets::Cell::from(Span::styled(
-                    unread_marker.to_string(),
-                    Style::default().fg(t.conv_unread),
-                )),
-                ratatui::widgets::Cell::from(Span::styled(
-                    label,
-                    Style::default()
-                        .fg(t.foreground)
-                        .add_modifier(Modifier::BOLD),
-                )),
-            ])
+            let style = if conv.unread {
+                Style::default()
+                    .fg(t.conv_unread)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(t.foreground)
+            };
+            Row::new(vec![ratatui::widgets::Cell::from(Span::styled(
+                label, style,
+            ))])
         })
         .collect();
 
@@ -207,8 +212,8 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
         area,
         &title,
         app.focus == Focus::List,
-        &["", "Conversation"],
-        &[Constraint::Length(1), Constraint::Min(10)],
+        &["Conversation"],
+        &[Constraint::Min(10)],
         rows,
         app.list_selected,
         &mut scroll,
