@@ -23,8 +23,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let id_rows = identity_content_rows(app, area.width);
     let [identity, header, body, cmdlog, status] = split_main(area, id_rows);
 
-    // Header: the chat filter (search) spans the full width.
-    let search_area = header;
+    // One shared header row: the tree filter (above the tree), then the
+    // conversation name + the in-chat search (above the chat) — so the chat
+    // pane gets a full extra row of height.
+    let head = Layout::horizontal([Constraint::Length(28), Constraint::Min(20)]).split(header);
+    let search_area = head[0];
+    let chat_head =
+        Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)]).split(head[1]);
 
     // Body: the conversation tree (DMs + teams) on the left, the open chat
     // on the right — the unified two-pane "Home".
@@ -34,6 +39,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_identity_bar(frame, app, identity);
     render_search(frame, app, search_area);
+    crate::tui::view::conversation::draw_chat_header(frame, app, chat_head[0], chat_head[1]);
     render_tree(frame, app, tree_area);
     if app.open_conv_id.is_some() {
         crate::tui::view::conversation::draw_chat(frame, app, chat_area);

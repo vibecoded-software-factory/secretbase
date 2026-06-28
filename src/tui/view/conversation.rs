@@ -24,46 +24,51 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let id_rows = identity_content_rows(app, area.width);
     let layout = Layout::vertical([
         Constraint::Length(id_rows + 2), // identity bar
-        Constraint::Min(3),              // chat (header + messages + compose)
+        Constraint::Length(3),           // chat header (name + search)
+        Constraint::Min(3),              // messages + compose
         Constraint::Length(1),           // status strip
     ])
     .split(area);
 
     draw_identity_bar(frame, app, layout[0]);
-    draw_chat(frame, app, layout[1]);
-    draw_status_strip(frame, app, layout[2], chat_hint(app));
+    let hdr = Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(layout[1]);
+    draw_chat_header(frame, app, hdr[0], hdr[1]);
+    draw_chat(frame, app, layout[2]);
+    draw_status_strip(frame, app, layout[3], chat_hint(app));
 }
 
-/// Renders a whole chat — header (name + in-conversation search), the message
-/// history and the compose box — into `area`. Used both full-screen and as
-/// the right pane of the unified [`Screen::Home`] layout.
-pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
-    // Compose grows with its line count (multi-line via Alt+Enter), capped.
-    let compose_lines = app.compose.text().split('\n').count().max(1) as u16;
-    let compose_h = (compose_lines + 2).clamp(3, 8);
-    let layout = Layout::vertical([
-        Constraint::Length(3),         // conversation header
-        Constraint::Min(3),            // messages
-        Constraint::Length(compose_h), // compose pane (dynamic)
-    ])
-    .split(area);
-
-    // Header row: the conversation name (left) + the in-conversation search
-    // box (right, given the wider share — `searchregexp`, Ctrl+F).
-    let header = Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(layout[0]);
-    render_header(frame, app, header[0]);
+/// Renders the chat header into two rects: the conversation **name** and the
+/// in-conversation **search** box (`searchregexp`, Ctrl+F). Split out so the
+/// unified Home can place it on the shared top row, above the chat pane.
+pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, name_area: Rect, search_area: Rect) {
+    render_header(frame, app, name_area);
     draw_search_box(
         frame,
         app,
-        header[1],
+        search_area,
         "Search",
         "Ctrl+F — search this chat",
         &app.conv_search,
         app.conv_search_active,
     );
-    render_messages(frame, app, layout[1]);
-    render_compose(frame, app, layout[2]);
+}
+
+/// Renders the chat **body** — message history + compose box — into `area`.
+/// The header is drawn separately ([`draw_chat_header`]) so it can live on the
+/// unified Home's shared top row.
+pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
+    // Compose grows with its line count (multi-line via Alt+Enter), capped.
+    let compose_lines = app.compose.text().split('\n').count().max(1) as u16;
+    let compose_h = (compose_lines + 2).clamp(3, 8);
+    let layout = Layout::vertical([
+        Constraint::Min(3),            // messages
+        Constraint::Length(compose_h), // compose pane (dynamic)
+    ])
+    .split(area);
+
+    render_messages(frame, app, layout[0]);
+    render_compose(frame, app, layout[1]);
 }
 
 /// The status-strip hint for the chat, by interaction mode.
@@ -317,7 +322,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         if is_selected && app.selected_msg_idx.is_some() {
             lines.push(select_actions_line(m, app, &t));
         }
-        lines.push(Line::from(Span::raw("")));
+        // Compact: no blank line between messages — each message's
+        // "→ sender · time" header already separates them.
         spans_map.push((start, lines.len(), idx));
     }
 

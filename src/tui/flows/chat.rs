@@ -468,11 +468,28 @@ fn inject_fake_team(app: &mut App) {
 }
 
 #[cfg(not(test))]
-fn fake_msg(id: u64, sender: &str, body: &str) -> Message {
+fn fake_msg(
+    id: u64,
+    sender: &str,
+    body: &str,
+    reply: Option<u64>,
+    reactions: &[(&str, &[&str])],
+) -> Message {
+    use crate::domain::Reaction;
     let mut m = Message::default();
     m.id = id;
     m.sender = sender.to_string();
     m.content = crate::domain::MessageContent::Text(body.to_string());
+    m.reply_to = reply;
+    m.reactions = reactions
+        .iter()
+        .map(|(emoji, who)| {
+            let mut r = Reaction::default();
+            r.emoji = (*emoji).to_string();
+            r.usernames = who.iter().map(|s| (*s).to_string()).collect();
+            r
+        })
+        .collect();
     m
 }
 
@@ -480,18 +497,44 @@ fn fake_msg(id: u64, sender: &str, body: &str) -> Message {
 #[cfg(not(test))]
 fn load_fake_messages(app: &mut App) {
     let me = app.identity.username.clone();
+    let m = me.as_str();
     app.messages = vec![
         fake_msg(
             1,
             "qa-bot",
-            "Welcome to the QA playground — fake, in-memory.",
+            "¡Bienvenido al QA playground! 🎉 (fake, en memoria)",
+            None,
+            &[("👍", &[m]), ("🎉", &["ana", "beto"])],
         ),
+        fake_msg(2, "ana", "Hola gente 👋 ¿cómo viene el sprint?", None, &[]),
         fake_msg(
-            2,
-            "qa-bot",
-            "These messages aren't in keybase, just for testing.",
+            3,
+            m,
+            "Todo bien — probando el chat nuevo 😎",
+            None,
+            &[("🔥", &["ana"])],
         ),
-        fake_msg(3, &me, "Nice — the unread bold works!"),
+        fake_msg(4, "beto", "Se ve mucho más compacto ahora 👏", None, &[]),
+        fake_msg(5, "ana", "¿Alguien miró el bug del login? 🐛", None, &[]),
+        fake_msg(
+            6,
+            m,
+            "Sí, ya subí el fix ✅",
+            Some(5),
+            &[("🙌", &["ana", "beto"])],
+        ),
+        fake_msg(7, "beto", "Genial, lo pruebo 🧪", Some(6), &[]),
+        fake_msg(
+            8,
+            "qa-bot",
+            "Recordatorio: demo a las 5pm ⏰",
+            None,
+            &[("👀", &[m, "ana"])],
+        ),
+        fake_msg(9, "ana", "jajaja perfecto 😂😂", None, &[]),
+        fake_msg(10, "beto", "che y el deploy? 🚀", None, &[]),
+        fake_msg(11, m, "después de la demo lo hacemos 👍", Some(10), &[]),
+        fake_msg(12, "ana", "dale, nos vemos ahí ✨", None, &[("❤️", &[m])]),
     ];
     app.messages_next = None;
     app.messages_loading_older = false;
