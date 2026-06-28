@@ -30,9 +30,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let filters_area = head[0];
     let search_area = head[1];
 
-    // Body: the source picker (DMs + teams) on the left, the list on the right.
-    let cols =
-        Layout::horizontal([Constraint::Percentage(22), Constraint::Percentage(78)]).split(body);
+    // Body: a compact source rail (just wide enough for "Direct messages")
+    // on the left, the list filling the rest.
+    let cols = Layout::horizontal([Constraint::Length(26), Constraint::Min(20)]).split(body);
     let source_area = cols[0];
     let list_area = cols[1];
 
