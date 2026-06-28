@@ -2045,12 +2045,13 @@ fn input_tab_from_search_cycles_focus() {
 }
 
 #[test]
-fn input_slash_jumps_to_search_focus() {
+fn input_alt_s_jumps_to_search_focus() {
     use crate::tui::screens::Focus;
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Tree;
-    press(&mut rig.app, KeyCode::Char('/'), KeyModifiers::NONE);
+    // Alt+S focuses the chat filter (Search); `/` is now a free printable.
+    press(&mut rig.app, KeyCode::Char('s'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::Search);
 }
 
@@ -2071,15 +2072,15 @@ fn input_alt_r_on_inbox_queues_load_inbox() {
 }
 
 #[test]
-fn input_alt_s_on_inbox_queues_mark_read() {
+fn input_alt_e_on_inbox_queues_mark_read() {
     let mut rig = build_rig();
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     reveal_first(&mut rig.app);
     rig.app.screen = Screen::Inbox;
-    // Alt+S = mark as Seen/read (Alt+M now jumps to the chat).
-    press(&mut rig.app, KeyCode::Char('s'), KeyModifiers::ALT);
+    // Alt+E = mark as sEEn/read (Alt+S focuses the filter, Alt+M jumps to chat).
+    press(&mut rig.app, KeyCode::Char('e'), KeyModifiers::ALT);
     assert!(matches!(rig.app.in_flight, Some(InFlight::MarkRead { .. })));
 }
 

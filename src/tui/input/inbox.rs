@@ -81,12 +81,16 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             set_focus(app, Focus::CmdLog);
             return;
         }
+        KeyCode::Char('s') | KeyCode::Char('S') if alt => {
+            app.focus = Focus::Search;
+            return;
+        }
         // ── Conversation actions ─────────────────────────────────────────────
         KeyCode::Char('y') | KeyCode::Char('Y') if alt => {
             chat::do_copy_conversation_label(app);
             return;
         }
-        KeyCode::Char('s') | KeyCode::Char('S') if alt => {
+        KeyCode::Char('e') | KeyCode::Char('E') if alt => {
             chat::request_mark_read(app);
             return;
         }
@@ -135,12 +139,6 @@ pub fn handle(app: &mut App, key: KeyEvent) {
     }
 
     match key.code {
-        // `/` focuses the filter — but only from the non-text panels, so it
-        // can be typed into the compose / chat-search boxes (vim-style).
-        KeyCode::Char('/') if matches!(app.focus, Focus::Tree | Focus::CmdLog) => {
-            app.focus = Focus::Search;
-            return;
-        }
         KeyCode::F(5) => {
             chat::request_load_inbox(app);
             return;

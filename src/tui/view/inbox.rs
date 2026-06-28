@@ -81,15 +81,15 @@ fn footer_hint(app: &App) -> &'static str {
 }
 
 fn render_search(frame: &mut Frame, app: &App, area: Rect) {
-    // draw_search_box prepends the `─[/]-` panel tag itself.
+    // draw_search_box prepends the `─[Alt+S]-` panel tag itself.
     let title = format!("Search · {} results", app.filtered_cache.len());
     draw_search_box(
         frame,
         app,
         area,
-        "/",
+        "Alt+S",
         &title,
-        "type / to filter…",
+        "type to filter chats…",
         &app.search,
         app.focus == Focus::Search,
     );

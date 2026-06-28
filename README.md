@@ -69,13 +69,13 @@ tables.
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
 | `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
-| `/`                     | `[/]` Focus the chat filter |
+| `Alt+S`                 | `[Alt+S]` Focus the chat filter (Search) |
 | `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Chat (works mid-compose) |
 | `Alt+F` / `Alt+L`       | Go to `[Alt+F]` in-chat search / `[Alt+L]` Command log |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |
 | `Alt+Y`                 | Yank (copy) label to clipboard |
-| `Alt+S`                 | Mark as Seen (read) |
+| `Alt+E`                 | Mark as sEEn (read) |
 | `Alt+R` / `F5`          | Refresh inbox |
 | `Alt+U` / `Alt+O`       | Mute / unmute |
 | `Alt+I`                 | Ignore conversation (hide from inbox) |
