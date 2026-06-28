@@ -139,10 +139,11 @@ pub fn list_table(
 }
 
 /// Loading-state **skeleton**: a bordered panel filled with dim placeholder
-/// bars of varied widths, with a single brighter "shimmer" row that walks
-/// down as `tick` advances. Shown in place of a list while its first
-/// (expensive) fetch is in flight, so the user sees a loading affordance
-/// instead of an empty panel. Reusable across the TUIs.
+/// bars of varied widths, with a bright **shimmer band** that sweeps across
+/// each bar left-to-right (offset per row, so it reads as a diagonal wave) as
+/// `tick` advances — the classic web skeleton animation. Shown in place of a
+/// list while its first (expensive) fetch is in flight, so the user sees a
+/// loading affordance instead of an empty panel. Reusable across the TUIs.
 pub fn draw_skeleton(frame: &mut Frame, theme: &Theme, area: Rect, title: &str, tick: u8) {
     let border = Style::default().fg(theme.inactive);
     let block = Block::default()
@@ -156,25 +157,60 @@ pub fn draw_skeleton(frame: &mut Frame, theme: &Theme, area: Rect, title: &str, 
     }
 
     // Pseudo-varied bar widths so it reads as a list of names, not a wall.
-    const WIDTHS: [u16; 8] = [16, 10, 22, 13, 8, 19, 11, 14];
+    const WIDTHS: [usize; 8] = [16, 10, 22, 13, 8, 19, 11, 14];
     let rows = (inner.height as usize).min(16);
-    let shimmer = (tick as usize) % rows.max(1);
-    let max_w = inner.width.saturating_sub(2);
+    let max_w = inner.width.saturating_sub(2) as usize;
+    // The shimmer band sweeps a bit past the widest bar before wrapping, so
+    // there's a brief dark gap between sweeps (like a real skeleton).
+    let cycle = (max_w + 8) as isize;
 
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(rows);
     for i in 0..rows {
         let w = WIDTHS[i % WIDTHS.len()].min(max_w);
-        let color = if i == shimmer {
-            theme.dim
-        } else {
-            theme.inactive
-        };
-        lines.push(Line::from(Span::styled(
-            format!("  {}", "█".repeat(w as usize)),
-            Style::default().fg(color),
-        )));
+        // Band centre for this row: advances with the tick, offset per row.
+        let center = ((tick as isize) * 2 + i as isize * 2).rem_euclid(cycle);
+        lines.push(Line::from(shimmer_bar(w, center, theme)));
     }
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// One skeleton bar (`w` block chars) with a soft highlight centred at
+/// `center`: a 2-wide bright core, 1-wide dim shoulders, dark base —
+/// grouped into runs so it's a handful of spans, not one per char.
+fn shimmer_bar(w: usize, center: isize, theme: &Theme) -> Vec<Span<'static>> {
+    let tier = |x: usize| -> ratatui::style::Color {
+        match (x as isize - center).abs() {
+            0 | 1 => theme.foreground, // bright core
+            2 | 3 => theme.dim,        // soft shoulders
+            _ => theme.inactive,       // base
+        }
+    };
+    // Leading two-space gutter to match the list rows' `▶ ` indent.
+    let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
+    let mut run_color: Option<ratatui::style::Color> = None;
+    let mut run_len = 0usize;
+    for x in 0..w {
+        let c = tier(x);
+        if Some(c) == run_color {
+            run_len += 1;
+        } else {
+            if run_len > 0 {
+                spans.push(Span::styled(
+                    "█".repeat(run_len),
+                    Style::default().fg(run_color.unwrap()),
+                ));
+            }
+            run_color = Some(c);
+            run_len = 1;
+        }
+    }
+    if run_len > 0 {
+        spans.push(Span::styled(
+            "█".repeat(run_len),
+            Style::default().fg(run_color.unwrap()),
+        ));
+    }
+    spans
 }
 
 /// Width for a content column, sized to the *visible* rows (`indices`),

@@ -82,7 +82,7 @@ fn render_source(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
     // First (expensive) inbox load — show a skeleton instead of an empty rail.
     if app.conversations.is_empty() && app.is_busy() {
-        draw_skeleton(frame, &t, area, "─[2]-Spaces", app.action_tick);
+        draw_skeleton(frame, &t, area, "─[2]-Spaces", app.anim_tick);
         return;
     }
     let sources = app.inbox_sources();
@@ -171,7 +171,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
     // First (expensive) inbox load — show a skeleton instead of an empty list.
     if app.conversations.is_empty() && app.is_busy() {
-        draw_skeleton(frame, &t, area, "─[3]-Inbox", app.action_tick);
+        draw_skeleton(frame, &t, area, "─[3]-Inbox", app.anim_tick);
         return;
     }
     let total = app.conversations.len();

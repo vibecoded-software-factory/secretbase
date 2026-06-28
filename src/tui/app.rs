@@ -342,6 +342,10 @@ pub struct App {
     // ── Action queue / feedback strip ─────────────────────────────────────
     pub action_state: ActionState,
     pub action_tick: u8,
+    /// Free-running animation counter (wraps at 256), advanced every
+    /// `tick_action`. Drives smooth animations like the skeleton shimmer —
+    /// unlike `action_tick` it isn't reset by `set_action` or capped at 4.
+    pub anim_tick: u8,
     /// Caller-side context for the request the worker is currently
     /// processing. `None` when idle. Set by `flows::*::request_*` and
     /// cleared by [`crate::tui::flows::apply_response`] once the
@@ -510,6 +514,7 @@ impl App {
             conv_action_yes: false,
             action_state: ActionState::Idle,
             action_tick: 0,
+            anim_tick: 0,
             in_flight: None,
             cmd_log: Vec::new(),
             cmd_log_scroll: 0,
@@ -719,9 +724,11 @@ impl App {
 
     /// Increments the spinner animation tick. Wraps modulo 4 so the
     /// renderer can index a 4-frame braille spinner without doing the
-    /// modulo itself.
+    /// modulo itself. Also advances `anim_tick`, a free-running counter for
+    /// smoother animations (the loading skeleton's shimmer sweep).
     pub fn tick_action(&mut self) {
         self.action_tick = (self.action_tick + 1) % 4;
+        self.anim_tick = self.anim_tick.wrapping_add(1);
     }
 
     /// Pushes a new entry to the command log, trimming to
