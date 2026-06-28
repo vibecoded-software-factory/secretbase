@@ -190,13 +190,15 @@ pub fn draw_skeleton(
     }
 
     // A "Loading …" legend (like the conversation's "Loading messages…"),
-    // dropping the bars one more row.
+    // with a blank row above and below for breathing room.
     if !loading.is_empty() {
+        lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             format!("  {loading}"),
             Style::default().fg(theme.dim),
         )));
-        bar_rows = bar_rows.saturating_sub(1);
+        lines.push(Line::raw(""));
+        bar_rows = bar_rows.saturating_sub(3);
     }
 
     // Pseudo-varied bar widths so it reads as a list of names, not a wall.
