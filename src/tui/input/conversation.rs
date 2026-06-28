@@ -153,7 +153,10 @@ fn handle_select(app: &mut App, key: KeyEvent) {
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     match key.code {
         KeyCode::Esc | KeyCode::Char('i') | KeyCode::Enter => chat::leave_select_mode(app),
-        // Shift+↑/↓ shade a contiguous range (editor-style); plain arrows move.
+        // Shade a contiguous range (editor-style): Shift+↑/↓ where the terminal
+        // delivers it, plus the always-reliable Shift+K/Shift+J.
+        KeyCode::Char('K') => chat::select_extend(app, -1),
+        KeyCode::Char('J') => chat::select_extend(app, 1),
         KeyCode::Up if shift => chat::select_extend(app, -1),
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),

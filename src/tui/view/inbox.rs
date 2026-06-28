@@ -77,7 +77,7 @@ fn footer_hint(app: &App) -> &'static str {
         Focus::Tree => "↑/↓ nav · Enter open/fold · Alt+N new · Alt+Y copy · Tab cycle",
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
-        Focus::CmdLog => "↑/↓ move · Shift+↑/↓ range · Space mark · y/c copy · Tab",
+        Focus::CmdLog => "↑/↓ move · Shift+K/J range · Space mark · y/c copy · Tab",
     }
 }
 

@@ -250,7 +250,10 @@ fn handle_search(app: &mut App, key: KeyEvent) {
 fn handle_cmdlog(app: &mut App, key: KeyEvent) {
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     match key.code {
-        // Shift+↑/↓ shade a contiguous range; plain arrows move the cursor.
+        // Shade a contiguous range: Shift+↑/↓ where the terminal delivers it,
+        // and the always-reliable Shift+K/Shift+J (uppercase letters).
+        KeyCode::Char('K') => app.cmdlog_extend(-1),
+        KeyCode::Char('J') => app.cmdlog_extend(1),
         KeyCode::Up if shift => app.cmdlog_extend(-1),
         KeyCode::Down if shift => app.cmdlog_extend(1),
         KeyCode::Up | KeyCode::Char('k') => app.cmdlog_move(-1),
