@@ -14,13 +14,7 @@ use crate::tui::screens::{Focus, Screen};
 
 /// Focus cycle order — Search, the status filter, the conversation tree, the
 /// open chat, the command log. `Chat` is skipped while no conversation is open.
-const FOCUS_ORDER: [Focus; 5] = [
-    Focus::Search,
-    Focus::Filters,
-    Focus::Tree,
-    Focus::Chat,
-    Focus::CmdLog,
-];
+const FOCUS_ORDER: [Focus; 4] = [Focus::Search, Focus::Tree, Focus::Chat, Focus::CmdLog];
 
 /// Cycles focus, skipping `Chat` when there's no open conversation to focus.
 fn cycle(app: &App, forward: bool) -> Focus {
@@ -112,7 +106,6 @@ pub fn handle(app: &mut App, key: KeyEvent) {
     match app.focus {
         Focus::Tree => handle_tree(app, key),
         Focus::Chat => crate::tui::input::conversation::handle(app, key),
-        Focus::Filters => handle_filters(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         Focus::Search => unreachable!("handled above"),
     }
@@ -170,20 +163,6 @@ fn handle_tree(app: &mut App, key: KeyEvent) {
         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
             chat::tree_activate(app);
         }
-        _ => {}
-    }
-}
-
-fn handle_filters(app: &mut App, key: KeyEvent) {
-    match key.code {
-        // Horizontal bar — arrows on either axis flip the status.
-        KeyCode::Left | KeyCode::Up | KeyCode::Char('h') | KeyCode::Char('k') => {
-            chat::cycle_status(app, -1)
-        }
-        KeyCode::Right | KeyCode::Down | KeyCode::Char('l') | KeyCode::Char('j') => {
-            chat::cycle_status(app, 1)
-        }
-        KeyCode::Enter => app.focus = Focus::Tree,
         _ => {}
     }
 }

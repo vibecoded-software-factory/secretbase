@@ -38,18 +38,17 @@ Every signed-in screen is built from the same vertical stack via
 The inbox is a **unified two-pane "Home"** (Discord-style): the conversation
 tree on the left, the open chat on the right — no separate full-screen
 conversation on normal terminals.
-- **header** — split horizontally: a compact `─[1]-Filter` status bar
-  (`Length(28)`, `render_filters_bar`) + the `─[/]-Search` box filling the
-  rest. The filter bar is the **status** axis (`domain::StatusFilter`:
-  `All`/`Unread`) as inline pills (`Focus::Filters`, `←/→` via
-  `chat::cycle_status`).
+- **header** — the `─[/]-Search` box (full width) is the **chat filter**:
+  it fuzzy-filters the tree (force-expanding groups with matches).
 - **body** — `─[2]-Chats` tree (`Length(28)`) on the left, the chat
   (`Min(24)`) on the right:
   - `─[2]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
     → `TreeRow::{Group,Conv}`): a "Direct messages" group then one
     **collapsible** group per team, each (unless folded) followed by its
-    conversations (channel name only, no `team#` prefix). `App::collapsed`
-    holds folded groups; a non-empty search force-expands all. `↑/↓` move
+    conversations (channel name only, no `team#` prefix). **Unread** groups
+    and conversations are **bold** (plus a `●` / unread count) so they stand
+    out. `App::collapsed` holds folded groups; a non-empty search
+    force-expands all. `↑/↓` move
     (`chat::tree_move`); `Enter` folds a group or **opens a conversation in
     the right pane** (`chat::tree_activate` → `enter_conversation`, which stays
     on `Screen::Inbox` and moves focus to `Chat`). The first (slow) load shows
@@ -173,10 +172,10 @@ which action to fire. The module depends only on `ratatui` + the shared
 
 ## Panels & focus
 
-The inbox's focusable panels are the `screens::Focus` variants: `Search`,
-`Filters` (status bar in the header), `Tree` (conversation tree), `Chat` (the
-open chat — skipped in the Tab cycle when no conversation is open),
-`CmdLog` (the identity bar and status strip are chrome, not focus targets).
+The inbox's focusable panels are the `screens::Focus` variants: `Search`
+(chat filter), `Tree` (conversation tree), `Chat` (the open chat — skipped in
+the Tab cycle when no conversation is open), `CmdLog` (the identity bar and
+status strip are chrome, not focus targets).
 Conventions:
 
 - `/` jumps to Search; `Tab`/`Shift+Tab` cycle focus via
@@ -189,7 +188,7 @@ Conventions:
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
-its panels `─[/]-Search`, `─[1]-Filter`, `─[2]-Chats`, `─[3]-Chat`, `─[4]-Command log`; Teams
+its panels `─[/]-Search`, `─[2]-Chats`, `─[3]-Chat`, `─[4]-Command log`; Teams
 uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.

@@ -48,8 +48,6 @@ pub enum Screen {
 pub enum Focus {
     /// Search / filter box.
     Search,
-    /// Status-filter bar (All/Unread).
-    Filters,
     /// Conversation tree (Direct messages + teams) — the left pane.
     Tree,
     /// The chat (right pane) — compose / select / in-conversation search.

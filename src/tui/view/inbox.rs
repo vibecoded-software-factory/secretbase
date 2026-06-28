@@ -9,7 +9,6 @@ use ratatui::{
     widgets::{Paragraph, Row},
 };
 
-use crate::domain::{STATUS_FILTERS, StatusFilter};
 use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
 use crate::tui::view::widgets::{
@@ -24,11 +23,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let id_rows = identity_content_rows(app, area.width);
     let [identity, header, body, cmdlog, status] = split_main(area, id_rows);
 
-    // Header row: a compact horizontal status filter on the left, the search
-    // box filling the rest.
-    let head = Layout::horizontal([Constraint::Length(28), Constraint::Min(20)]).split(header);
-    let filters_area = head[0];
-    let search_area = head[1];
+    // Header: the chat filter (search) spans the full width.
+    let search_area = header;
 
     // Body: the conversation tree (DMs + teams) on the left, the open chat
     // on the right — the unified two-pane "Home".
@@ -37,7 +33,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let chat_area = cols[1];
 
     draw_identity_bar(frame, app, identity);
-    render_filters_bar(frame, app, filters_area);
     render_search(frame, app, search_area);
     render_tree(frame, app, tree_area);
     if app.open_conv_id.is_some() {
@@ -56,15 +51,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     app.mouse_areas.search = search_area;
     app.mouse_areas.source = tree_area;
-    app.mouse_areas.filters = filters_area;
     app.mouse_areas.list = chat_area;
     app.mouse_areas.cmd_log = cmdlog;
 }
 
 fn footer_hint(app: &App) -> &'static str {
     match app.focus {
-        Focus::Search => "type to filter · Enter/Esc leave",
-        Focus::Filters => "←/→ All / Unread · Enter apply",
+        Focus::Search => "type to filter chats · Enter/Esc leave",
         Focus::Tree => "↑/↓ nav · Enter open / fold · Alt+N new · Tab focus",
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::CmdLog => "↑/↓ scroll · Tab focus",
@@ -115,14 +108,22 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     String::new()
                 };
+                // Groups with unread conversations are bold (on top of the
+                // count) so they stand out.
+                let mut style = Style::default().fg(color);
+                if *unread > 0 {
+                    style = style.add_modifier(Modifier::BOLD);
+                }
                 Row::new(vec![
                     ratatui::widgets::Cell::from(Span::styled(
                         format!("{arrow} {icon} {label}"),
-                        Style::default().fg(color).add_modifier(Modifier::BOLD),
+                        style,
                     )),
                     ratatui::widgets::Cell::from(Span::styled(
                         count,
-                        Style::default().fg(t.conv_unread),
+                        Style::default()
+                            .fg(t.conv_unread)
+                            .add_modifier(Modifier::BOLD),
                     )),
                 ])
             }
@@ -139,16 +140,21 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                         .map(|l| l.display_label.clone())
                 })
                 .unwrap_or_default();
-                let label = middle_ellipsis(&raw, budget.saturating_sub(2));
-                let style = if conv.unread {
-                    Style::default()
-                        .fg(t.conv_unread)
-                        .add_modifier(Modifier::BOLD)
+                // Unread conversations get a ● symbol AND bold so they're
+                // easy to pick out; read ones are plain.
+                let (prefix, style) = if conv.unread {
+                    (
+                        "● ",
+                        Style::default()
+                            .fg(t.conv_unread)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
-                    Style::default().fg(t.foreground)
+                    ("", Style::default().fg(t.foreground))
                 };
+                let label = middle_ellipsis(&raw, budget.saturating_sub(4));
                 Row::new(vec![
-                    ratatui::widgets::Cell::from(Span::styled(format!("  {label}"), style)),
+                    ratatui::widgets::Cell::from(Span::styled(format!("  {prefix}{label}"), style)),
                     ratatui::widgets::Cell::from(Span::raw("")),
                 ])
             }
@@ -189,40 +195,4 @@ fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
         )),
     ];
     frame.render_widget(Paragraph::new(lines), inner);
-}
-
-/// Compact horizontal status filter in the header (left of search): the
-/// All / Unread choices as inline pills, scoped to the active source.
-fn render_filters_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    for (i, f) in STATUS_FILTERS.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw(" "));
-        }
-        let active = *f == app.status_filter;
-        let (icon, color) = status_icon_color(*f, t);
-        let label = format!(" {icon}{} {} ", f.label(), app.count_status(*f));
-        let style = if active {
-            Style::default()
-                .fg(t.accent)
-                .bg(t.selected_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(color)
-        };
-        spans.push(Span::styled(label, style));
-    }
-    let block = titled_block("─[1]-Filter", app.focus == Focus::Filters, app);
-    frame.render_widget(Paragraph::new(Line::from(spans)).block(block), area);
-}
-
-fn status_icon_color(
-    f: StatusFilter,
-    t: &crate::tui::theme::Theme,
-) -> (&'static str, ratatui::style::Color) {
-    match f {
-        StatusFilter::All => ("  ", t.foreground),
-        StatusFilter::Unread => ("● ", t.conv_unread),
-    }
 }

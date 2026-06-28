@@ -55,9 +55,6 @@ impl MouseAreas {
         if rect_contains(self.source, col, row) {
             return Some(Focus::Tree);
         }
-        if rect_contains(self.filters, col, row) {
-            return Some(Focus::Filters);
-        }
         if rect_contains(self.list, col, row) {
             return Some(Focus::Chat);
         }

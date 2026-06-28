@@ -23,8 +23,8 @@ End-to-end feature working: **chat inbox list** (read-only).
 * `keybase status --json` on boot to detect the session.
 * `keybase chat api {"method":"list"}` to load conversations.
 * Discord-style unified two-pane Home: a collapsible **conversation tree**
-  (Direct messages + a group per team) on the left, the open **chat** on the
-  right; a compact All / Unread status filter in the header.
+  (Direct messages + a group per team; unread in bold) on the left, the open
+  **chat** on the right; the header search fuzzy-filters the tree.
 * Local fuzzy search (channel name, topic name, creator).
 * Mark conversation as read (`m`).
 * Copy conversation label to clipboard (`y`).
@@ -68,7 +68,7 @@ tables.
 | `↑` / `↓` · `k` / `j`   | Navigate |
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
-| `Tab` / `Shift+Tab`     | Cycle focus (search · filters · tree · chat · log) |
+| `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · log) |
 | `/`                     | Focus search |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |
@@ -83,8 +83,7 @@ tables.
 | `Shift+L`               | Logout (confirmation) |
 
 In the **Chats** tree, `↑` / `↓` move and `Enter` folds a group or opens the
-selected conversation in the right pane; the header's `←` / `→` switch
-All / Unread.
+selected conversation in the right pane; the header search fuzzy-filters it.
 
 ### Conversation
 

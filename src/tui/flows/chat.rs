@@ -92,6 +92,8 @@ pub fn handle_load_inbox_response(
             let n = load.conversations.len();
             let skipped_count = load.skipped.len();
             app.conversations = load.conversations;
+            #[cfg(not(test))]
+            inject_fake_team(app); // TEMP dev fixture — remove later
             app.rebuild_lowered();
             app.rebuild_filter();
             // Restore selection by id; fall back to clamping to a valid
@@ -427,11 +429,96 @@ pub fn quick_switcher_open_selected(app: &mut App) {
 
 // ── Load messages (first page) ───────────────────────────────────────
 
+// ── TEMP dev fixture: an in-memory fake team (remove later) ──────────
+// Lets the unread (bold) display be exercised without touching keybase.
+
+#[cfg(not(test))]
+const FAKE_TEAM: &str = "qa-playground";
+
+/// Appends a fake team with two unread channels to the loaded inbox.
+#[cfg(not(test))]
+fn inject_fake_team(app: &mut App) {
+    use crate::domain::{Channel, Conversation, MemberStatus, MembersType, TopicType};
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    for (i, topic) in ["general", "bugs"].iter().enumerate() {
+        let id = format!("FAKE::{FAKE_TEAM}::{topic}");
+        if app.conversations.iter().any(|c| c.id == id) {
+            continue;
+        }
+        app.conversations.push(Conversation {
+            id,
+            channel: Channel {
+                name: FAKE_TEAM.to_string(),
+                members_type: MembersType::Team,
+                topic_type: TopicType::Chat,
+                topic_name: Some((*topic).to_string()),
+                public: false,
+            },
+            is_default_conv: i == 0,
+            unread: true,
+            active_at: now_ms / 1000,
+            active_at_ms: now_ms,
+            member_status: MemberStatus::Active,
+            creator_info: None,
+        });
+    }
+}
+
+#[cfg(not(test))]
+fn fake_msg(id: u64, sender: &str, body: &str) -> Message {
+    let mut m = Message::default();
+    m.id = id;
+    m.sender = sender.to_string();
+    m.content = crate::domain::MessageContent::Text(body.to_string());
+    m
+}
+
+/// Serves canned messages for a fake conversation and marks it read.
+#[cfg(not(test))]
+fn load_fake_messages(app: &mut App) {
+    let me = app.identity.username.clone();
+    app.messages = vec![
+        fake_msg(
+            1,
+            "qa-bot",
+            "Welcome to the QA playground — fake, in-memory.",
+        ),
+        fake_msg(
+            2,
+            "qa-bot",
+            "These messages aren't in keybase, just for testing.",
+        ),
+        fake_msg(3, &me, "Nice — the unread bold works!"),
+    ];
+    app.messages_next = None;
+    app.messages_loading_older = false;
+    app.messages_scroll = 0;
+    app.rebuild_pinned();
+    if let Some(id) = app.open_conv_id.clone()
+        && let Some(c) = app.conversations.iter_mut().find(|c| c.id == id)
+    {
+        c.unread = false;
+    }
+    app.rebuild_lowered();
+    app.rebuild_filter();
+    app.set_action(ActionState::Done("Loaded fake messages".into()));
+}
+
 pub fn request_load_messages(app: &mut App) {
     let Some(conv_id) = app.open_conv_id.clone() else {
         app.set_action(ActionState::Error("No conversation open".into()));
         return;
     };
+    // TEMP dev fixture — fake teams have no keybase backing; serve canned
+    // messages locally instead of a `read`. Remove with inject_fake_team.
+    #[cfg(not(test))]
+    if conv_id.starts_with("FAKE::") {
+        load_fake_messages(app);
+        return;
+    }
     let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
         app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
         app.screen = crate::tui::screens::Screen::Inbox;

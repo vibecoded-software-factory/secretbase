@@ -1975,19 +1975,11 @@ fn input_tab_steps_forward_through_non_search_focuses() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
 
-    // FOCUS_ORDER = [Search, Filters, Tree, Chat, CmdLog]; Chat is skipped
-    // with no open conversation.
-    rig.app.focus = Focus::Filters;
-    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Tree);
-
+    // FOCUS_ORDER = [Search, Tree, Chat, CmdLog]; Chat is skipped with no
+    // open conversation.
     rig.app.focus = Focus::Tree;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::CmdLog); // Chat skipped (no conv open)
-
-    rig.app.focus = Focus::CmdLog;
-    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Search, "wraps around");
 
     rig.app.focus = Focus::CmdLog;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
@@ -2004,7 +1996,7 @@ fn input_tab_from_search_cycles_focus() {
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Search;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Filters);
+    assert_eq!(rig.app.focus, Focus::Tree);
 }
 
 #[test]
@@ -2236,7 +2228,7 @@ fn mouse_handler_rejects_clicks_against_stale_rects_after_resize() {
 
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
-    rig.app.focus = crate::tui::screens::Focus::Filters;
+    rig.app.focus = crate::tui::screens::Focus::Tree;
     // Frame was drawn against a 120x40 terminal — the List panel
     // sat at (40..120, 5..30).
     rig.app.mouse_areas.frame_size = (120, 40);
@@ -2262,7 +2254,7 @@ fn mouse_handler_rejects_clicks_against_stale_rects_after_resize() {
     );
 
     // Focus must NOT have flipped to List based on stale rects.
-    assert_eq!(rig.app.focus, crate::tui::screens::Focus::Filters);
+    assert_eq!(rig.app.focus, crate::tui::screens::Focus::Tree);
 }
 
 #[test]
@@ -2274,7 +2266,7 @@ fn mouse_handler_honors_clicks_when_rects_are_fresh() {
 
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
-    rig.app.focus = crate::tui::screens::Focus::Filters;
+    rig.app.focus = crate::tui::screens::Focus::Tree;
     rig.app.mouse_areas.frame_size = (120, 40);
     rig.app.mouse_areas.list = Rect {
         x: 40,
