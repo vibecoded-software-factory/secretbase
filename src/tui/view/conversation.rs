@@ -25,7 +25,7 @@ pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
         frame,
         app,
         area,
-        "Alt+F",
+        "Ctrl+F",
         "Search",
         "search this chat",
         &app.conv_search,

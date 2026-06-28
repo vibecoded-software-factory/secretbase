@@ -69,9 +69,9 @@ tables.
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
 | `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
-| `Alt+S`                 | `[Alt+S]` Focus the chat filter (Search) |
+| `Alt+F`                 | `[Alt+F]` Focus the chat **F**ilter |
 | `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Chat (works mid-compose) |
-| `Alt+F` / `Alt+L`       | Go to `[Alt+F]` in-chat search / `[Alt+L]` Command log |
+| `Ctrl+F` / `Alt+L`      | Go to `[Ctrl+F]` in-chat search / `[Alt+L]` Command log |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |
 | `Alt+Y`                 | Yank (copy) label to clipboard |

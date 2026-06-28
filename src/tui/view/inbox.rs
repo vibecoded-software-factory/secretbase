@@ -72,7 +72,7 @@ fn footer_hint(app: &App) -> &'static str {
     match app.focus {
         Focus::Search => "type to filter chats · Enter/Esc leave",
         Focus::Tree => {
-            "↑/↓ nav · Enter open/fold · Alt+M chat · Alt+F find · Alt+L log · Alt+N new"
+            "↑/↓ nav · Enter open/fold · Alt+F filter · Alt+M chat · Ctrl+F find · Alt+N new"
         }
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
@@ -87,7 +87,7 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
         frame,
         app,
         area,
-        "Alt+S",
+        "Alt+F",
         &title,
         "type to filter chats…",
         &app.search,

@@ -73,16 +73,18 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             set_focus(app, Focus::Chat);
             return;
         }
-        KeyCode::Char('f') | KeyCode::Char('F') if alt && app.open_conv_id.is_some() => {
+        KeyCode::Char('f') | KeyCode::Char('F') if alt => {
+            // Alt+F filters the chat list (the left search box).
+            app.focus = Focus::Search;
+            return;
+        }
+        KeyCode::Char('f') | KeyCode::Char('F') if ctrl && app.open_conv_id.is_some() => {
+            // Ctrl+F finds within the open conversation (the classic find).
             set_focus(app, Focus::ChatSearch);
             return;
         }
         KeyCode::Char('l') | KeyCode::Char('L') if alt => {
             set_focus(app, Focus::CmdLog);
-            return;
-        }
-        KeyCode::Char('s') | KeyCode::Char('S') if alt => {
-            app.focus = Focus::Search;
             return;
         }
         // ── Conversation actions ─────────────────────────────────────────────

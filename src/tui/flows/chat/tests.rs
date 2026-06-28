@@ -2045,13 +2045,13 @@ fn input_tab_from_search_cycles_focus() {
 }
 
 #[test]
-fn input_alt_s_jumps_to_search_focus() {
+fn input_alt_f_jumps_to_filter_focus() {
     use crate::tui::screens::Focus;
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Tree;
-    // Alt+S focuses the chat filter (Search); `/` is now a free printable.
-    press(&mut rig.app, KeyCode::Char('s'), KeyModifiers::ALT);
+    // Alt+F focuses the chat Filter (the left search box).
+    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::Search);
 }
 
@@ -2228,8 +2228,8 @@ fn go_to_keys_focus_each_panel() {
         "c1",
     );
     rig.app.screen = Screen::Inbox;
-    // Alt+letter go-to works from any focus (here from the chat compose):
-    // Alt+L log, Alt+C chats, Alt+M chat, Alt+F find.
+    // Go-to works from any focus (here from the chat compose): Alt+L log,
+    // Alt+C chats, Alt+M chat, Ctrl+F in-chat find.
     rig.app.focus = Focus::Chat;
     press(&mut rig.app, KeyCode::Char('l'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::CmdLog);
@@ -2237,7 +2237,7 @@ fn go_to_keys_focus_each_panel() {
     assert_eq!(rig.app.focus, Focus::Tree);
     press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::Chat);
-    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::ALT);
+    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::CONTROL);
     assert_eq!(rig.app.focus, Focus::ChatSearch);
     assert!(rig.app.conv_search_active);
 }
