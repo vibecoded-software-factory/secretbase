@@ -53,7 +53,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         render_chat_placeholder(frame, app, chat_area);
     }
     let cmdlog_focused = app.focus == Focus::CmdLog;
-    draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "l");
+    draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+L");
     let hint = if matches!(app.focus, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_some()
     {
         crate::tui::view::conversation::chat_hint(app)
@@ -71,7 +71,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 fn footer_hint(app: &App) -> &'static str {
     match app.focus {
         Focus::Search => "type to filter chats · Enter/Esc leave",
-        Focus::Tree => "↑/↓ nav · Enter open/fold · go-to: m chat · f find · l log · Alt+N new",
+        Focus::Tree => {
+            "↑/↓ nav · Enter open/fold · Alt+M chat · Alt+F find · Alt+L log · Alt+N new"
+        }
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
         Focus::CmdLog => "↑/↓ move · Shift+↑/↓ range · Space mark · y/c copy · Tab",
@@ -103,7 +105,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
             frame,
             &t,
             area,
-            "─[c]-Chats",
+            "─[Alt+C]-Chats",
             app.anim_tick,
             &["Chats", "#"],
             "Loading chats…",
@@ -188,7 +190,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     // (group headers + the conversations of any expanded group) of the total
     // conversations — so it tracks what's actually shown as you fold/unfold.
     let title = format!(
-        "─[c]-{}",
+        "─[Alt+C]-{}",
         list_title("Chats", model.len(), app.conversations.len())
     );
     let mut scroll = app.list_scroll;
@@ -210,7 +212,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
 /// Right pane shown when no conversation is open.
 fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let block = titled_block("─[m]-Chat", app.focus == Focus::Chat, app);
+    let block = titled_block("─[Alt+M]-Chat", app.focus == Focus::Chat, app);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let lines = vec![

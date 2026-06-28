@@ -25,7 +25,7 @@ pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
         frame,
         app,
         area,
-        "f",
+        "Alt+F",
         "Search",
         "search this chat",
         &app.conv_search,
@@ -122,11 +122,11 @@ fn chat_title(app: &App) -> String {
                 })
         })
         .unwrap_or_default();
-    // `─[m]-` border tag → `m` (from the tree) focuses the chat.
+    // `─[Alt+M]-` border tag → Alt+M focuses the chat (works mid-compose).
     let mut title = if name.is_empty() {
-        "─[m]-Messages".to_string()
+        "─[Alt+M]-Messages".to_string()
     } else {
-        format!("─[m]-Messages — {name}")
+        format!("─[Alt+M]-Messages — {name}")
     };
     if let Some(pid) = app.pinned_msg_id {
         title.push_str(&format!("  📌 #{pid}"));
@@ -788,16 +788,19 @@ fn render_attachment(att: &AttachmentInfo, t: &crate::tui::theme::Theme) -> Vec<
             Style::default().fg(t.foreground),
         )));
     }
-    // Filename on its own line; size + type on a dim line below it (more
-    // compact in a half-width chat than spreading them across one row).
+    // Filename + size share one line (the size fits in the space next to the
+    // usually-short name); the longer MIME type drops to a dim line below.
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("    {}", att.filename),
+            Style::default()
+                .fg(t.conv_team)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("  {size}{state}"), Style::default().fg(t.dim)),
+    ]));
     lines.push(Line::from(Span::styled(
-        format!("    {}", att.filename),
-        Style::default()
-            .fg(t.conv_team)
-            .add_modifier(Modifier::BOLD),
-    )));
-    lines.push(Line::from(Span::styled(
-        format!("      {size} · {mime}{state}"),
+        format!("      {mime}"),
         Style::default().fg(t.dim),
     )));
     lines

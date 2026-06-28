@@ -2071,14 +2071,15 @@ fn input_alt_r_on_inbox_queues_load_inbox() {
 }
 
 #[test]
-fn input_alt_m_on_inbox_queues_mark_read() {
+fn input_alt_s_on_inbox_queues_mark_read() {
     let mut rig = build_rig();
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     reveal_first(&mut rig.app);
     rig.app.screen = Screen::Inbox;
-    press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::ALT);
+    // Alt+S = mark as Seen/read (Alt+M now jumps to the chat).
+    press(&mut rig.app, KeyCode::Char('s'), KeyModifiers::ALT);
     assert!(matches!(rig.app.in_flight, Some(InFlight::MarkRead { .. })));
 }
 
@@ -2226,15 +2227,16 @@ fn go_to_keys_focus_each_panel() {
         "c1",
     );
     rig.app.screen = Screen::Inbox;
-    // Single-letter go-to from the tree (mutt-style): l log, m chat, f find.
-    rig.app.focus = Focus::Tree;
-    press(&mut rig.app, KeyCode::Char('l'), KeyModifiers::NONE);
+    // Alt+letter go-to works from any focus (here from the chat compose):
+    // Alt+L log, Alt+C chats, Alt+M chat, Alt+F find.
+    rig.app.focus = Focus::Chat;
+    press(&mut rig.app, KeyCode::Char('l'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::CmdLog);
-    rig.app.focus = Focus::Tree;
-    press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::NONE);
+    press(&mut rig.app, KeyCode::Char('c'), KeyModifiers::ALT);
+    assert_eq!(rig.app.focus, Focus::Tree);
+    press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::Chat);
-    rig.app.focus = Focus::Tree;
-    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::NONE);
+    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::ChatSearch);
     assert!(rig.app.conv_search_active);
 }

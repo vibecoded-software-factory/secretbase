@@ -63,11 +63,30 @@ pub fn handle(app: &mut App, key: KeyEvent) {
     // with text input, and the hint bar promises the action is always
     // one keystroke away.
     match key.code {
+        // ── Go-to focus: each panel's border tag is its Alt+letter combo,
+        // working from any focus (even mid-compose). ─────────────────────────
         KeyCode::Char('c') | KeyCode::Char('C') if alt => {
+            set_focus(app, Focus::Tree);
+            return;
+        }
+        KeyCode::Char('m') | KeyCode::Char('M') if alt && app.open_conv_id.is_some() => {
+            set_focus(app, Focus::Chat);
+            return;
+        }
+        KeyCode::Char('f') | KeyCode::Char('F') if alt && app.open_conv_id.is_some() => {
+            set_focus(app, Focus::ChatSearch);
+            return;
+        }
+        KeyCode::Char('l') | KeyCode::Char('L') if alt => {
+            set_focus(app, Focus::CmdLog);
+            return;
+        }
+        // ── Conversation actions ─────────────────────────────────────────────
+        KeyCode::Char('y') | KeyCode::Char('Y') if alt => {
             chat::do_copy_conversation_label(app);
             return;
         }
-        KeyCode::Char('m') | KeyCode::Char('M') if alt => {
+        KeyCode::Char('s') | KeyCode::Char('S') if alt => {
             chat::request_mark_read(app);
             return;
         }
@@ -208,17 +227,11 @@ fn handle_tree(app: &mut App, key: KeyEvent) {
         KeyCode::PageDown => chat::tree_move(app, 10),
         KeyCode::Home | KeyCode::Char('g') => app.tree_selected = 0,
         KeyCode::End | KeyCode::Char('G') => chat::tree_move(app, isize::MAX),
-        // Enter / → opens a conversation (moving focus to the chat) or folds
-        // a group.
-        KeyCode::Enter | KeyCode::Right => {
+        // Enter / → / l opens a conversation (moving focus to the chat) or
+        // folds a group (the go-to letters are global Alt+combos).
+        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
             chat::tree_activate(app);
         }
-        // Single-letter go-to (mutt-style; the tree is the navigation hub —
-        // each panel's border tag is the letter that jumps to it).
-        KeyCode::Char('c') => {} // already on Chats
-        KeyCode::Char('m') if app.open_conv_id.is_some() => set_focus(app, Focus::Chat),
-        KeyCode::Char('f') if app.open_conv_id.is_some() => set_focus(app, Focus::ChatSearch),
-        KeyCode::Char('l') => set_focus(app, Focus::CmdLog),
         _ => {}
     }
 }
