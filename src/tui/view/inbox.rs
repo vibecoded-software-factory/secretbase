@@ -74,7 +74,7 @@ fn footer_hint(app: &App) -> &'static str {
         Focus::Search => "type to filter chats · Enter/Esc leave",
         // Only panel-local actions here — the go-to keys already live in each
         // section's border tag, so don't repeat them.
-        Focus::Tree => "↑/↓ nav · Enter open/fold · Alt+N new · Alt+Y copy · Tab cycle",
+        Focus::Tree => "↑/↓ nav · l/→ open · h/← close/fold · Alt+N new · Tab cycle",
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
         Focus::CmdLog => "↑/↓ move · Alt+Shift+K/J range · Space mark · y/c copy · Tab",

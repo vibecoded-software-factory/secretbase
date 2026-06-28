@@ -304,6 +304,27 @@ pub fn tree_activate(app: &mut App) -> bool {
     }
 }
 
+/// Left / `h` in the tree: collapse an expanded group, or — on a conversation
+/// row — close the open chat (master-detail "back").
+pub fn tree_back(app: &mut App) {
+    match app.tree_rows().get(app.tree_selected) {
+        // An expanded group collapses.
+        Some(crate::tui::app::TreeRow::Group {
+            key,
+            collapsed: false,
+            ..
+        }) => {
+            let key = key.clone();
+            app.toggle_collapsed(&key);
+        }
+        // On a conversation row, close the open chat.
+        Some(crate::tui::app::TreeRow::Conv { .. }) if app.open_conv_id.is_some() => {
+            close_conversation(app);
+        }
+        _ => {}
+    }
+}
+
 pub fn search_push(app: &mut App, c: char) {
     app.search.insert(c);
     app.list_selected = 0;

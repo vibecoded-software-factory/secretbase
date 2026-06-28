@@ -2181,6 +2181,22 @@ fn input_enter_on_list_opens_selected_conversation() {
 }
 
 #[test]
+fn tree_back_closes_open_chat() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    // l/→ opens the selected conversation; h/← closes it (master-detail back).
+    tree_activate(&mut rig.app);
+    assert_eq!(rig.app.open_conv_id.as_deref(), Some("c1"));
+    tree_back(&mut rig.app);
+    assert!(rig.app.open_conv_id.is_none());
+}
+
+#[test]
 fn tab_reaches_chat_search_and_toggles_search_mode() {
     use crate::tui::screens::Focus;
     let mut rig = build_rig();

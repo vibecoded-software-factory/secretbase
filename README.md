@@ -85,8 +85,9 @@ tables.
 | `Ctrl+K`                | Quick switcher — jump to a conversation |
 | `Shift+L`               | Logout (confirmation) |
 
-In the **Chats** tree, `↑` / `↓` move and `Enter` folds a group or opens the
-selected conversation in the right pane; the header search fuzzy-filters it.
+In the **Chats** tree, `↑` / `↓` move; `Enter` / `→` / `l` open the selected
+conversation (or expand a group) and `←` / `h` close the open chat (or
+collapse a group); the header search fuzzy-filters it.
 
 ### Conversation
 

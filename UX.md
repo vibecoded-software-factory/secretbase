@@ -54,9 +54,11 @@ conversation on normal terminals.
     *expanded* groups (empty = all folded, so it persists across refreshes); a
     non-empty search force-expands all. The border count is the **visible rows**
     (headers + the conversations of expanded groups) of the total. `↑/↓` move
-    (`chat::tree_move`); `Enter` folds a group or **opens a conversation in
-    the right pane** (`chat::tree_activate` → `enter_conversation`, which stays
-    on `Screen::Inbox` and moves focus to `Chat`). Opening from the quick
+    (`chat::tree_move`); `Enter`/`→`/`l` expand a group or **open a
+    conversation in the right pane** (`chat::tree_activate` →
+    `enter_conversation`, which stays on `Screen::Inbox` and moves focus to
+    `Chat`), and `←`/`h` collapse a group or **close the open chat**
+    (`chat::tree_back`). Opening from the quick
     switcher / global search **reveals** the conversation in the tree
     (`chat::reveal_in_tree` — expand its group + move the cursor). The first
     (slow) load shows a `widgets::draw_skeleton`.

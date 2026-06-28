@@ -297,10 +297,11 @@ fn handle_tree(app: &mut App, key: KeyEvent) {
         KeyCode::Home | KeyCode::Char('g') => app.tree_selected = 0,
         KeyCode::End | KeyCode::Char('G') => chat::tree_move(app, isize::MAX),
         // Enter / → / l opens a conversation (moving focus to the chat) or
-        // folds a group (the go-to letters are global Alt+combos).
+        // expands a group; ← / h collapses a group or closes the open chat.
         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
             chat::tree_activate(app);
         }
+        KeyCode::Left | KeyCode::Char('h') => chat::tree_back(app),
         _ => {}
     }
 }
