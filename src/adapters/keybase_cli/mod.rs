@@ -724,6 +724,7 @@ pub(crate) fn parse_message(msg: &Value) -> Option<Message> {
         content,
         reactions,
         reply_to,
+        edited: false, // set later by domain::fold_edits when an edit folds in
     })
 }
 

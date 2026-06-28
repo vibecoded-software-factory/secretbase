@@ -219,6 +219,49 @@ pub struct Message {
     /// `None` for non-reply messages.
     #[zeroize(skip)]
     pub reply_to: Option<u64>,
+
+    /// Whether this message was later edited — set by [`fold_edits`] when an
+    /// `edit` message targeting it is folded in (its body replaced). Drives
+    /// the dim `(edited)` indicator in the view.
+    #[zeroize(skip)]
+    pub edited: bool,
+}
+
+/// Folds keybase `edit` messages into their targets: the target message's body
+/// is replaced with the latest edit's body and marked [`Message::edited`], and
+/// the standalone `edit` envelopes are dropped — so the chat shows the edited
+/// text in place (Discord-style) rather than a separate "edited" entry. An edit
+/// whose target isn't in `messages` is left untouched.
+pub fn fold_edits(messages: &mut Vec<Message>) {
+    use std::collections::HashMap;
+    // Latest edit body per target id (the highest edit message id wins).
+    let mut edits: HashMap<u64, (u64, String)> = HashMap::new();
+    for m in messages.iter() {
+        if let MessageContent::Edit { target_id, body } = &m.content {
+            let e = edits.entry(*target_id).or_insert((0, String::new()));
+            if m.id >= e.0 {
+                *e = (m.id, body.clone());
+            }
+        }
+    }
+    if edits.is_empty() {
+        return;
+    }
+    // Apply edits to the targets that are actually present, tracking which
+    // ones we folded so we only drop those edit envelopes (orphan edits whose
+    // target isn't loaded stay as-is).
+    let mut folded: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    for m in messages.iter_mut() {
+        if let Some((_, body)) = edits.get(&m.id) {
+            m.content = MessageContent::Text(body.clone());
+            m.edited = true;
+            folded.insert(m.id);
+        }
+    }
+    messages.retain(|m| match &m.content {
+        MessageContent::Edit { target_id, .. } => !folded.contains(target_id),
+        _ => true,
+    });
 }
 
 /// Lightweight reaction summary as exposed to the view layer (kept
@@ -233,6 +276,52 @@ pub struct Reaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn text(id: u64, body: &str) -> Message {
+        let mut m = Message::default();
+        m.id = id;
+        m.content = MessageContent::Text(body.into());
+        m
+    }
+    fn edit(id: u64, target: u64, body: &str) -> Message {
+        let mut m = Message::default();
+        m.id = id;
+        m.content = MessageContent::Edit {
+            target_id: target,
+            body: body.into(),
+        };
+        m
+    }
+
+    #[test]
+    fn fold_edits_replaces_body_marks_edited_and_drops_envelope() {
+        let mut msgs = vec![
+            text(1, "hello"),
+            text(2, "world"),
+            edit(3, 1, "hello (fixed)"),
+            edit(5, 1, "hello (fixed again)"), // latest edit wins
+        ];
+        fold_edits(&mut msgs);
+        // The edit envelopes are gone; only the two originals remain.
+        assert_eq!(msgs.len(), 2);
+        let m1 = msgs.iter().find(|m| m.id == 1).unwrap();
+        assert!(m1.edited);
+        assert!(matches!(&m1.content, MessageContent::Text(b) if b == "hello (fixed again)"));
+        let m2 = msgs.iter().find(|m| m.id == 2).unwrap();
+        assert!(!m2.edited);
+    }
+
+    #[test]
+    fn fold_edits_keeps_edit_when_target_missing() {
+        let mut msgs = vec![text(2, "world"), edit(3, 99, "orphan")];
+        fold_edits(&mut msgs);
+        // The orphan edit (target not loaded) is left untouched.
+        assert_eq!(msgs.len(), 2);
+        assert!(
+            msgs.iter()
+                .any(|m| matches!(m.content, MessageContent::Edit { .. }))
+        );
+    }
 
     #[test]
     fn system_kind_round_trip() {

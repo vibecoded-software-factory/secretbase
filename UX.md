@@ -127,6 +127,10 @@ on their own:
   render **collapsed** beneath their target message (via the message's
   `reactions` field); the standalone reaction events are dropped from the
   stream so they don't show as stray `reacted :emoji: on msg #N` lines.
+  **Edits fold in place** (`domain::fold_edits`): the standalone `edit`
+  envelope is dropped, the target's body is replaced with the latest edit, and
+  it carries a dim `(edited)` marker in its header (Discord-style) instead of a
+  separate "edited" line.
   **Adding** a reaction (`Alt+J`, or `:` in select-mode) opens a searchable
   **reaction picker** (`Screen::React`): a `/`-style search over the emoji
   catalogue — a bundled curated set of common standard emojis

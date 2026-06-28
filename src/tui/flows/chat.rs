@@ -31,10 +31,15 @@ pub const MESSAGES_PER_PAGE: u32 = 50;
 /// onto its target message's `reactions` field (which the view renders
 /// collapsed beneath the message), so the separate reaction event would
 /// only duplicate it as a stray line.
+/// Projects a freshly-read message list for display: drops standalone reaction
+/// events and **folds edits into their targets** (Discord-style `(edited)`).
 fn without_reaction_events(msgs: Vec<Message>) -> Vec<Message> {
-    msgs.into_iter()
+    let mut out: Vec<Message> = msgs
+        .into_iter()
         .filter(|m| !matches!(m.content, crate::domain::MessageContent::Reaction { .. }))
-        .collect()
+        .collect();
+    crate::domain::fold_edits(&mut out);
+    out
 }
 
 // ── Inbox load ────────────────────────────────────────────────────────
@@ -679,6 +684,10 @@ fn load_fake_messages(app: &mut App) {
         ),
     ];
     app.messages = if topic == "bugs" { bugs } else { general };
+    // Demo the `(edited)` indicator on one fake message.
+    if let Some(m) = app.messages.iter_mut().find(|m| m.id == 6) {
+        m.edited = true;
+    }
     app.messages_next = None;
     app.messages_loading_older = false;
     app.messages_scroll = 0;

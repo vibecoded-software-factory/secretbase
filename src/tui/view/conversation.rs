@@ -491,6 +491,12 @@ fn message_lines(
         Span::styled(format!("{} ", m.sender), sender_style),
         Span::styled(when, Style::default().fg(t.dim)),
     ];
+    if m.edited {
+        header_spans.push(Span::styled(
+            " (edited)",
+            Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
+        ));
+    }
     if is_pinned {
         header_spans.push(Span::styled(
             "  📌 pinned",

@@ -401,6 +401,7 @@ fn text_msg(id: u64, sender: &str, body: &str) -> Message {
         content: MessageContent::Text(body.into()),
         reactions: Vec::new(),
         reply_to: None,
+        edited: false,
     }
 }
 
@@ -1397,6 +1398,7 @@ fn rebuild_pinned_finds_latest_pin_in_history() {
             content: MessageContent::Pin { target_id: 1 },
             reactions: Vec::new(),
             reply_to: None,
+            edited: false,
         },
         text_msg(3, "alice", "later"),
     ];
@@ -1417,6 +1419,7 @@ fn rebuild_pinned_clears_when_target_zero() {
             content: MessageContent::Pin { target_id: 42 },
             reactions: Vec::new(),
             reply_to: None,
+            edited: false,
         },
         Message {
             id: 2,
@@ -1427,6 +1430,7 @@ fn rebuild_pinned_clears_when_target_zero() {
             content: MessageContent::Pin { target_id: 0 },
             reactions: Vec::new(),
             reply_to: None,
+            edited: false,
         },
     ];
     rig.app.rebuild_pinned();
@@ -1576,6 +1580,7 @@ fn attachment_msg(id: u64, sender: &str, filename: &str, size: u64) -> Message {
         }),
         reactions: Vec::new(),
         reply_to: None,
+        edited: false,
     }
 }
 
