@@ -69,9 +69,14 @@ conversation on normal terminals.
     standalone full-screen conversation screen** — the unified Home is the only
     chat surface.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
-  (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom; `cmd_log_scroll`
-  walks back). Worker ops carry their duration (request → response),
-  formatted by `domain::format_duration` as a single smallest-unit value
+  (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom). When focused
+  (`Focus::CmdLog`) it is a **visual multi-select**: a `▶` cursor walks the
+  whole history (the window follows it; `App::cmdlog_cursor`), `Space` marks
+  lines (`●`, `App::cmdlog_marks`), and `y`/`Enter` copy the marked lines —
+  or the cursor line — to the clipboard (`chat::do_copy_cmd_log`); `Esc`
+  clears the selection then leaves. The title shows `cursor/total · N sel`.
+  Worker ops carry their duration (request → response), formatted by
+  `domain::format_duration` as a single smallest-unit value
   (`ms`/`s`/`m`/`h`/`d`/`y`).
 - **status** — `widgets::draw_status_strip`: feedback (spinner / ✓ / ✗) when
   an action is in flight, else the per-focus footer hint on the left with

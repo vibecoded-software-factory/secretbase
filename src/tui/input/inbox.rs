@@ -44,6 +44,13 @@ fn set_focus(app: &mut App, f: Focus) {
     } else if app.focus == Focus::ChatSearch {
         chat::close_conv_search(app);
     }
+    // Entering the command log seats the visual-select cursor on the newest
+    // line; leaving it drops any selection.
+    if f == Focus::CmdLog {
+        app.enter_cmdlog();
+    } else if app.focus == Focus::CmdLog {
+        app.cmdlog_marks.clear();
+    }
     app.focus = f;
 }
 
@@ -158,18 +165,29 @@ fn handle_search(app: &mut App, key: KeyEvent) {
     }
 }
 
+/// Command-log panel: a visual multi-select. The cursor walks the log
+/// (scrolling to stay in view), `Space` marks lines, and `y`/`Enter` copies
+/// the marked lines (or the cursor line) to the clipboard.
 fn handle_cmdlog(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => {
-            app.cmd_log_scroll = app.cmd_log_scroll.saturating_add(1);
+        KeyCode::Up | KeyCode::Char('k') => app.cmdlog_move(-1),
+        KeyCode::Down | KeyCode::Char('j') => app.cmdlog_move(1),
+        KeyCode::PageUp => app.cmdlog_move(-5),
+        KeyCode::PageDown => app.cmdlog_move(5),
+        KeyCode::Home | KeyCode::Char('g') => app.cmdlog_move(isize::MIN),
+        KeyCode::End | KeyCode::Char('G') => app.cmdlog_move(isize::MAX),
+        // Multi-select: toggle the cursor line.
+        KeyCode::Char(' ') => app.cmdlog_toggle_mark(),
+        // Copy the marked lines (or the cursor line if none are marked).
+        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => chat::do_copy_cmd_log(app),
+        // Esc clears the selection, then (next press) leaves the panel.
+        KeyCode::Esc => {
+            if app.cmdlog_marks.is_empty() {
+                app.focus = Focus::Tree;
+            } else {
+                app.cmdlog_marks.clear();
+            }
         }
-        KeyCode::Down | KeyCode::Char('j') => {
-            app.cmd_log_scroll = app.cmd_log_scroll.saturating_sub(1);
-        }
-        KeyCode::PageUp => app.cmd_log_scroll = app.cmd_log_scroll.saturating_add(5),
-        KeyCode::PageDown => app.cmd_log_scroll = app.cmd_log_scroll.saturating_sub(5),
-        KeyCode::Home | KeyCode::Char('g') => app.cmd_log_scroll = usize::MAX,
-        KeyCode::End | KeyCode::Char('G') => app.cmd_log_scroll = 0,
         _ => {}
     }
 }

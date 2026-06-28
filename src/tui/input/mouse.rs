@@ -49,9 +49,13 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
                 }
                 return;
             }
-            // Other panels just take focus.
+            // Other panels just take focus; the command log also seats its
+            // visual-select cursor on focus.
             if let Some(target) = app.mouse_areas.focus_for(c, r) {
                 app.focus = target;
+                if target == crate::tui::screens::Focus::CmdLog {
+                    app.enter_cmdlog();
+                }
             }
         }
         MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.source) => {
@@ -59,6 +63,12 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
         }
         MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.source) => {
             chat::tree_move(app, 1);
+        }
+        MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.cmd_log) => {
+            app.cmdlog_move(-1);
+        }
+        MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.cmd_log) => {
+            app.cmdlog_move(1);
         }
         MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.messages) => {
             app.messages_scroll = app.messages_scroll.saturating_add(3);

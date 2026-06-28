@@ -584,17 +584,33 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
     // Inner height = block area minus the two borders.
     let visible_rows = (area.height as usize).saturating_sub(2);
     let total = app.cmd_log.len();
-    let max_back = total.saturating_sub(visible_rows);
-    app.cmd_log_scroll = app.cmd_log_scroll.min(max_back);
-    let scroll = app.cmd_log_scroll;
 
-    let scroll_tag = if scroll == 0 {
-        String::new()
+    // When focused, the window follows the visual-select cursor (so you can
+    // scroll the whole history); otherwise it stays pinned to the newest.
+    let cursor = app.cmdlog_cursor.min(total.saturating_sub(1));
+    let (start, end) = if focused && total > visible_rows {
+        let end = (cursor + 1).max(visible_rows).min(total);
+        (end - visible_rows, end)
     } else {
-        format!(" ↑{scroll}")
+        (total.saturating_sub(visible_rows), total)
     };
-    // `[panel]` numbered border tag, matching the other list sections.
-    let title = format!("─[{panel}]-Command log{scroll_tag}");
+    app.cmd_log_scroll = total - end; // keep the field consistent for clicks
+
+    // Title: show the cursor position + selection while focused.
+    let tag = if focused && total > 0 {
+        let marks = app.cmdlog_marks.len();
+        let sel = if marks > 0 {
+            format!(" · {marks} sel")
+        } else {
+            String::new()
+        };
+        format!(" {}/{total}{sel}", cursor + 1)
+    } else if total > end {
+        format!(" ↓{}", total - end)
+    } else {
+        String::new()
+    };
+    let title = format!("─[{panel}]-Command log{tag}");
     let block = titled_block(&title, focused, app);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -612,11 +628,24 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
         );
         return;
     }
-    let end = total - scroll;
-    let start = end.saturating_sub(visible_rows);
-    let lines: Vec<Line> = app.cmd_log[start..end]
-        .iter()
-        .map(|e| {
+    let lines: Vec<Line> = (start..end)
+        .map(|i| {
+            let e = &app.cmd_log[i];
+            let is_cursor = focused && i == cursor;
+            let is_marked = app.cmdlog_marks.contains(&i);
+            // Left gutter: ▶ cursor · ● marked · two-space pad otherwise.
+            let (gutter, gutter_style) = if is_cursor {
+                (
+                    "▶ ",
+                    Style::default()
+                        .fg(app.theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else if is_marked {
+                ("● ", Style::default().fg(app.theme.accent))
+            } else {
+                ("  ", Style::default())
+            };
             let mark = if e.ok { "✓" } else { "✗" };
             let mark_style = if e.ok {
                 Style::default().fg(app.theme.success)
@@ -624,6 +653,7 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
                 Style::default().fg(app.theme.error)
             };
             let mut spans = vec![
+                Span::styled(gutter, gutter_style),
                 Span::styled(format!("{mark} "), mark_style),
                 Span::styled(e.cmd.clone(), Style::default().fg(app.theme.foreground)),
                 Span::styled(
@@ -631,14 +661,17 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
                     Style::default().fg(app.theme.dim),
                 ),
             ];
-            // How long the operation took (request → response).
             if let Some(d) = e.duration {
                 spans.push(Span::styled(
                     format!("  ({})", crate::domain::format_duration(d)),
                     Style::default().fg(app.theme.placeholder),
                 ));
             }
-            Line::from(spans)
+            let mut line = Line::from(spans);
+            if is_cursor {
+                line = line.style(Style::default().bg(app.theme.selected_bg));
+            }
+            line
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), inner);

@@ -377,6 +377,12 @@ pub struct App {
     /// `push_cmd` so the user always sees the freshest entry by
     /// default.
     pub cmd_log_scroll: usize,
+    /// Cursor over the command log (absolute index into [`Self::cmd_log`])
+    /// when the panel holds focus — used for the visual multi-select.
+    pub cmdlog_cursor: usize,
+    /// Command-log lines marked for copy (absolute indices). Empty = none;
+    /// copying then falls back to the cursor line.
+    pub cmdlog_marks: HashSet<usize>,
 
     // ── Settings / theme ──────────────────────────────────────────────────
     pub settings_cache: UserSettings,
@@ -538,6 +544,8 @@ impl App {
             in_flight: None,
             cmd_log: Vec::new(),
             cmd_log_scroll: 0,
+            cmdlog_cursor: 0,
+            cmdlog_marks: HashSet::new(),
             settings_cache,
             theme: theme.clone(),
             settings_focus: SettingsFocus::Sidebar,
@@ -777,8 +785,46 @@ impl App {
         let over = self.cmd_log.len().saturating_sub(CMD_LOG_LIMIT);
         if over > 0 {
             self.cmd_log.drain(..over);
+            // Keep the visual-select cursor / marks pointing at the same
+            // entries after the front of the ring is trimmed.
+            self.cmdlog_cursor = self.cmdlog_cursor.saturating_sub(over);
+            self.cmdlog_marks = self
+                .cmdlog_marks
+                .iter()
+                .filter_map(|&i| i.checked_sub(over))
+                .collect();
         }
         self.cmd_log_scroll = 0;
+    }
+
+    /// Enters the command-log panel: seat the cursor on the newest entry and
+    /// clear any prior selection.
+    pub fn enter_cmdlog(&mut self) {
+        self.cmdlog_cursor = self.cmd_log.len().saturating_sub(1);
+        self.cmdlog_marks.clear();
+    }
+
+    /// Moves the command-log cursor by `delta`, clamped to the log.
+    pub fn cmdlog_move(&mut self, delta: isize) {
+        let len = self.cmd_log.len();
+        if len == 0 {
+            return;
+        }
+        let max = (len - 1) as isize;
+        let cur = (self.cmdlog_cursor.min(len - 1)) as isize;
+        self.cmdlog_cursor = cur.saturating_add(delta).clamp(0, max) as usize;
+    }
+
+    /// Toggles the mark on the cursor's command-log line (multi-select).
+    pub fn cmdlog_toggle_mark(&mut self) {
+        let len = self.cmd_log.len();
+        if len == 0 {
+            return;
+        }
+        let c = self.cmdlog_cursor.min(len - 1);
+        if !self.cmdlog_marks.remove(&c) {
+            self.cmdlog_marks.insert(c);
+        }
     }
 
     /// Updates `last_activity` to "now" — called on every keypress and

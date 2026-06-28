@@ -2191,6 +2191,25 @@ fn tab_reaches_chat_search_and_toggles_search_mode() {
 }
 
 #[test]
+fn cmdlog_multiselect_copies_marked_lines() {
+    let mut rig = build_rig();
+    rig.app.push_cmd("a", true, "one");
+    rig.app.push_cmd("b", true, "two");
+    rig.app.push_cmd("c", false, "three");
+    rig.app.enter_cmdlog(); // cursor on the newest (index 2), no marks
+    rig.app.cmdlog_toggle_mark(); // mark idx 2
+    rig.app.cmdlog_move(isize::MIN); // cursor -> oldest (0)
+    rig.app.cmdlog_toggle_mark(); // mark idx 0
+    assert_eq!(rig.app.cmdlog_marks.len(), 2);
+
+    do_copy_cmd_log(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+    // Selection is cleared, and the copy itself is logged.
+    assert!(rig.app.cmdlog_marks.is_empty());
+    assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "clipboard write");
+}
+
+#[test]
 fn input_q_on_inbox_does_not_quit() {
     // Only Ctrl+C quits (per UX.md). Bare 'q' must be free for
     // type-to-search and must NOT exit the app.

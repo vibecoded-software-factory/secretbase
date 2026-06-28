@@ -2115,3 +2115,59 @@ pub fn do_copy_conversation_label(app: &mut App) {
         }
     }
 }
+
+/// Copies the marked command-log lines (or the cursor line if none are
+/// marked) to the clipboard as plain text.
+pub fn do_copy_cmd_log(app: &mut App) {
+    let len = app.cmd_log.len();
+    if len == 0 {
+        app.set_action(ActionState::Error("Command log is empty".into()));
+        return;
+    }
+    let mut idxs: Vec<usize> = if app.cmdlog_marks.is_empty() {
+        vec![app.cmdlog_cursor.min(len - 1)]
+    } else {
+        let mut v: Vec<usize> = app
+            .cmdlog_marks
+            .iter()
+            .copied()
+            .filter(|&i| i < len)
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    if idxs.is_empty() {
+        idxs.push(app.cmdlog_cursor.min(len - 1));
+    }
+    let text = idxs
+        .iter()
+        .map(|&i| cmd_log_line_text(&app.cmd_log[i]))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let n = idxs.len();
+    let secs = app.settings_cache.clipboard_clear_secs;
+    match app.clipboard.write_with_clear(&text, secs) {
+        Ok(()) => {
+            app.cmdlog_marks.clear();
+            app.set_action(ActionState::Done(format!(
+                "Copied {n} command-log line{}",
+                if n == 1 { "" } else { "s" }
+            )));
+            app.push_cmd("clipboard write", true, format!("{n} cmd-log line(s)"));
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("clipboard write", false, e.to_string());
+        }
+    }
+}
+
+/// Plain-text form of one command-log entry (for clipboard copy).
+fn cmd_log_line_text(e: &crate::tui::action::CmdEntry) -> String {
+    let mark = if e.ok { "✓" } else { "✗" };
+    let mut s = format!("{mark} {}  →  {}", e.cmd, e.detail);
+    if let Some(d) = e.duration {
+        s.push_str(&format!("  ({})", crate::domain::format_duration(d)));
+    }
+    s
+}

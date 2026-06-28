@@ -194,6 +194,16 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 ] {
                     lines.push(help_line(k, d, t));
                 }
+                lines.push(Line::raw(""));
+                lines.push(section("Command log (focused)", t));
+                for (k, d) in [
+                    ("↑/↓ k/j", "move cursor (scrolls history)"),
+                    ("Space", "mark / unmark a line (multi-select)"),
+                    ("y / Enter", "copy marked lines (or the cursor line)"),
+                    ("Esc", "clear selection · then leave the panel"),
+                ] {
+                    lines.push(help_line(k, d, t));
+                }
                 // Explain ignore — its semantics aren't obvious from the
                 // one-liner, and it can't currently be undone from the app.
                 let note = Style::default().fg(t.dim);
