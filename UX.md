@@ -148,8 +148,10 @@ on their own:
 - **Select mode** (`Alt+V`) shows a contextual **action bar** under the
   highlighted message listing what you can do with it and the key for each
   (`: react`, `r reply`, `e edit`/`d delete` on your own messages,
-  `p pin`, `s download` on attachments) — visual feedback that accompanies
-  the direct keybindings, it doesn't replace them.
+  `p pin`, `s download` on attachments, `o link` when the message contains a
+  URL) — visual feedback that accompanies the direct keybindings, it doesn't
+  replace them. `o` opens the first `http(s)` link
+  (`domain::extract_urls` → `ports::OpenerPort`, the `xdg-open`/`open` adapter).
 - **Sending** — the message echoes instantly the moment `Enter` is pressed,
   as an optimistic **outbox** bubble below the history (`App::outbox`, kept
   separate from `messages` so a re-read can't drop it). It carries a state:

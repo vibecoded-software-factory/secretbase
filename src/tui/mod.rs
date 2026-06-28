@@ -34,7 +34,7 @@ use crossterm::execute;
 use std::time::Duration;
 
 use crate::domain::ChatEvent;
-use crate::ports::{ClipboardPort, KeybasePort, SettingsPort};
+use crate::ports::{ClipboardPort, KeybasePort, OpenerPort, SettingsPort};
 use action::ActionState;
 use std::sync::mpsc::Receiver;
 use worker::WorkerHandle;
@@ -62,6 +62,7 @@ pub fn run(
     keybase: Box<dyn KeybasePort + Send>,
     keybase_bg: Box<dyn KeybasePort + Send>,
     clipboard: Box<dyn ClipboardPort>,
+    opener: Box<dyn OpenerPort>,
     settings: Box<dyn SettingsPort>,
     chat_rx: Option<Receiver<ChatEvent>>,
 ) -> Result<()> {
@@ -81,6 +82,7 @@ pub fn run(
             worker_rx,
             chat_rx,
             clipboard,
+            opener,
             settings,
         );
 

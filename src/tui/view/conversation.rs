@@ -55,7 +55,7 @@ pub(crate) fn chat_hint(app: &App) -> &'static str {
     if app.conv_search_active {
         "type · Enter search/jump · ↑/↓ pick · Esc close"
     } else if app.selected_msg_idx.is_some() {
-        "↑/↓ move · Alt+Shift+K/J range · Space mark · y/c copy · : react · Esc back"
+        "↑/↓ move · Space mark · y/c copy · o link · : react · Esc back"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
@@ -590,6 +590,16 @@ fn select_actions_line(m: &Message, app: &App, t: &crate::tui::theme::Theme) -> 
             (":", "react"),
             ("r", "reply"),
         ];
+        // Only offer "open link" when the message actually has one.
+        let body_text = match &m.content {
+            MessageContent::Text(b) => b.as_str(),
+            MessageContent::Edit { body, .. } => body.as_str(),
+            MessageContent::Attachment(a) => a.title.as_str(),
+            _ => "",
+        };
+        if !crate::domain::extract_urls(body_text).is_empty() {
+            actions.push(("o", "link"));
+        }
         if is_me {
             actions.push(("e", "edit"));
             actions.push(("d", "delete"));

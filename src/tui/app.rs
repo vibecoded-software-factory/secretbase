@@ -14,7 +14,7 @@ use crate::domain::{
     ChatEvent, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
     MemberStatus, Message, StatusFilter, TeamMembership, fuzzy_score_lowered,
 };
-use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
+use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
 use crate::tui::file_picker::FilePicker;
 use crate::tui::mouse_areas::MouseAreas;
@@ -463,6 +463,7 @@ pub struct App {
 
     // ── Injected ports (synchronous, stay on the render thread) ───────────
     pub clipboard: Box<dyn ClipboardPort>,
+    pub opener: Box<dyn OpenerPort>,
     pub settings: Box<dyn SettingsPort>,
 }
 
@@ -480,6 +481,7 @@ impl App {
         worker_rx: Receiver<WorkerResponse>,
         chat_rx: Option<Receiver<ChatEvent>>,
         clipboard: Box<dyn ClipboardPort>,
+        opener: Box<dyn OpenerPort>,
         settings: Box<dyn SettingsPort>,
     ) -> Self {
         let settings_cache = settings.read();
@@ -584,6 +586,7 @@ impl App {
             worker_rx,
             chat_rx,
             clipboard,
+            opener,
             settings,
         }
     }
@@ -1077,11 +1080,18 @@ mod tests {
     use std::sync::mpsc::channel;
 
     use super::*;
-    use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
+    use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
 
     struct FakeClipboard;
     impl ClipboardPort for FakeClipboard {
         fn write(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct FakeOpener;
+    impl OpenerPort for FakeOpener {
+        fn open(&self, _: &str) -> Result<(), String> {
             Ok(())
         }
     }
@@ -1113,6 +1123,7 @@ mod tests {
             resp_rx,
             None,
             Box::new(FakeClipboard),
+            Box::new(FakeOpener),
             Box::new(FakeSettings),
         )
     }

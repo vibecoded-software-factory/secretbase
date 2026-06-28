@@ -303,6 +303,13 @@ impl ClipboardPort for FakeClipboard {
     }
 }
 
+struct FakeOpener;
+impl crate::ports::OpenerPort for FakeOpener {
+    fn open(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 struct FakeSettings;
 impl SettingsPort for FakeSettings {
     fn read(&self) -> UserSettings {
@@ -343,6 +350,7 @@ fn build_rig() -> Rig {
         rx,
         None,
         Box::new(FakeClipboard),
+        Box::new(FakeOpener),
         Box::new(FakeSettings),
     );
     Rig {
@@ -2298,6 +2306,29 @@ fn ctrl_w_window_nav_moves_between_panels() {
     assert!(rig.app.pending_pane_nav);
     press(&mut rig.app, KeyCode::Char('g'), KeyModifiers::NONE); // exits nav mode
     assert!(!rig.app.pending_pane_nav);
+}
+
+#[test]
+fn open_url_opens_first_link_or_reports_none() {
+    use crate::domain::{Message, MessageContent};
+    let text = |body: &str| {
+        let mut m = Message::default();
+        m.id = 1;
+        m.content = MessageContent::Text(body.into());
+        m
+    };
+    let mut rig = build_rig();
+
+    rig.app.messages = vec![text("docs at https://keybase.io/x and more")];
+    rig.app.selected_msg_idx = Some(0);
+    do_open_url(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+    assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "open url");
+
+    rig.app.messages = vec![text("no link here")];
+    rig.app.selected_msg_idx = Some(0);
+    do_open_url(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
 
 #[test]

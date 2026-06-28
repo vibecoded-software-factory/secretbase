@@ -654,7 +654,14 @@ fn load_fake_messages(app: &mut App) {
             ago(45 * 60),
         ),
         fake_msg(9, "ana", "jajaja perfecto 😂😂", None, &[], ago(20 * 60)),
-        fake_msg(10, "beto", "che y el deploy? 🚀", None, &[], ago(8 * 60)),
+        fake_msg(
+            10,
+            "beto",
+            "che, el build acá 👉 https://keybase.io/docs/chat 🚀 (apretá o para abrir)",
+            None,
+            &[],
+            ago(8 * 60),
+        ),
         fake_msg(
             11,
             m,
@@ -1377,6 +1384,41 @@ fn message_copy_body(m: &crate::domain::Message) -> Option<String> {
         MessageContent::Edit { body, .. } => Some(body.clone()),
         MessageContent::Attachment(a) => Some(format!("[attachment: {}]", a.filename)),
         _ => None,
+    }
+}
+
+/// Opens the first `http(s)` link in the selected message with the OS browser
+/// (`o` in select mode). Reports when the message has no link.
+pub fn do_open_url(app: &mut App) {
+    use crate::domain::MessageContent;
+    let Some(idx) = app.selected_msg_idx else {
+        return;
+    };
+    let body = match app.messages.get(idx).map(|m| &m.content) {
+        Some(MessageContent::Text(b)) => b.clone(),
+        Some(MessageContent::Edit { body, .. }) => body.clone(),
+        Some(MessageContent::Attachment(a)) => a.title.clone(),
+        _ => String::new(),
+    };
+    let urls = crate::domain::extract_urls(&body);
+    let Some(url) = urls.first().cloned() else {
+        app.set_action(ActionState::Error("No link in this message".into()));
+        return;
+    };
+    let extra = if urls.len() > 1 {
+        format!("  (+{} more)", urls.len() - 1)
+    } else {
+        String::new()
+    };
+    match app.opener.open(&url) {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Opened {url}{extra}")));
+            app.push_cmd("open url", true, url);
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.clone()));
+            app.push_cmd("open url", false, e);
+        }
     }
 }
 

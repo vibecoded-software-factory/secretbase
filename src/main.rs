@@ -4,7 +4,8 @@
 //! [`secretbase::tui`] event loop.
 
 use secretbase::adapters::{
-    KeybaseCliAdapter, SystemClipboardAdapter, TomlSettingsAdapter, spawn_chat_listener,
+    KeybaseCliAdapter, SystemClipboardAdapter, SystemOpener, TomlSettingsAdapter,
+    spawn_chat_listener,
 };
 use secretbase::ports::{KeybasePort, SettingsPort};
 use secretbase::tui;
@@ -38,6 +39,7 @@ fn main() -> Result<()> {
     let keybase_bg: Box<dyn KeybasePort + Send> =
         Box::new(KeybaseCliAdapter::new().with_list_inbox_timeout(cfg.list_inbox_timeout_secs));
     let clipboard = Box::new(SystemClipboardAdapter::new());
+    let opener = Box::new(SystemOpener::new());
     let settings = Box::new(settings_adapter);
 
     // Long-lived `keybase chat api-listen` push stream for real-time
@@ -48,7 +50,7 @@ fn main() -> Result<()> {
     let mut listener = spawn_chat_listener().ok();
     let chat_rx = listener.as_mut().and_then(|l| l.take_rx());
 
-    let result = tui::run(keybase, keybase_bg, clipboard, settings, chat_rx);
+    let result = tui::run(keybase, keybase_bg, clipboard, opener, settings, chat_rx);
     drop(listener);
     result
 }

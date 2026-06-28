@@ -108,7 +108,7 @@ collapse a group); the header search fuzzy-filters it.
 | `Ctrl+Y`                | Copy label |
 | `Esc`                   | Cancel / back |
 
-In **Select** mode: `↑` / `↓` move the cursor · `Shift+↑/↓` shade a range ·
+In **Select** mode: `o` opens the first link in the message · `↑` / `↓` move the cursor · `Shift+↑/↓` shade a range ·
 `Space` mark / unmark (multi-select) · `y` copy selection (author + time +
 body) · `c` copy bodies only · `e` / `d` / `:` / `p` edit / delete / react /
 pin · `r` / `s` reply / download · `i` / `Enter` / `Esc` return to Compose.
@@ -165,6 +165,7 @@ src/
 ├── ports/                  # trait abstractions
 │   ├── keybase.rs          # KeybasePort (status, list/read/send/…)
 │   ├── clipboard.rs        # ClipboardPort
+│   ├── opener.rs           # OpenerPort (open a URL in the browser)
 │   └── settings.rs         # SettingsPort + UserSettings
 ├── adapters/               # concrete impls — only layer doing I/O
 │   ├── keybase_cli/        # shells out to `keybase` binary
@@ -172,6 +173,7 @@ src/
 │   │   ├── codec.rs        # JSON request builders
 │   │   └── json.rs         # parsing helpers
 │   ├── clipboard_system.rs # wl-copy / xclip / xsel / pbcopy
+│   ├── opener_system.rs    # xdg-open / open / cmd start
 │   └── settings_toml.rs    # ~/.config/secretbase/config.toml
 └── tui/                    # Ratatui driving adapter
     ├── app.rs              # global state container

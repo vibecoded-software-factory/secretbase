@@ -7,9 +7,11 @@
 
 pub mod clipboard_system;
 pub mod keybase_cli;
+pub mod opener_system;
 pub mod settings_toml;
 
 pub use clipboard_system::SystemClipboardAdapter;
 pub use keybase_cli::KeybaseCliAdapter;
 pub use keybase_cli::listen::{ChatListener, spawn_chat_listener};
+pub use opener_system::SystemOpener;
 pub use settings_toml::TomlSettingsAdapter;
