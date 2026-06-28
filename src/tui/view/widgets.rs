@@ -144,6 +144,9 @@ pub fn list_table(
 /// `tick` advances — the classic web skeleton animation. Shown in place of a
 /// list while its first (expensive) fetch is in flight, so the user sees a
 /// loading affordance instead of an empty panel. Reusable across the TUIs.
+///
+/// The band sweeps **uniformly across all rows at once** (left-to-right),
+/// like a web skeleton, not as a diagonal wave.
 pub fn draw_skeleton(frame: &mut Frame, theme: &Theme, area: Rect, title: &str, tick: u8) {
     let border = Style::default().fg(theme.inactive);
     let block = Block::default()
@@ -164,11 +167,12 @@ pub fn draw_skeleton(frame: &mut Frame, theme: &Theme, area: Rect, title: &str, 
     // there's a brief dark gap between sweeps (like a real skeleton).
     let cycle = (max_w + 8) as isize;
 
+    // One band centre for the whole panel: every row sweeps together,
+    // left-to-right, advancing with the tick.
+    let center = ((tick as isize) * 2).rem_euclid(cycle);
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(rows);
     for i in 0..rows {
         let w = WIDTHS[i % WIDTHS.len()].min(max_w);
-        // Band centre for this row: advances with the tick, offset per row.
-        let center = ((tick as isize) * 2 + i as isize * 2).rem_euclid(cycle);
         lines.push(Line::from(shimmer_bar(w, center, theme)));
     }
     frame.render_widget(Paragraph::new(lines), inner);
