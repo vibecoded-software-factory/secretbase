@@ -71,9 +71,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 fn footer_hint(app: &App) -> &'static str {
     match app.focus {
         Focus::Search => "type to filter chats · Enter/Esc leave",
-        Focus::Tree => {
-            "↑/↓ nav · Enter open/fold · Alt+F filter · Alt+M chat · Ctrl+F find · Alt+N new"
-        }
+        // Only panel-local actions here — the go-to keys already live in each
+        // section's border tag, so don't repeat them.
+        Focus::Tree => "↑/↓ nav · Enter open/fold · Alt+N new · Alt+Y copy · Tab cycle",
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
         Focus::CmdLog => "↑/↓ move · Shift+↑/↓ range · Space mark · y/c copy · Tab",
