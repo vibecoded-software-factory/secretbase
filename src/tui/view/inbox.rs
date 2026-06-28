@@ -85,6 +85,7 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
         frame,
         app,
         area,
+        "/",
         &title,
         "type / to filter…",
         &app.search,

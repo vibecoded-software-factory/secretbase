@@ -2216,6 +2216,30 @@ fn cmdlog_multiselect_copies_marked_lines() {
 }
 
 #[test]
+fn go_to_keys_focus_each_panel() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Tree;
+    // Alt+4 → command log, Alt+2 → chats, Alt+3 → chat, Ctrl+F → chat search.
+    press(&mut rig.app, KeyCode::Char('4'), KeyModifiers::ALT);
+    assert_eq!(rig.app.focus, Focus::CmdLog);
+    press(&mut rig.app, KeyCode::Char('2'), KeyModifiers::ALT);
+    assert_eq!(rig.app.focus, Focus::Tree);
+    press(&mut rig.app, KeyCode::Char('3'), KeyModifiers::ALT);
+    assert_eq!(rig.app.focus, Focus::Chat);
+    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::CONTROL);
+    assert_eq!(rig.app.focus, Focus::ChatSearch);
+    assert!(rig.app.conv_search_active);
+}
+
+#[test]
 fn chat_multiselect_copies_messages() {
     use crate::domain::{Message, MessageContent};
     let mk = |id: u64, sender: &str, body: &str| {

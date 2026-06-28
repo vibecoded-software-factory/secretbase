@@ -107,6 +107,25 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             set_focus(app, cycle(app, false));
             return;
         }
+        // Go-to focus: each panel's border tag is its key. `/` (handled
+        // below) focuses the filter; the numbers/`^F` jump straight to a
+        // panel from anywhere (weechat-style), even mid-compose.
+        KeyCode::Char('2') if alt => {
+            set_focus(app, Focus::Tree);
+            return;
+        }
+        KeyCode::Char('3') if alt && app.open_conv_id.is_some() => {
+            set_focus(app, Focus::Chat);
+            return;
+        }
+        KeyCode::Char('4') if alt => {
+            set_focus(app, Focus::CmdLog);
+            return;
+        }
+        KeyCode::Char('f') | KeyCode::Char('F') if ctrl && app.open_conv_id.is_some() => {
+            set_focus(app, Focus::ChatSearch);
+            return;
+        }
         _ => {}
     }
 
@@ -116,7 +135,9 @@ pub fn handle(app: &mut App, key: KeyEvent) {
     }
 
     match key.code {
-        KeyCode::Char('/') => {
+        // `/` focuses the filter — but only from the non-text panels, so it
+        // can be typed into the compose / chat-search boxes (vim-style).
+        KeyCode::Char('/') if matches!(app.focus, Focus::Tree | Focus::CmdLog) => {
             app.focus = Focus::Search;
             return;
         }

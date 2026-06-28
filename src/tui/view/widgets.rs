@@ -471,10 +471,12 @@ pub fn identity_content_rows(_app: &App, _total_width: u16) -> u16 {
 
 /// Shared single-line search/filter box: a titled block holding the live
 /// query (or a dim placeholder) plus a block cursor when focused.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_search_box(
     frame: &mut Frame,
     app: &App,
     area: Rect,
+    tag: &str,
     title: &str,
     placeholder: &str,
     editor: &LineEditor,
@@ -488,9 +490,9 @@ pub fn draw_search_box(
     } else {
         Line::from(editor_spans(editor, focused, &app.theme))
     };
-    // `[/]` panel tag — the search box is the `/` target, mirroring the
-    // numbered list-section borders.
-    let title = format!("─[/]-{title}");
+    // `─[tag]-` panel border tag — the key that focuses this box, mirroring
+    // the numbered list-section borders (e.g. `/`, `^f`).
+    let title = format!("─[{tag}]-{title}");
     let p = Paragraph::new(line).block(titled_block(&title, focused, app));
     frame.render_widget(p, area);
 }

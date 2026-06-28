@@ -206,8 +206,12 @@ the Tab cycle when no conversation is open), `CmdLog` (the identity bar and
 status strip are chrome, not focus targets).
 Conventions:
 
-- `/` jumps to Search; `Tab`/`Shift+Tab` cycle focus via
-  `input::common::cycle_focus` over `FOCUS_ORDER`.
+- **Every focusable panel's border tag is its go-to key** (weechat-style):
+  `[/]` Search → `/`, `[2]` Chats → `Alt+2`, `[3]` Chat → `Alt+3`, `[^F]`
+  in-chat search → `Ctrl+F`, `[4]` Command log → `Alt+4`. The numbered jumps
+  are global (work mid-compose); `/` focuses the filter only from the
+  non-text panels so it can still be typed into the boxes. `Tab`/`Shift+Tab`
+  also cycle focus via `input::common::cycle_focus` over `FOCUS_ORDER`.
 - A panel is "focused" → accent + bold border/title
   (`view::mod::titled_block(title, focused, app)`); otherwise the `inactive`
   tint.

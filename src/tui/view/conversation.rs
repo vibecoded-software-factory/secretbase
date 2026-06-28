@@ -25,10 +25,11 @@ pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
         frame,
         app,
         area,
+        "^f",
         "Search",
         "Ctrl+F — search this chat",
         &app.conv_search,
-        app.conv_search_active,
+        app.focus == Focus::ChatSearch,
     );
 }
 
@@ -121,10 +122,11 @@ fn chat_title(app: &App) -> String {
                 })
         })
         .unwrap_or_default();
+    // `─[3]-` border tag → Alt+3 focuses the chat (matches the placeholder).
     let mut title = if name.is_empty() {
-        "Messages".to_string()
+        "─[3]-Messages".to_string()
     } else {
-        format!("Messages — {name}")
+        format!("─[3]-Messages — {name}")
     };
     if let Some(pid) = app.pinned_msg_id {
         title.push_str(&format!("  📌 #{pid}"));
