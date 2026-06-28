@@ -147,7 +147,14 @@ pub fn list_table(
 ///
 /// The band sweeps **uniformly across all rows at once** (left-to-right),
 /// like a web skeleton, not as a diagonal wave.
-pub fn draw_skeleton(frame: &mut Frame, theme: &Theme, area: Rect, title: &str, tick: u8) {
+pub fn draw_skeleton(
+    frame: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    title: &str,
+    tick: u8,
+    headers: &[&str],
+) {
     let border = Style::default().fg(theme.inactive);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -159,19 +166,39 @@ pub fn draw_skeleton(frame: &mut Frame, theme: &Theme, area: Rect, title: &str, 
         return;
     }
 
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Keep the column-header row visible during load (e.g. "Chats   #") so the
+    // panel reads the same as the real list — the bars start one row lower.
+    let mut bar_rows = inner.height as usize;
+    if !headers.is_empty() {
+        let header_style = Style::default().fg(theme.dim).add_modifier(Modifier::BOLD);
+        let left = format!("  {}", headers.first().copied().unwrap_or(""));
+        let right = if headers.len() > 1 {
+            headers[headers.len() - 1]
+        } else {
+            ""
+        };
+        let used = left.chars().count() + right.chars().count();
+        let pad = (inner.width as usize).saturating_sub(used);
+        lines.push(Line::from(Span::styled(
+            format!("{left}{}{right}", " ".repeat(pad)),
+            header_style,
+        )));
+        bar_rows = bar_rows.saturating_sub(1);
+    }
+
     // Pseudo-varied bar widths so it reads as a list of names, not a wall.
     const WIDTHS: [usize; 8] = [16, 10, 22, 13, 8, 19, 11, 14];
-    let rows = (inner.height as usize).min(16);
+    let bar_rows = bar_rows.min(16);
     let max_w = inner.width.saturating_sub(2) as usize;
     // The shimmer band sweeps a bit past the widest bar before wrapping, so
     // there's a brief dark gap between sweeps (like a real skeleton).
     let cycle = (max_w + 8) as isize;
-
     // One band centre for the whole panel: every row sweeps together,
     // left-to-right, advancing with the tick.
     let center = ((tick as isize) * 2).rem_euclid(cycle);
-    let mut lines: Vec<Line<'static>> = Vec::with_capacity(rows);
-    for i in 0..rows {
+    for i in 0..bar_rows {
         let w = WIDTHS[i % WIDTHS.len()].min(max_w);
         lines.push(Line::from(shimmer_bar(w, center, theme)));
     }

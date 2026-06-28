@@ -96,7 +96,14 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
     // First (expensive) inbox load — show a skeleton instead of an empty tree.
     if app.conversations.is_empty() && app.is_busy() {
-        draw_skeleton(frame, &t, area, "─[2]-Chats", app.anim_tick);
+        draw_skeleton(
+            frame,
+            &t,
+            area,
+            "─[2]-Chats",
+            app.anim_tick,
+            &["Chats", "#"],
+        );
         return;
     }
     let model = app.tree_rows();
