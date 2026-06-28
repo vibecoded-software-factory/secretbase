@@ -97,16 +97,23 @@ fn pane_target(focus: Focus, dir: Dir, has_conv: bool) -> Option<Focus> {
 }
 
 pub fn handle(app: &mut App, key: KeyEvent) {
-    // `Ctrl+W` window-nav leader: the next key is a direction (h/j/k/l or an
-    // arrow) that moves between panels positionally (vim-style). One-shot.
+    // `Ctrl+W` window-nav leader: each following direction (h/j/k/l or an
+    // arrow) moves between panels positionally (vim-style). It **stays armed**
+    // across consecutive directions, so two keys do a diagonal (e.g. k then h
+    // = up-left) without re-pressing Ctrl+W. Any non-direction key exits — Esc
+    // / Enter are swallowed, anything else is re-processed normally.
     if app.pending_pane_nav {
-        app.pending_pane_nav = false;
-        if let Some(dir) = key_to_dir(key.code)
-            && let Some(target) = pane_target(app.focus, dir, app.open_conv_id.is_some())
-        {
-            set_focus(app, target);
+        if let Some(dir) = key_to_dir(key.code) {
+            if let Some(target) = pane_target(app.focus, dir, app.open_conv_id.is_some()) {
+                set_focus(app, target);
+            }
+            return; // keep the leader armed for the next direction
         }
-        return;
+        app.pending_pane_nav = false;
+        if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+            return;
+        }
+        // fall through: process the exit key normally
     }
 
     let alt = key.modifiers.contains(KeyModifiers::ALT);
@@ -249,11 +256,12 @@ fn handle_search(app: &mut App, key: KeyEvent) {
 /// the marked lines (or the cursor line) to the clipboard.
 fn handle_cmdlog(app: &mut App, key: KeyEvent) {
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
     match key.code {
-        // Shade a contiguous range: Shift+↑/↓ where the terminal delivers it,
-        // and the always-reliable Shift+K/Shift+J (uppercase letters).
-        KeyCode::Char('K') => app.cmdlog_extend(-1),
-        KeyCode::Char('J') => app.cmdlog_extend(1),
+        // Shade a contiguous range with Alt+Shift+↑/↓ or Alt+Shift+K/J — kept
+        // consistent because many terminals only deliver Shift+arrows with Alt.
+        KeyCode::Char('K') if alt => app.cmdlog_extend(-1),
+        KeyCode::Char('J') if alt => app.cmdlog_extend(1),
         KeyCode::Up if shift => app.cmdlog_extend(-1),
         KeyCode::Down if shift => app.cmdlog_extend(1),
         KeyCode::Up | KeyCode::Char('k') => app.cmdlog_move(-1),

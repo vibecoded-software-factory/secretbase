@@ -55,7 +55,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let cmdlog_focused = app.focus == Focus::CmdLog;
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+L");
     let hint = if app.pending_pane_nav {
-        "Ctrl+W — move to panel: h/j/k/l or ←/↓/↑/→ · Esc cancel"
+        "Ctrl+W move: h/j/k/l or arrows · two keys = diagonal · Esc exit"
     } else if matches!(app.focus, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_some() {
         crate::tui::view::conversation::chat_hint(app)
     } else {
@@ -77,7 +77,7 @@ fn footer_hint(app: &App) -> &'static str {
         Focus::Tree => "↑/↓ nav · Enter open/fold · Alt+N new · Alt+Y copy · Tab cycle",
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
-        Focus::CmdLog => "↑/↓ move · Shift+K/J range · Space mark · y/c copy · Tab",
+        Focus::CmdLog => "↑/↓ move · Alt+Shift+K/J range · Space mark · y/c copy · Tab",
     }
 }
 

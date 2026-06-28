@@ -128,10 +128,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
         lines.push(section("Conversation — Select", t));
         for (k, d) in [
             ("↑/↓ k/j", "move cursor"),
-            (
-                "Shift+K / Shift+J",
-                "shade a contiguous range (or Shift+↑/↓)",
-            ),
+            ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
             ("y", "copy selection (author + time + body)"),
             ("c", "copy selection (message body only)"),
@@ -211,10 +208,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 lines.push(section("Command log (focused)", t));
                 for (k, d) in [
                     ("↑/↓ k/j", "move cursor (scrolls history)"),
-                    (
-                        "Shift+K / Shift+J",
-                        "shade a contiguous range (or Shift+↑/↓)",
-                    ),
+                    ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
                     ("Space", "mark / unmark a line (multi-select)"),
                     ("y / Enter", "copy full line(s)"),
                     ("c", "copy detail only"),

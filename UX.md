@@ -71,13 +71,13 @@ conversation on normal terminals.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom). When focused
   (`Focus::CmdLog`) it is a **visual multi-select**: a `▶` cursor walks the
-  whole history (the window follows it; `App::cmdlog_cursor`), `Shift+K/J` (or `Shift+↑/↓`) shades a contiguous range (`App::cmdlog_anchor`), `Space` toggles a line
+  whole history (the window follows it; `App::cmdlog_cursor`), `Alt+Shift+K/J` (or `Alt+Shift+↑/↓`) shades a contiguous range (`App::cmdlog_anchor`), `Space` toggles a line
   (`●`, `App::cmdlog_marks`), and `y`/`Enter` copy the **full** line(s) while
   `c` copies the **detail only** (`chat::do_copy_cmd_log(full)`) — marked
   lines, or the cursor line; the selection is kept so both copies work. `Esc`
   clears the selection then leaves. The title shows `cursor/total · N sel`.
   The chat's **Select mode** (`Alt+V`) uses the **same multi-select**: `Space`
-  marks messages, `Shift+K/J` (or `Shift+↑/↓`) shades a range, `y` copies author + time + body
+  marks messages, `Alt+Shift+K/J` (or `Alt+Shift+↑/↓`) shades a range, `y` copies author + time + body
   and `c` copies bodies only (`chat::do_copy_messages(full)`), separated by a
   blank line / newline; with a selection active the action bar collapses to
   the reduced copy / react set.
@@ -213,10 +213,12 @@ Conventions:
   section letters: copy label `Alt+Y` (yank), mark read `Alt+E` (seen).
   `Tab`/`Shift+Tab` also cycle focus via `input::common::cycle_focus`.
 - **Positional pane navigation** — a `Ctrl+W` leader (vim window-nav) arms
-  `App::pending_pane_nav`; the next `h/j/k/l` or arrow moves to the
+  `App::pending_pane_nav`; each following `h/j/k/l` or arrow moves to the
   spatial neighbour (`input::inbox::pane_target`: filter/in-chat-search on the
-  top row, Chats/Chat in the body, command log across the bottom). One-shot;
-  any non-direction cancels. The status strip shows the armed hint.
+  top row, Chats/Chat in the body, command log across the bottom). The leader
+  **stays armed across consecutive directions**, so two keys make a diagonal
+  (e.g. `k` then `h` = up-left). `Esc`/`Enter` exit; any other key exits and is
+  re-processed. The status strip shows the armed hint.
 - A panel is "focused" → accent + bold border/title
   (`view::mod::titled_block(title, focused, app)`); otherwise the `inactive`
   tint.

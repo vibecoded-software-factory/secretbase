@@ -151,12 +151,13 @@ pub(crate) fn open_attach_picker(app: &mut App) {
 
 fn handle_select(app: &mut App, key: KeyEvent) {
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
     match key.code {
         KeyCode::Esc | KeyCode::Char('i') | KeyCode::Enter => chat::leave_select_mode(app),
-        // Shade a contiguous range (editor-style): Shift+↑/↓ where the terminal
-        // delivers it, plus the always-reliable Shift+K/Shift+J.
-        KeyCode::Char('K') => chat::select_extend(app, -1),
-        KeyCode::Char('J') => chat::select_extend(app, 1),
+        // Shade a contiguous range with Alt+Shift+↑/↓ or Alt+Shift+K/J — kept
+        // consistent because many terminals only deliver Shift+arrows with Alt.
+        KeyCode::Char('K') if alt => chat::select_extend(app, -1),
+        KeyCode::Char('J') if alt => chat::select_extend(app, 1),
         KeyCode::Up if shift => chat::select_extend(app, -1),
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),

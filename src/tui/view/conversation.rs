@@ -55,7 +55,7 @@ pub(crate) fn chat_hint(app: &App) -> &'static str {
     if app.conv_search_active {
         "type · Enter search/jump · ↑/↓ pick · Esc close"
     } else if app.selected_msg_idx.is_some() {
-        "↑/↓ move · Shift+K/J range · Space mark · y/c copy · : react · Esc back"
+        "↑/↓ move · Alt+Shift+K/J range · Space mark · y/c copy · : react · Esc back"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {

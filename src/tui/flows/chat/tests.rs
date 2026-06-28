@@ -2253,25 +2253,30 @@ fn ctrl_w_window_nav_moves_between_panels() {
         "c1",
     );
     rig.app.screen = Screen::Inbox;
-    rig.app.focus = Focus::Tree;
+    rig.app.focus = Focus::Chat;
 
-    // Ctrl+W arms the leader; the next key is a direction.
+    // Ctrl+W arms the leader; it stays armed across consecutive directions so
+    // two keys make a diagonal: k (up) then h (left) = chat → search box.
     press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
     assert!(rig.app.pending_pane_nav);
-    press(&mut rig.app, KeyCode::Char('j'), KeyModifiers::NONE); // down → log
-    assert_eq!(rig.app.focus, Focus::CmdLog);
+    press(&mut rig.app, KeyCode::Char('k'), KeyModifiers::NONE); // up → chat search
+    assert_eq!(rig.app.focus, Focus::ChatSearch);
+    assert!(rig.app.pending_pane_nav, "still armed for a diagonal");
+    press(&mut rig.app, KeyCode::Char('h'), KeyModifiers::NONE); // left → filter
+    assert_eq!(rig.app.focus, Focus::Search);
+
+    // Esc leaves window-nav mode.
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
     assert!(!rig.app.pending_pane_nav);
 
-    // Up from the log → tree; right (l) → chat; up → chat search.
+    // A single move then a non-direction key exits and is processed normally.
+    rig.app.focus = Focus::Tree;
     press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
-    press(&mut rig.app, KeyCode::Up, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Tree);
-    press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
-    press(&mut rig.app, KeyCode::Char('l'), KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::Chat);
-    press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
-    press(&mut rig.app, KeyCode::Up, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::ChatSearch);
+    press(&mut rig.app, KeyCode::Char('j'), KeyModifiers::NONE); // down → log
+    assert_eq!(rig.app.focus, Focus::CmdLog);
+    assert!(rig.app.pending_pane_nav);
+    press(&mut rig.app, KeyCode::Char('g'), KeyModifiers::NONE); // exits nav mode
+    assert!(!rig.app.pending_pane_nav);
 }
 
 #[test]
