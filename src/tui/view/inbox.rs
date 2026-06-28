@@ -11,17 +11,24 @@ use ratatui::{
 
 use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
+use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    draw_cmd_log, draw_identity_bar, draw_search_box, draw_skeleton, draw_status_strip,
-    identity_content_rows, list_table, middle_ellipsis,
+    draw_cmd_log, draw_search_box, draw_skeleton, draw_status_strip, list_table, middle_ellipsis,
 };
-use crate::tui::view::{split_main, titled_block};
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     app.clamp_list_selected();
     let area = frame.area();
-    let id_rows = identity_content_rows(app, area.width);
-    let [identity, header, body, cmdlog, status] = split_main(area, id_rows);
+    // No identity bar on the Home — the user knows who they're logged in as;
+    // the rows go to the chat instead.
+    let main = Layout::vertical([
+        Constraint::Length(3), // shared header row (filter / name / search)
+        Constraint::Min(5),    // body (tree | chat)
+        Constraint::Length(6), // command log
+        Constraint::Length(1), // status strip
+    ])
+    .split(area);
+    let (header, body, cmdlog, status) = (main[0], main[1], main[2], main[3]);
 
     // One shared header row: the tree filter (above the tree), then the
     // conversation name + the in-chat search (above the chat) — so the chat
@@ -37,7 +44,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let tree_area = cols[0];
     let chat_area = cols[1];
 
-    draw_identity_bar(frame, app, identity);
     render_search(frame, app, search_area);
     crate::tui::view::conversation::draw_chat_header(frame, app, chat_head[0], chat_head[1]);
     render_tree(frame, app, tree_area);
