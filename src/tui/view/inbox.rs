@@ -13,7 +13,8 @@ use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    draw_cmd_log, draw_search_box, draw_skeleton, draw_status_strip, list_table, middle_ellipsis,
+    draw_cmd_log, draw_search_box, draw_skeleton, draw_status_strip, list_table, list_title,
+    middle_ellipsis,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -173,12 +174,17 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
+    // Count in the bottom-right border: matching conversations of the total.
+    let title = format!(
+        "─[2]-{}",
+        list_title("Chats", app.filtered_cache.len(), app.conversations.len())
+    );
     let mut scroll = app.list_scroll;
     list_table(
         frame,
         &t,
         area,
-        "─[2]-Chats",
+        &title,
         app.focus == Focus::Tree,
         &["Chats", "#"],
         &[Constraint::Length(budget as u16), Constraint::Min(2)],

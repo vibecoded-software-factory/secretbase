@@ -468,12 +468,14 @@ fn inject_fake_team(app: &mut App) {
 }
 
 #[cfg(not(test))]
+#[allow(clippy::too_many_arguments)]
 fn fake_msg(
     id: u64,
     sender: &str,
     body: &str,
     reply: Option<u64>,
     reactions: &[(&str, &[&str])],
+    sent_at: u64,
 ) -> Message {
     use crate::domain::Reaction;
     let mut m = Message::default();
@@ -481,6 +483,8 @@ fn fake_msg(
     m.sender = sender.to_string();
     m.content = crate::domain::MessageContent::Text(body.to_string());
     m.reply_to = reply;
+    m.sent_at = sent_at;
+    m.sent_at_ms = sent_at.saturating_mul(1000);
     m.reactions = reactions
         .iter()
         .map(|(emoji, who)| {
@@ -498,44 +502,163 @@ fn fake_msg(
 fn load_fake_messages(app: &mut App) {
     let me = app.identity.username.clone();
     let m = me.as_str();
-    app.messages = vec![
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ago = |s: u64| now.saturating_sub(s);
+    // Each fake channel is independent — pick its own set by topic.
+    let topic = app
+        .open_conv_id
+        .as_deref()
+        .and_then(|id| id.rsplit("::").next())
+        .unwrap_or("general")
+        .to_string();
+    let general = vec![
+        // Two earlier days first → exercises the "day + time" format.
         fake_msg(
             1,
             "qa-bot",
             "¡Bienvenido al QA playground! 🎉 (fake, en memoria)",
             None,
             &[("👍", &[m]), ("🎉", &["ana", "beto"])],
+            ago(2 * 86400 + 4 * 3600),
         ),
-        fake_msg(2, "ana", "Hola gente 👋 ¿cómo viene el sprint?", None, &[]),
+        fake_msg(
+            2,
+            "ana",
+            "ayer quedó andando el deploy 🚀",
+            None,
+            &[],
+            ago(86400 + 2 * 3600),
+        ),
+        // The rest are today → relative (h / m / s).
         fake_msg(
             3,
             m,
             "Todo bien — probando el chat nuevo 😎",
             None,
             &[("🔥", &["ana"])],
+            ago(5 * 3600),
         ),
-        fake_msg(4, "beto", "Se ve mucho más compacto ahora 👏", None, &[]),
-        fake_msg(5, "ana", "¿Alguien miró el bug del login? 🐛", None, &[]),
+        fake_msg(
+            4,
+            "beto",
+            "Se ve mucho más compacto ahora 👏",
+            None,
+            &[],
+            ago(4 * 3600),
+        ),
+        fake_msg(
+            5,
+            "ana",
+            "¿Alguien miró el bug del login? 🐛",
+            None,
+            &[],
+            ago(3 * 3600),
+        ),
         fake_msg(
             6,
             m,
             "Sí, ya subí el fix ✅",
             Some(5),
             &[("🙌", &["ana", "beto"])],
+            ago(150 * 60),
         ),
-        fake_msg(7, "beto", "Genial, lo pruebo 🧪", Some(6), &[]),
+        fake_msg(
+            7,
+            "beto",
+            "Genial, lo pruebo 🧪",
+            Some(6),
+            &[],
+            ago(2 * 3600),
+        ),
         fake_msg(
             8,
             "qa-bot",
             "Recordatorio: demo a las 5pm ⏰",
             None,
             &[("👀", &[m, "ana"])],
+            ago(45 * 60),
         ),
-        fake_msg(9, "ana", "jajaja perfecto 😂😂", None, &[]),
-        fake_msg(10, "beto", "che y el deploy? 🚀", None, &[]),
-        fake_msg(11, m, "después de la demo lo hacemos 👍", Some(10), &[]),
-        fake_msg(12, "ana", "dale, nos vemos ahí ✨", None, &[("❤️", &[m])]),
+        fake_msg(9, "ana", "jajaja perfecto 😂😂", None, &[], ago(20 * 60)),
+        fake_msg(10, "beto", "che y el deploy? 🚀", None, &[], ago(8 * 60)),
+        fake_msg(
+            11,
+            m,
+            "después de la demo lo hacemos 👍",
+            Some(10),
+            &[],
+            ago(3 * 60),
+        ),
+        fake_msg(
+            12,
+            "ana",
+            "dale, nos vemos ahí ✨",
+            None,
+            &[("❤️", &[m])],
+            ago(15),
+        ),
     ];
+    let bugs = vec![
+        fake_msg(
+            1,
+            "qa-bot",
+            "Canal #bugs 🐞 — acá trackeamos los issues",
+            None,
+            &[],
+            ago(86400 + 5 * 3600),
+        ),
+        fake_msg(
+            2,
+            "beto",
+            "#1234 el botón de login no responde en mobile 📱",
+            None,
+            &[("👀", &["ana", m])],
+            ago(6 * 3600),
+        ),
+        fake_msg(
+            3,
+            "ana",
+            "reproducido, lo tomo yo 🙋‍♀️",
+            Some(2),
+            &[],
+            ago(5 * 3600),
+        ),
+        fake_msg(
+            4,
+            m,
+            "era un z-index, ya va el PR 🔧",
+            Some(2),
+            &[("🔥", &["beto"]), ("🙌", &["ana"])],
+            ago(2 * 3600),
+        ),
+        fake_msg(
+            5,
+            "beto",
+            "#1240 typo en el footer ✏️",
+            None,
+            &[],
+            ago(40 * 60),
+        ),
+        fake_msg(
+            6,
+            "ana",
+            "ese es de 1 línea, lo arreglo 😅",
+            Some(5),
+            &[],
+            ago(12 * 60),
+        ),
+        fake_msg(
+            7,
+            "qa-bot",
+            "2 issues abiertos, 3 cerrados hoy ✅",
+            None,
+            &[("🎉", &[m])],
+            ago(30),
+        ),
+    ];
+    app.messages = if topic == "bugs" { bugs } else { general };
     app.messages_next = None;
     app.messages_loading_older = false;
     app.messages_scroll = 0;

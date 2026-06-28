@@ -438,7 +438,7 @@ fn outbox_lines(app: &App, now_s: u64, t: &crate::tui::theme::Theme) -> Vec<Line
                 "→",
                 t.dim,
                 Span::styled(
-                    relative_time(p.sent_at_ms / 1000, now_s),
+                    message_time(p.sent_at_ms / 1000, now_s),
                     Style::default().fg(t.dim),
                 ),
             ),
@@ -485,7 +485,7 @@ fn message_lines(
     } else {
         Style::default().fg(t.conv_dm).add_modifier(Modifier::BOLD)
     };
-    let when = relative_time(m.sent_at, now_s);
+    let when = message_time(m.sent_at, now_s);
     let header_icon = if is_me && !is_system {
         "→"
     } else {
@@ -767,23 +767,45 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-fn relative_time(sent_at_s: u64, now_s: u64) -> String {
+/// Same-day relative age: `now` / `{n}s` / `{n}m` / `{n}h`.
+fn relative_short(secs: u64) -> String {
+    if secs < 5 {
+        "now".to_string()
+    } else if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else {
+        format!("{}h", secs / 3600)
+    }
+}
+
+/// Compact timestamp shown beside the sender (Discord-style): if the message
+/// is from **today** it's a relative age (`now`/`{n}s`/`{n}m`/`{n}h`);
+/// otherwise it's the **day + local clock time** (`yest 14:30`, `12/06 14:30`,
+/// or `12/06/24 14:30` for a different year).
+fn message_time(sent_at_s: u64, now_s: u64) -> String {
+    use chrono::{Datelike, Local, TimeZone};
     if sent_at_s == 0 || now_s == 0 || sent_at_s > now_s {
         return String::new();
     }
-    let d = now_s - sent_at_s;
-    if d < 60 {
-        "now".to_string()
-    } else if d < 60 * 60 {
-        format!("{}m ago", d / 60)
-    } else if d < 24 * 60 * 60 {
-        format!("{}h ago", d / 3600)
-    } else if d < 30 * 24 * 60 * 60 {
-        format!("{}d ago", d / 86400)
-    } else if d < 365 * 24 * 60 * 60 {
-        format!("{}mo ago", d / (30 * 86400))
+    let (Some(sent), Some(now)) = (
+        Local.timestamp_opt(sent_at_s as i64, 0).single(),
+        Local.timestamp_opt(now_s as i64, 0).single(),
+    ) else {
+        return String::new();
+    };
+    if sent.date_naive() == now.date_naive() {
+        return relative_short(now_s - sent_at_s);
+    }
+    let hm = sent.format("%H:%M");
+    let days = (now.date_naive() - sent.date_naive()).num_days();
+    if days == 1 {
+        format!("yest {hm}")
+    } else if sent.year() == now.year() {
+        sent.format("%d/%m %H:%M").to_string()
     } else {
-        format!("{}y ago", d / (365 * 86400))
+        sent.format("%d/%m/%y %H:%M").to_string()
     }
 }
 
@@ -792,30 +814,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn relative_now() {
-        assert_eq!(relative_time(100, 130), "now");
+    fn relative_short_buckets() {
+        assert_eq!(relative_short(3), "now");
+        assert_eq!(relative_short(42), "42s");
+        assert_eq!(relative_short(5 * 60), "5m");
+        assert_eq!(relative_short(3 * 3600), "3h");
     }
 
     #[test]
-    fn relative_minutes() {
-        assert_eq!(relative_time(0, 600), "");
-        assert_eq!(relative_time(60, 60 + 60 * 5), "5m ago");
-    }
-
-    #[test]
-    fn relative_hours() {
-        assert_eq!(relative_time(0, 7200), "");
-        assert_eq!(relative_time(1, 1 + 3600 * 3), "3h ago");
-    }
-
-    #[test]
-    fn relative_days() {
-        assert_eq!(relative_time(1, 1 + 86400 * 2), "2d ago");
-    }
-
-    #[test]
-    fn relative_future_returns_empty() {
-        assert_eq!(relative_time(200, 100), "");
+    fn message_time_guards_and_today_is_relative() {
+        // No timestamp / future → empty.
+        assert_eq!(message_time(0, 600), "");
+        assert_eq!(message_time(200, 100), "");
+        // A few seconds ago is the same local day → relative.
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1_000_000);
+        assert_eq!(message_time(now - 3, now), "now");
+        assert_eq!(message_time(now - 42, now), "42s");
     }
 
     #[test]
