@@ -12,17 +12,39 @@ use crate::tui::flows::chat;
 use crate::tui::input::common::{self, SearchAction};
 use crate::tui::screens::{Focus, Screen};
 
-/// Focus cycle order — Search, the status filter, the conversation tree, the
-/// open chat, the command log. `Chat` is skipped while no conversation is open.
-const FOCUS_ORDER: [Focus; 4] = [Focus::Search, Focus::Tree, Focus::Chat, Focus::CmdLog];
+/// Focus cycle order — the tree filter, the conversation tree, the open chat,
+/// the in-chat search box, the command log. `Chat` and `ChatSearch` are
+/// skipped while no conversation is open.
+const FOCUS_ORDER: [Focus; 5] = [
+    Focus::Search,
+    Focus::Tree,
+    Focus::Chat,
+    Focus::ChatSearch,
+    Focus::CmdLog,
+];
 
-/// Cycles focus, skipping `Chat` when there's no open conversation to focus.
+/// Cycles focus, skipping the chat-only panels when no conversation is open.
 fn cycle(app: &App, forward: bool) -> Focus {
     let mut f = common::cycle_focus(&FOCUS_ORDER, app.focus, forward);
-    if f == Focus::Chat && app.open_conv_id.is_none() {
+    if matches!(f, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_none() {
         f = common::cycle_focus(&FOCUS_ORDER, f, forward);
+        // Skip the second chat-only panel too (two in a row).
+        if matches!(f, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_none() {
+            f = common::cycle_focus(&FOCUS_ORDER, f, forward);
+        }
     }
     f
+}
+
+/// Sets focus and keeps the in-chat search mode in sync: the search box is
+/// "active" exactly when `ChatSearch` holds focus, so Tab in/out toggles it.
+fn set_focus(app: &mut App, f: Focus) {
+    if f == Focus::ChatSearch {
+        chat::open_conv_search(app);
+    } else if app.focus == Focus::ChatSearch {
+        chat::close_conv_search(app);
+    }
+    app.focus = f;
 }
 
 pub fn handle(app: &mut App, key: KeyEvent) {
@@ -71,11 +93,11 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::Tab => {
-            app.focus = cycle(app, true);
+            set_focus(app, cycle(app, true));
             return;
         }
         KeyCode::BackTab => {
-            app.focus = cycle(app, false);
+            set_focus(app, cycle(app, false));
             return;
         }
         _ => {}
@@ -105,7 +127,9 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 
     match app.focus {
         Focus::Tree => handle_tree(app, key),
-        Focus::Chat => crate::tui::input::conversation::handle(app, key),
+        // ChatSearch routes to the same handler: conv_search_active is set, so
+        // conversation::handle delegates to its in-conversation search keys.
+        Focus::Chat | Focus::ChatSearch => crate::tui::input::conversation::handle(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         Focus::Search => unreachable!("handled above"),
     }

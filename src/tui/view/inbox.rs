@@ -54,7 +54,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     let cmdlog_focused = app.focus == Focus::CmdLog;
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, 4);
-    let hint = if app.focus == Focus::Chat && app.open_conv_id.is_some() {
+    let hint = if matches!(app.focus, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_some()
+    {
         crate::tui::view::conversation::chat_hint(app)
     } else {
         footer_hint(app)
@@ -72,6 +73,7 @@ fn footer_hint(app: &App) -> &'static str {
         Focus::Search => "type to filter chats · Enter/Esc leave",
         Focus::Tree => "↑/↓ nav · Enter open / fold · Alt+N new · Tab focus",
         Focus::Chat => "Enter send · Esc back · Tab focus",
+        Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
         Focus::CmdLog => "↑/↓ scroll · Tab focus",
     }
 }

@@ -1121,18 +1121,23 @@ fn try_jump_to_search_target(app: &mut App) {
 /// Max matches requested from `searchregexp` for the in-conversation search.
 const CONV_SEARCH_MAX_HITS: u32 = 50;
 
-/// Focuses the conversation search box.
+/// Focuses the conversation search box (also a Tab stop: `Focus::ChatSearch`).
 pub fn open_conv_search(app: &mut App) {
     app.conv_search_active = true;
     app.conv_search_selected = 0;
+    app.focus = crate::tui::screens::Focus::ChatSearch;
 }
 
-/// Closes the search box and clears its query + results.
+/// Closes the search box and clears its query + results, returning focus to
+/// the chat.
 pub fn close_conv_search(app: &mut App) {
     app.conv_search_active = false;
     app.conv_search.clear();
     app.conv_search_results.clear();
     app.conv_search_selected = 0;
+    if app.focus == crate::tui::screens::Focus::ChatSearch {
+        app.focus = crate::tui::screens::Focus::Chat;
+    }
 }
 
 /// Runs `searchregexp` over the open conversation for the current query.

@@ -47,8 +47,10 @@ pub enum Focus {
     Search,
     /// Conversation tree (Direct messages + teams) — the left pane.
     Tree,
-    /// The chat (right pane) — compose / select / in-conversation search.
+    /// The chat (right pane) — compose / select.
     Chat,
+    /// The in-conversation search box (Ctrl+F / `searchregexp`).
+    ChatSearch,
     /// Bottom command-log panel.
     CmdLog,
 }

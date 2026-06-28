@@ -68,7 +68,7 @@ tables.
 | `↑` / `↓` · `k` / `j`   | Navigate |
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
-| `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · log) |
+| `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
 | `/`                     | Focus search |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |

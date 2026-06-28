@@ -2169,6 +2169,28 @@ fn input_enter_on_list_opens_selected_conversation() {
 }
 
 #[test]
+fn tab_reaches_chat_search_and_toggles_search_mode() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Inbox;
+    // From the chat, Tab lands on the in-chat search box and activates search.
+    rig.app.focus = Focus::Chat;
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::ChatSearch);
+    assert!(rig.app.conv_search_active);
+    // Tabbing off it leaves search mode again.
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_ne!(rig.app.focus, Focus::ChatSearch);
+    assert!(!rig.app.conv_search_active);
+}
+
+#[test]
 fn input_q_on_inbox_does_not_quit() {
     // Only Ctrl+C quits (per UX.md). Bare 'q' must be free for
     // type-to-search and must NOT exit the app.
