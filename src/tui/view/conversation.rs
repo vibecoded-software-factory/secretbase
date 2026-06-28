@@ -307,7 +307,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // message — visual feedback for what can be done with it (the keys
         // still work directly).
         if is_selected && app.selected_msg_idx.is_some() {
-            lines.push(select_actions_line(m, app, &t));
+            lines.extend(select_actions_lines(m, app, &t, body_width));
         }
         // Compact: no blank line between messages — each message's
         // "→ sender · time" header already separates them.
@@ -568,7 +568,12 @@ fn reactions_line(
 /// the actions available for *this* message, each with its key. Own
 /// messages add edit/delete; attachments add download. Pure visual feedback
 /// — the keys work directly regardless.
-fn select_actions_line(m: &Message, app: &App, t: &crate::tui::theme::Theme) -> Line<'static> {
+fn select_actions_lines(
+    m: &Message,
+    app: &App,
+    t: &crate::tui::theme::Theme,
+    width: usize,
+) -> Vec<Line<'static>> {
     let marks = app.msg_marks.len();
     // With a multi-selection active the action set collapses to copy / react
     // (plus mark / done); otherwise it's the full per-message menu.
@@ -610,29 +615,39 @@ fn select_actions_line(m: &Message, app: &App, t: &crate::tui::theme::Theme) -> 
         }
         actions
     };
-    // Flush to the left of the section (aligned with the message's "→"
-    // arrow), not the body indent — keeps the chat compact at half-width.
+    // Pack actions onto as few lines as fit `width` — they all show on one
+    // line when there's room, otherwise wrap onto continuation lines (each
+    // flush-left, aligned with the message's "→" arrow). Never truncated.
+    let key_style = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
+    let label_style = Style::default().fg(t.dim);
+    let mut lines: Vec<Line<'static>> = Vec::new();
     let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];
+    let mut line_w = 1usize; // the leading gutter
+    let mut first = true;
     if marks > 0 {
-        spans.push(Span::styled(
-            format!("{marks} sel   "),
-            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-        ));
+        let pfx = format!("{marks} sel   ");
+        line_w += pfx.chars().count();
+        spans.push(Span::styled(pfx, key_style));
     }
-    for (i, (k, label)) in actions.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("  "));
+    for (k, label) in &actions {
+        let piece = k.chars().count() + 1 + label.chars().count(); // "k label"
+        if !first && line_w + 2 + piece > width {
+            lines.push(Line::from(std::mem::take(&mut spans)));
+            spans.push(Span::raw(" "));
+            line_w = 1;
+            first = true;
         }
-        spans.push(Span::styled(
-            k.to_string(),
-            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(
-            format!(" {label}"),
-            Style::default().fg(t.dim),
-        ));
+        if !first {
+            spans.push(Span::raw("  "));
+            line_w += 2;
+        }
+        spans.push(Span::styled((*k).to_string(), key_style));
+        spans.push(Span::styled(format!(" {label}"), label_style));
+        line_w += piece;
+        first = false;
     }
-    Line::from(spans)
+    lines.push(Line::from(spans));
+    lines
 }
 
 /// Maps a stored reaction key (a `:shortcode:`) to its glyph via the emoji
@@ -699,7 +714,7 @@ fn body_lines(
         MessageContent::Reaction { target_id, body } => {
             placeholder(&format!("reacted {body} on msg #{target_id}"), t)
         }
-        MessageContent::Attachment(att) => render_attachment(att, t),
+        MessageContent::Attachment(att) => render_attachment(att, t, width),
         MessageContent::System(sys) => render_system(sys, t),
         MessageContent::Metadata { title } => {
             placeholder(&format!("channel title set to: {title}"), t)
@@ -789,7 +804,11 @@ fn wrap_line(line: &str, width: usize) -> Vec<String> {
     out
 }
 
-fn render_attachment(att: &AttachmentInfo, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {
+fn render_attachment(
+    att: &AttachmentInfo,
+    t: &crate::tui::theme::Theme,
+    width: usize,
+) -> Vec<Line<'static>> {
     let size = format_size(att.size);
     let mime = if att.mime_type.is_empty() {
         "—".to_string()
@@ -804,21 +823,33 @@ fn render_attachment(att: &AttachmentInfo, t: &crate::tui::theme::Theme) -> Vec<
             Style::default().fg(t.foreground),
         )));
     }
-    // Filename + size share one line (the size fits in the space next to the
-    // usually-short name); the longer MIME type drops to a dim line below.
-    lines.push(Line::from(vec![
-        Span::styled(
-            format!("    {}", att.filename),
-            Style::default()
-                .fg(t.conv_team)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(format!("  {size}{state}"), Style::default().fg(t.dim)),
-    ]));
-    lines.push(Line::from(Span::styled(
-        format!("      {mime}"),
-        Style::default().fg(t.dim),
-    )));
+    let name = Span::styled(
+        format!("    {}", att.filename),
+        Style::default()
+            .fg(t.conv_team)
+            .add_modifier(Modifier::BOLD),
+    );
+    // Filename + size always share the first line. The MIME type joins them
+    // (`· type`) when it fits the panel width; otherwise it drops to a dim
+    // line below.
+    let meta = format!("  {size}{state}");
+    let first_used = att.filename.chars().count() + 4 + meta.chars().count();
+    let type_inline = format!("  · {mime}");
+    if first_used + type_inline.chars().count() <= width {
+        lines.push(Line::from(vec![
+            name,
+            Span::styled(format!("{meta}{type_inline}"), Style::default().fg(t.dim)),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            name,
+            Span::styled(meta, Style::default().fg(t.dim)),
+        ]));
+        lines.push(Line::from(Span::styled(
+            format!("      {mime}"),
+            Style::default().fg(t.dim),
+        )));
+    }
     lines
 }
 
@@ -863,6 +894,20 @@ fn format_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attachment_type_inline_when_it_fits_else_below() {
+        let t = crate::tui::theme::Theme::default();
+        let mut att = AttachmentInfo::default();
+        att.filename = "a.txt".into();
+        att.size = 1024;
+        att.mime_type = "text/plain".into();
+        att.uploaded = true;
+        // Wide panel → the type joins the size line (one line).
+        assert_eq!(render_attachment(&att, &t, 80).len(), 1);
+        // Narrow panel → the type drops to its own line below (two lines).
+        assert_eq!(render_attachment(&att, &t, 20).len(), 2);
+    }
 
     #[test]
     fn format_size_buckets() {

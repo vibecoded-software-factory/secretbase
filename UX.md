@@ -152,6 +152,11 @@ on their own:
   URL) — visual feedback that accompanies the direct keybindings, it doesn't
   replace them. `o` opens the first `http(s)` link
   (`domain::extract_urls` → `ports::OpenerPort`, the `xdg-open`/`open` adapter).
+  The bar **packs onto one line when it fits and wraps onto continuation lines
+  otherwise** (`select_actions_lines`) — never truncated. The same
+  fit-or-wrap rule governs **attachments**: the file type sits next to the size
+  (`size · type`) when there's room, else it drops to a dim line below
+  (`render_attachment`).
 - **Sending** — the message echoes instantly the moment `Enter` is pressed,
   as an optimistic **outbox** bubble below the history (`App::outbox`, kept
   separate from `messages` so a re-read can't drop it). It carries a state:
