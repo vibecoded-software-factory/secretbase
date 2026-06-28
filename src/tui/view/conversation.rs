@@ -513,6 +513,11 @@ fn message_lines(
     if !m.reactions.is_empty() {
         lines.push(reactions_line(&m.reactions, app, t));
     }
+    // WhatsApp-style: my own messages mirror to the right edge; everyone
+    // else's stay on the left (system rows are never mirrored).
+    if is_me && !is_system {
+        return lines.into_iter().map(Line::right_aligned).collect();
+    }
     lines
 }
 

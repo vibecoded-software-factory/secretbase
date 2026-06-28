@@ -304,6 +304,32 @@ pub fn tree_activate(app: &mut App) -> bool {
     }
 }
 
+/// Right / `l` in the tree: **only opens** — expand a collapsed group or open
+/// the conversation. Never collapses (so `l` can't loop open↔closed); use
+/// `h`/`←` ([`tree_back`]) to collapse / close.
+pub fn tree_forward(app: &mut App) {
+    match app.tree_rows().get(app.tree_selected) {
+        Some(crate::tui::app::TreeRow::Group {
+            key,
+            collapsed: true,
+            ..
+        }) => {
+            let key = key.clone();
+            app.toggle_collapsed(&key); // expand only
+            let len = app.tree_rows().len();
+            if app.tree_selected >= len {
+                app.tree_selected = len.saturating_sub(1);
+            }
+        }
+        Some(crate::tui::app::TreeRow::Conv { idx }) => {
+            let id = app.conversations[*idx].id.clone();
+            open_conversation_by_id(app, id);
+        }
+        // Already-expanded group / nothing → no-op.
+        _ => {}
+    }
+}
+
 /// Left / `h` in the tree: collapse an expanded group, or — on a conversation
 /// row — close the open chat (master-detail "back").
 pub fn tree_back(app: &mut App) {

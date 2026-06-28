@@ -296,11 +296,12 @@ fn handle_tree(app: &mut App, key: KeyEvent) {
         KeyCode::PageDown => chat::tree_move(app, 10),
         KeyCode::Home | KeyCode::Char('g') => app.tree_selected = 0,
         KeyCode::End | KeyCode::Char('G') => chat::tree_move(app, isize::MAX),
-        // Enter / → / l opens a conversation (moving focus to the chat) or
-        // expands a group; ← / h collapses a group or closes the open chat.
-        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+        // Enter toggles a group / opens a conversation; →/l only open or
+        // expand (never collapse, so they can't loop); ←/h collapse or close.
+        KeyCode::Enter => {
             chat::tree_activate(app);
         }
+        KeyCode::Right | KeyCode::Char('l') => chat::tree_forward(app),
         KeyCode::Left | KeyCode::Char('h') => chat::tree_back(app),
         _ => {}
     }

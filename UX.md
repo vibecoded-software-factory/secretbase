@@ -61,13 +61,16 @@ conversation on normal terminals.
     (`chat::tree_back`). Opening from the quick
     switcher / global search **reveals** the conversation in the tree
     (`chat::reveal_in_tree` — expand its group + move the cursor). The first
-    (slow) load shows a `widgets::draw_skeleton`.
+    (slow) load shows a `widgets::draw_skeleton` whose `Loading chats…` legend
+    **replaces** the `Chats   #` column header until the list arrives.
   - the right pane is `conversation::draw_chat` (messages + compose; the header
     name/search are on the shared top row) when a conversation is open, else a
     placeholder. `Focus::Chat` routes keys to `input::conversation::handle`
     (compose / select / in-conv search); `Esc` on an empty compose closes the
     conversation (focus back to `Tree`). Message bodies **wrap** to the panel
-    width (`conversation::wrap_line`) instead of being cut off. There is **no
+    width (`conversation::wrap_line`) instead of being cut off. **Own messages
+    mirror to the right edge** (WhatsApp-style, `Line::right_aligned` for
+    `is_me` non-system rows); everyone else's stay left. There is **no
     standalone full-screen conversation screen** — the unified Home is the only
     chat surface.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log

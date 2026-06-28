@@ -168,11 +168,20 @@ pub fn draw_skeleton(
     }
 
     let mut lines: Vec<Line<'static>> = Vec::new();
-
-    // Keep the column-header row visible during load (e.g. "Chats   #") so the
-    // panel reads the same as the real list — the bars start one row lower.
     let mut bar_rows = inner.height as usize;
-    if !headers.is_empty() {
+
+    // While loading, the legend **replaces** the column header row (e.g.
+    // "Loading chats…" instead of "Chats   #") — the real header only appears
+    // once the list has loaded. Fall back to the header row when no legend.
+    if !loading.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            format!("  {loading}"),
+            Style::default().fg(theme.dim),
+        )));
+        lines.push(Line::raw(""));
+        bar_rows = bar_rows.saturating_sub(3);
+    } else if !headers.is_empty() {
         let header_style = Style::default().fg(theme.dim).add_modifier(Modifier::BOLD);
         let left = format!("  {}", headers.first().copied().unwrap_or(""));
         let right = if headers.len() > 1 {
@@ -187,18 +196,6 @@ pub fn draw_skeleton(
             header_style,
         )));
         bar_rows = bar_rows.saturating_sub(1);
-    }
-
-    // A "Loading …" legend (like the conversation's "Loading messages…"),
-    // with a blank row above and below for breathing room.
-    if !loading.is_empty() {
-        lines.push(Line::raw(""));
-        lines.push(Line::from(Span::styled(
-            format!("  {loading}"),
-            Style::default().fg(theme.dim),
-        )));
-        lines.push(Line::raw(""));
-        bar_rows = bar_rows.saturating_sub(3);
     }
 
     // Pseudo-varied bar widths so it reads as a list of names, not a wall.
