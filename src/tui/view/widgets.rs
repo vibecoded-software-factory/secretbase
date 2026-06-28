@@ -154,6 +154,7 @@ pub fn draw_skeleton(
     title: &str,
     tick: u8,
     headers: &[&str],
+    loading: &str,
 ) {
     let border = Style::default().fg(theme.inactive);
     let block = Block::default()
@@ -184,6 +185,16 @@ pub fn draw_skeleton(
         lines.push(Line::from(Span::styled(
             format!("{left}{}{right}", " ".repeat(pad)),
             header_style,
+        )));
+        bar_rows = bar_rows.saturating_sub(1);
+    }
+
+    // A "Loading …" legend (like the conversation's "Loading messages…"),
+    // dropping the bars one more row.
+    if !loading.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("  {loading}"),
+            Style::default().fg(theme.dim),
         )));
         bar_rows = bar_rows.saturating_sub(1);
     }

@@ -103,6 +103,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
             "─[2]-Chats",
             app.anim_tick,
             &["Chats", "#"],
+            "Loading chats…",
         );
         return;
     }
