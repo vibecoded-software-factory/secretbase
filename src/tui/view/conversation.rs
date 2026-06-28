@@ -11,7 +11,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo};
+use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo, message_time};
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
@@ -54,7 +54,7 @@ pub(crate) fn chat_hint(app: &App) -> &'static str {
     if app.conv_search_active {
         "type · Enter search/jump · ↑/↓ pick · Esc close"
     } else if app.selected_msg_idx.is_some() {
-        "↑/↓ select · e edit · d delete · : react · p pin · Esc back"
+        "↑/↓ move · Shift+↑/↓ range · Space mark · y/c copy · : react · Esc back"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
@@ -280,11 +280,14 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     for (idx, m) in app.messages.iter().enumerate() {
         let start = lines.len();
         let is_selected = app.selected_msg_idx == Some(idx);
+        // Marked messages (multi-select for copy) get the same shading as the
+        // cursor — the cursor is told apart by its action bar below.
+        let is_marked = app.msg_marks.contains(&idx);
         if is_selected {
             selected_line = Some(start);
         }
         let mut block = message_lines(m, now_s, app, &t, body_width);
-        if is_selected {
+        if is_selected || is_marked {
             for line in &mut block {
                 let bg = t.selected_bg;
                 line.spans = line
@@ -558,20 +561,46 @@ fn reactions_line(
 /// messages add edit/delete; attachments add download. Pure visual feedback
 /// — the keys work directly regardless.
 fn select_actions_line(m: &Message, app: &App, t: &crate::tui::theme::Theme) -> Line<'static> {
-    let is_me = !app.identity.username.is_empty() && m.sender == app.identity.username;
-    let is_attachment = matches!(m.content, MessageContent::Attachment(_));
-    let mut actions: Vec<(&str, &str)> = vec![(":", "react"), ("r", "reply")];
-    if is_me {
-        actions.push(("e", "edit"));
-        actions.push(("d", "delete"));
-    }
-    actions.push(("p", "pin"));
-    if is_attachment {
-        actions.push(("s", "download"));
-    }
+    let marks = app.msg_marks.len();
+    // With a multi-selection active the action set collapses to copy / react
+    // (plus mark / done); otherwise it's the full per-message menu.
+    let actions: Vec<(&str, &str)> = if marks > 0 {
+        vec![
+            ("y", "copy all"),
+            ("c", "content"),
+            (":", "react"),
+            ("Space", "±"),
+            ("Esc", "done"),
+        ]
+    } else {
+        let is_me = !app.identity.username.is_empty() && m.sender == app.identity.username;
+        let is_attachment = matches!(m.content, MessageContent::Attachment(_));
+        let mut actions: Vec<(&str, &str)> = vec![
+            ("Space", "select"),
+            ("y", "copy"),
+            ("c", "content"),
+            (":", "react"),
+            ("r", "reply"),
+        ];
+        if is_me {
+            actions.push(("e", "edit"));
+            actions.push(("d", "delete"));
+        }
+        actions.push(("p", "pin"));
+        if is_attachment {
+            actions.push(("s", "download"));
+        }
+        actions
+    };
     // Flush to the left of the section (aligned with the message's "→"
     // arrow), not the body indent — keeps the chat compact at half-width.
     let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];
+    if marks > 0 {
+        spans.push(Span::styled(
+            format!("{marks} sel   "),
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        ));
+    }
     for (i, (k, label)) in actions.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("  "));
@@ -811,77 +840,9 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-/// Same-day relative age: `now` / `{n}m` / `{n}h`. The whole sub-minute range
-/// reads `now` (Discord-style) — a per-second counter on a fresh message is
-/// distracting, and the minute granularity is enough context.
-fn relative_short(secs: u64) -> String {
-    if secs < 60 {
-        "now".to_string()
-    } else if secs < 3600 {
-        format!("{}m", secs / 60)
-    } else {
-        format!("{}h", secs / 3600)
-    }
-}
-
-/// Compact timestamp shown beside the sender (Discord-style): if the message
-/// is from **today** it's a relative age (`now`/`{n}m`/`{n}h`);
-/// otherwise it's the **day + local clock time** (`yest 14:30`, `12/06 14:30`,
-/// or `12/06/24 14:30` for a different year).
-fn message_time(sent_at_s: u64, now_s: u64) -> String {
-    use chrono::{Datelike, Local, TimeZone};
-    if sent_at_s == 0 || now_s == 0 || sent_at_s > now_s {
-        return String::new();
-    }
-    let (Some(sent), Some(now)) = (
-        Local.timestamp_opt(sent_at_s as i64, 0).single(),
-        Local.timestamp_opt(now_s as i64, 0).single(),
-    ) else {
-        return String::new();
-    };
-    if sent.date_naive() == now.date_naive() {
-        return relative_short(now_s - sent_at_s);
-    }
-    let hm = sent.format("%H:%M");
-    let days = (now.date_naive() - sent.date_naive()).num_days();
-    if days == 1 {
-        format!("yest {hm}")
-    } else if sent.year() == now.year() {
-        sent.format("%d/%m %H:%M").to_string()
-    } else {
-        sent.format("%d/%m/%y %H:%M").to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn relative_short_buckets() {
-        // The whole sub-minute range is "now" — no frenetic second counter.
-        assert_eq!(relative_short(3), "now");
-        assert_eq!(relative_short(42), "now");
-        assert_eq!(relative_short(59), "now");
-        assert_eq!(relative_short(60), "1m");
-        assert_eq!(relative_short(5 * 60), "5m");
-        assert_eq!(relative_short(3 * 3600), "3h");
-    }
-
-    #[test]
-    fn message_time_guards_and_today_is_relative() {
-        // No timestamp / future → empty.
-        assert_eq!(message_time(0, 600), "");
-        assert_eq!(message_time(200, 100), "");
-        // A few seconds ago is the same local day → relative.
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(1_000_000);
-        assert_eq!(message_time(now - 3, now), "now");
-        assert_eq!(message_time(now - 42, now), "now");
-        assert_eq!(message_time(now - 90, now), "1m");
-    }
 
     #[test]
     fn format_size_buckets() {

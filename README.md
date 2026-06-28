@@ -104,9 +104,14 @@ selected conversation in the right pane; the header search fuzzy-filters it.
 | `Ctrl+Y`                | Copy label |
 | `Esc`                   | Cancel / back |
 
-In **Select** mode: `↑` / `↓` move the cursor · `e` / `d` / `:` / `p`
-edit / delete / react / pin · `r` / `s` reply / download ·
-`i` / `Enter` / `Esc` return to Compose.
+In **Select** mode: `↑` / `↓` move the cursor · `Shift+↑/↓` shade a range ·
+`Space` mark / unmark (multi-select) · `y` copy selection (author + time +
+body) · `c` copy bodies only · `e` / `d` / `:` / `p` edit / delete / react /
+pin · `r` / `s` reply / download · `i` / `Enter` / `Esc` return to Compose.
+
+The **command log** (Tab to focus it) has the same visual multi-select:
+`↑/↓` move · `Shift+↑/↓` range · `Space` mark · `y` copy full line(s) · `c`
+copy detail only · `Esc` clear / leave.
 
 ### Global
 

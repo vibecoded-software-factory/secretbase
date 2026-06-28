@@ -71,10 +71,17 @@ conversation on normal terminals.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom). When focused
   (`Focus::CmdLog`) it is a **visual multi-select**: a `▶` cursor walks the
-  whole history (the window follows it; `App::cmdlog_cursor`), `Space` marks
-  lines (`●`, `App::cmdlog_marks`), and `y`/`Enter` copy the marked lines —
-  or the cursor line — to the clipboard (`chat::do_copy_cmd_log`); `Esc`
+  whole history (the window follows it; `App::cmdlog_cursor`), `Shift+↑/↓`
+  shades a contiguous range (`App::cmdlog_anchor`), `Space` toggles a line
+  (`●`, `App::cmdlog_marks`), and `y`/`Enter` copy the **full** line(s) while
+  `c` copies the **detail only** (`chat::do_copy_cmd_log(full)`) — marked
+  lines, or the cursor line; the selection is kept so both copies work. `Esc`
   clears the selection then leaves. The title shows `cursor/total · N sel`.
+  The chat's **Select mode** (`Alt+V`) uses the **same multi-select**: `Space`
+  marks messages, `Shift+↑/↓` shades a range, `y` copies author + time + body
+  and `c` copies bodies only (`chat::do_copy_messages(full)`), separated by a
+  blank line / newline; with a selection active the action bar collapses to
+  the reduced copy / react set.
   Worker ops carry their duration (request → response), formatted by
   `domain::format_duration` as a single smallest-unit value
   (`ms`/`s`/`m`/`h`/`d`/`y`).

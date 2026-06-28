@@ -1208,15 +1208,124 @@ pub fn enter_select_mode(app: &mut App) {
     app.compose_open = false;
     app.select_from_compose = false;
     app.selected_msg_idx = Some(app.messages.len() - 1);
+    app.msg_marks.clear();
+    app.select_anchor = None;
 }
 
 pub fn leave_select_mode(app: &mut App) {
     app.selected_msg_idx = None;
     app.select_from_compose = false;
     app.compose_open = true;
+    app.msg_marks.clear();
+    app.select_anchor = None;
+}
+
+/// Toggles the mark on the cursor message (manual one-by-one multi-select).
+pub fn msg_toggle_mark(app: &mut App) {
+    let Some(i) = app.selected_msg_idx else {
+        return;
+    };
+    app.select_anchor = None;
+    if !app.msg_marks.remove(&i) {
+        app.msg_marks.insert(i);
+    }
+}
+
+/// Extends a contiguous shaded selection by `delta` (Shift+↑/↓), editor-style:
+/// the anchor stays put while the cursor moves and the whole range is marked.
+pub fn select_extend(app: &mut App, delta: isize) {
+    let Some(cur) = app.selected_msg_idx else {
+        return;
+    };
+    let max = app.messages.len().saturating_sub(1);
+    let anchor = *app.select_anchor.get_or_insert(cur);
+    let new = (cur as isize + delta).clamp(0, max as isize) as usize;
+    app.selected_msg_idx = Some(new);
+    let (lo, hi) = (anchor.min(new), anchor.max(new));
+    app.msg_marks = (lo..=hi).collect();
+}
+
+/// Copies the selected messages (marked, or the cursor message) to the
+/// clipboard. `full` includes the author + timestamp above each body;
+/// otherwise just the bodies, one per line. Each message is separated by a
+/// blank line in full mode, a single newline in content mode.
+pub fn do_copy_messages(app: &mut App, full: bool) {
+    let mut idxs: Vec<usize> = if app.msg_marks.is_empty() {
+        app.selected_msg_idx.into_iter().collect()
+    } else {
+        let mut v: Vec<usize> = app
+            .msg_marks
+            .iter()
+            .copied()
+            .filter(|&i| i < app.messages.len())
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    idxs.retain(|&i| i < app.messages.len());
+    if idxs.is_empty() {
+        app.set_action(ActionState::Error("No messages selected".into()));
+        return;
+    }
+    let now_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut blocks: Vec<String> = Vec::new();
+    for &i in &idxs {
+        let m = &app.messages[i];
+        let Some(body) = message_copy_body(m) else {
+            continue; // skip system rows / non-text content
+        };
+        if full {
+            let when = crate::domain::message_time(m.sent_at, now_s);
+            let head = if when.is_empty() {
+                m.sender.clone()
+            } else {
+                format!("{}  {when}", m.sender)
+            };
+            blocks.push(format!("{head}\n{body}"));
+        } else {
+            blocks.push(body);
+        }
+    }
+    if blocks.is_empty() {
+        app.set_action(ActionState::Error("Nothing to copy".into()));
+        return;
+    }
+    let sep = if full { "\n\n" } else { "\n" };
+    let text = blocks.join(sep);
+    let n = blocks.len();
+    let secs = app.settings_cache.clipboard_clear_secs;
+    match app.clipboard.write_with_clear(&text, secs) {
+        Ok(()) => {
+            let what = if full { "full" } else { "content" };
+            app.set_action(ActionState::Done(format!(
+                "Copied {n} message{} ({what})",
+                if n == 1 { "" } else { "s" }
+            )));
+            app.push_cmd("clipboard write", true, format!("{n} message(s), {what}"));
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("clipboard write", false, e.to_string());
+        }
+    }
+}
+
+/// The copyable text body of a message, or `None` for system / non-text rows.
+fn message_copy_body(m: &crate::domain::Message) -> Option<String> {
+    use crate::domain::MessageContent;
+    match &m.content {
+        MessageContent::Text(b) => Some(b.clone()),
+        MessageContent::Edit { body, .. } => Some(body.clone()),
+        MessageContent::Attachment(a) => Some(format!("[attachment: {}]", a.filename)),
+        _ => None,
+    }
 }
 
 pub fn select_move_up(app: &mut App) {
+    app.select_anchor = None; // a plain move re-anchors the next shift-range
     if let Some(i) = app.selected_msg_idx
         && i > 0
     {
@@ -1225,6 +1334,7 @@ pub fn select_move_up(app: &mut App) {
 }
 
 pub fn select_move_down(app: &mut App) {
+    app.select_anchor = None;
     let max = app.messages.len().saturating_sub(1);
     if let Some(i) = app.selected_msg_idx
         && i < max
@@ -2117,14 +2227,16 @@ pub fn do_copy_conversation_label(app: &mut App) {
 }
 
 /// Copies the marked command-log lines (or the cursor line if none are
-/// marked) to the clipboard as plain text.
-pub fn do_copy_cmd_log(app: &mut App) {
+/// marked) to the clipboard. `full` copies the whole line (`✓ cmd → detail
+/// (dur)`); otherwise just the `detail`. The selection is kept so the user
+/// can copy it both ways.
+pub fn do_copy_cmd_log(app: &mut App, full: bool) {
     let len = app.cmd_log.len();
     if len == 0 {
         app.set_action(ActionState::Error("Command log is empty".into()));
         return;
     }
-    let mut idxs: Vec<usize> = if app.cmdlog_marks.is_empty() {
+    let idxs: Vec<usize> = if app.cmdlog_marks.is_empty() {
         vec![app.cmdlog_cursor.min(len - 1)]
     } else {
         let mut v: Vec<usize> = app
@@ -2136,24 +2248,25 @@ pub fn do_copy_cmd_log(app: &mut App) {
         v.sort_unstable();
         v
     };
-    if idxs.is_empty() {
-        idxs.push(app.cmdlog_cursor.min(len - 1));
-    }
     let text = idxs
         .iter()
-        .map(|&i| cmd_log_line_text(&app.cmd_log[i]))
+        .map(|&i| cmd_log_line_text(&app.cmd_log[i], full))
         .collect::<Vec<_>>()
         .join("\n");
     let n = idxs.len();
     let secs = app.settings_cache.clipboard_clear_secs;
     match app.clipboard.write_with_clear(&text, secs) {
         Ok(()) => {
-            app.cmdlog_marks.clear();
+            let what = if full { "full" } else { "detail" };
             app.set_action(ActionState::Done(format!(
-                "Copied {n} command-log line{}",
+                "Copied {n} command-log line{} ({what})",
                 if n == 1 { "" } else { "s" }
             )));
-            app.push_cmd("clipboard write", true, format!("{n} cmd-log line(s)"));
+            app.push_cmd(
+                "clipboard write",
+                true,
+                format!("{n} cmd-log line(s), {what}"),
+            );
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));
@@ -2162,8 +2275,12 @@ pub fn do_copy_cmd_log(app: &mut App) {
     }
 }
 
-/// Plain-text form of one command-log entry (for clipboard copy).
-fn cmd_log_line_text(e: &crate::tui::action::CmdEntry) -> String {
+/// Plain-text form of one command-log entry. `full` = the whole line; else
+/// just the detail (the command's result text).
+fn cmd_log_line_text(e: &crate::tui::action::CmdEntry, full: bool) -> String {
+    if !full {
+        return e.detail.clone();
+    }
     let mark = if e.ok { "✓" } else { "✗" };
     let mut s = format!("{mark} {}  →  {}", e.cmd, e.detail);
     if let Some(d) = e.duration {

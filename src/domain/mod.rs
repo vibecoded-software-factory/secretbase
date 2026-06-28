@@ -24,6 +24,7 @@ pub mod line_editor;
 pub mod message;
 pub mod search;
 pub mod team;
+pub mod timefmt;
 pub mod validation;
 
 pub use chat_event::ChatEvent;
@@ -41,4 +42,5 @@ pub use message::{
 };
 pub use search::{LoweredConversation, fuzzy_score, fuzzy_score_lowered};
 pub use team::{TeamMembership, TeamRole};
+pub use timefmt::{message_time, relative_short};
 pub use validation::{is_valid_keybase_identity, is_valid_keybase_username};

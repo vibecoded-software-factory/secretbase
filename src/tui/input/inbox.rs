@@ -169,7 +169,11 @@ fn handle_search(app: &mut App, key: KeyEvent) {
 /// (scrolling to stay in view), `Space` marks lines, and `y`/`Enter` copies
 /// the marked lines (or the cursor line) to the clipboard.
 fn handle_cmdlog(app: &mut App, key: KeyEvent) {
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     match key.code {
+        // Shift+↑/↓ shade a contiguous range; plain arrows move the cursor.
+        KeyCode::Up if shift => app.cmdlog_extend(-1),
+        KeyCode::Down if shift => app.cmdlog_extend(1),
         KeyCode::Up | KeyCode::Char('k') => app.cmdlog_move(-1),
         KeyCode::Down | KeyCode::Char('j') => app.cmdlog_move(1),
         KeyCode::PageUp => app.cmdlog_move(-5),
@@ -178,14 +182,16 @@ fn handle_cmdlog(app: &mut App, key: KeyEvent) {
         KeyCode::End | KeyCode::Char('G') => app.cmdlog_move(isize::MAX),
         // Multi-select: toggle the cursor line.
         KeyCode::Char(' ') => app.cmdlog_toggle_mark(),
-        // Copy the marked lines (or the cursor line if none are marked).
-        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => chat::do_copy_cmd_log(app),
+        // Copy the marked lines (or the cursor line): full line vs detail only.
+        KeyCode::Char('y') | KeyCode::Enter => chat::do_copy_cmd_log(app, true),
+        KeyCode::Char('c') => chat::do_copy_cmd_log(app, false),
         // Esc clears the selection, then (next press) leaves the panel.
         KeyCode::Esc => {
             if app.cmdlog_marks.is_empty() {
                 app.focus = Focus::Tree;
             } else {
                 app.cmdlog_marks.clear();
+                app.cmdlog_anchor = None;
             }
         }
         _ => {}

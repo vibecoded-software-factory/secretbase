@@ -150,17 +150,26 @@ pub(crate) fn open_attach_picker(app: &mut App) {
 }
 
 fn handle_select(app: &mut App, key: KeyEvent) {
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     match key.code {
         KeyCode::Esc | KeyCode::Char('i') | KeyCode::Enter => chat::leave_select_mode(app),
+        // Shift+↑/↓ shade a contiguous range (editor-style); plain arrows move.
+        KeyCode::Up if shift => chat::select_extend(app, -1),
+        KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),
         KeyCode::Down | KeyCode::Char('j') => chat::select_move_down(app),
         KeyCode::Home | KeyCode::Char('g') => app.selected_msg_idx = Some(0),
         KeyCode::End | KeyCode::Char('G') => {
             app.selected_msg_idx = Some(app.messages.len().saturating_sub(1));
         }
+        // Multi-select + copy (reduced action set).
+        KeyCode::Char(' ') => chat::msg_toggle_mark(app),
+        KeyCode::Char('y') => chat::do_copy_messages(app, true), // author + time + body
+        KeyCode::Char('c') => chat::do_copy_messages(app, false), // content only
+        KeyCode::Char(':') => chat::open_react_for_selected(app),
+        // Single-message actions (operate on the cursor message).
         KeyCode::Char('e') => chat::open_edit_for_selected(app),
         KeyCode::Char('d') => chat::open_delete_for_selected(app),
-        KeyCode::Char(':') => chat::open_react_for_selected(app),
         KeyCode::Char('p') => chat::request_pin_selected_message(app),
         KeyCode::Char('r') => chat::start_reply_for_selected(app),
         KeyCode::Char('s') => chat::open_download_for_selected(app),

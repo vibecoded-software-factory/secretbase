@@ -2207,11 +2207,44 @@ fn cmdlog_multiselect_copies_marked_lines() {
     rig.app.cmdlog_toggle_mark(); // mark idx 0
     assert_eq!(rig.app.cmdlog_marks.len(), 2);
 
-    do_copy_cmd_log(&mut rig.app);
+    do_copy_cmd_log(&mut rig.app, true);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
-    // Selection is cleared, and the copy itself is logged.
-    assert!(rig.app.cmdlog_marks.is_empty());
+    // Selection is kept (so it can be copied full + detail), and the copy
+    // itself is logged.
+    assert_eq!(rig.app.cmdlog_marks.len(), 2);
     assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "clipboard write");
+}
+
+#[test]
+fn chat_multiselect_copies_messages() {
+    use crate::domain::{Message, MessageContent};
+    let mk = |id: u64, sender: &str, body: &str| {
+        let mut m = Message::default();
+        m.id = id;
+        m.sender = sender.into();
+        m.content = MessageContent::Text(body.into());
+        m
+    };
+    let mut rig = build_rig();
+    rig.app.messages = vec![
+        mk(1, "ana", "hola"),
+        mk(2, "beto", "chau"),
+        mk(3, "ana", "ok"),
+    ];
+    enter_select_mode(&mut rig.app); // cursor on the last message, marks cleared
+    rig.app.selected_msg_idx = Some(0);
+    msg_toggle_mark(&mut rig.app);
+    rig.app.selected_msg_idx = Some(2);
+    msg_toggle_mark(&mut rig.app);
+    assert_eq!(rig.app.msg_marks.len(), 2);
+
+    // Full copy (author + time + body) and content-only copy both work and
+    // keep the selection.
+    do_copy_messages(&mut rig.app, true);
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+    do_copy_messages(&mut rig.app, false);
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+    assert_eq!(rig.app.msg_marks.len(), 2);
 }
 
 #[test]

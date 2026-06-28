@@ -274,6 +274,12 @@ pub struct App {
     /// popup's cancel path returns the user to Compose instead of
     /// leaving them stuck in Select mode.
     pub select_from_compose: bool,
+    /// Messages marked in Select mode for a multi-select copy (indices into
+    /// [`Self::messages`]). Empty = copy falls back to the cursor message.
+    pub msg_marks: HashSet<usize>,
+    /// Anchor for `Shift+↑/↓` range shading in Select mode — the fixed end of
+    /// the contiguous selection while the cursor moves.
+    pub select_anchor: Option<usize>,
 
     /// Search query in the reaction picker — also doubles as a custom
     /// `:shortcode:` if it matches no listed emoji. Separate from
@@ -383,6 +389,8 @@ pub struct App {
     /// Command-log lines marked for copy (absolute indices). Empty = none;
     /// copying then falls back to the cursor line.
     pub cmdlog_marks: HashSet<usize>,
+    /// Anchor for `Shift+↑/↓` range shading in the command log.
+    pub cmdlog_anchor: Option<usize>,
 
     // ── Settings / theme ──────────────────────────────────────────────────
     pub settings_cache: UserSettings,
@@ -508,6 +516,8 @@ impl App {
             reply_to_id: None,
             selected_msg_idx: None,
             select_from_compose: false,
+            msg_marks: HashSet::new(),
+            select_anchor: None,
             react: LineEditor::default(),
             react_selected: 0,
             // Seed the bundled standard set so the picker has content and
@@ -546,6 +556,7 @@ impl App {
             cmd_log_scroll: 0,
             cmdlog_cursor: 0,
             cmdlog_marks: HashSet::new(),
+            cmdlog_anchor: None,
             settings_cache,
             theme: theme.clone(),
             settings_focus: SettingsFocus::Sidebar,
@@ -802,10 +813,13 @@ impl App {
     pub fn enter_cmdlog(&mut self) {
         self.cmdlog_cursor = self.cmd_log.len().saturating_sub(1);
         self.cmdlog_marks.clear();
+        self.cmdlog_anchor = None;
     }
 
-    /// Moves the command-log cursor by `delta`, clamped to the log.
+    /// Moves the command-log cursor by `delta`, clamped to the log. A plain
+    /// move re-anchors the next `Shift+↑/↓` range.
     pub fn cmdlog_move(&mut self, delta: isize) {
+        self.cmdlog_anchor = None;
         let len = self.cmd_log.len();
         if len == 0 {
             return;
@@ -815,8 +829,26 @@ impl App {
         self.cmdlog_cursor = cur.saturating_add(delta).clamp(0, max) as usize;
     }
 
+    /// Extends a contiguous shaded selection by `delta` (Shift+↑/↓) in the
+    /// command log: the anchor holds while the cursor moves; the range is
+    /// re-marked each step.
+    pub fn cmdlog_extend(&mut self, delta: isize) {
+        let len = self.cmd_log.len();
+        if len == 0 {
+            return;
+        }
+        let max = (len - 1) as isize;
+        let cur = self.cmdlog_cursor.min(len - 1);
+        let anchor = *self.cmdlog_anchor.get_or_insert(cur);
+        let new = (cur as isize).saturating_add(delta).clamp(0, max) as usize;
+        self.cmdlog_cursor = new;
+        let (lo, hi) = (anchor.min(new), anchor.max(new));
+        self.cmdlog_marks = (lo..=hi).collect();
+    }
+
     /// Toggles the mark on the cursor's command-log line (multi-select).
     pub fn cmdlog_toggle_mark(&mut self) {
+        self.cmdlog_anchor = None;
         let len = self.cmd_log.len();
         if len == 0 {
             return;
