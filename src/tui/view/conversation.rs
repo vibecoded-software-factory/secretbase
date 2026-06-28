@@ -58,7 +58,7 @@ pub(crate) fn chat_hint(app: &App) -> &'static str {
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
-        "Enter send · Ctrl+F search · Alt+A attach · Alt+V select · Esc back"
+        "Enter send · Alt+A attach · Alt+V select · Esc back"
     }
 }
 
