@@ -43,9 +43,9 @@ conversation on normal terminals.
   chat). The conversation **name lives on the Messages panel title**
   (`Messages — <name>` via `conversation::chat_title`, plus `📌 #id` when
   pinned) — no separate "Conversation" box.
-- **body** — `─[Alt+2]-Chats` tree (`Length(28)`) on the left, the chat
+- **body** — `─[c]-Chats` tree (`Length(28)`) on the left, the chat
   (`Min(24)`) on the right:
-  - `─[Alt+2]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
+  - `─[c]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
     → `TreeRow::{Group,Conv}`): a "Direct messages" group then one
     **collapsible** group per team, each (unless folded) followed by its
     conversations (channel name only, no `team#` prefix). **Unread** groups
@@ -206,12 +206,13 @@ the Tab cycle when no conversation is open), `CmdLog` (the identity bar and
 status strip are chrome, not focus targets).
 Conventions:
 
-- **Every focusable panel's border tag is its literal go-to combo**: `[/]`
-  Search → `/`, `[Alt+2]` Chats, `[Alt+3]` Chat, `[Ctrl+F]` in-chat search,
-  `[Alt+4]` Command log. The Alt/Ctrl jumps are global (work mid-compose);
-  `/` focuses the filter only from the non-text panels so it can still be
-  typed into the boxes. `Tab`/`Shift+Tab` also cycle focus via
-  `input::common::cycle_focus` over `FOCUS_ORDER`.
+- **Every focusable panel's border tag is its go-to key** — single mnemonic
+  letters, mutt-style: `[/]` Search, `[c]` Chats, `[m]` Messages, `[f]`
+  in-chat search, `[l]` command Log. The **tree is the navigation hub**: from
+  `Focus::Tree` (not a text input) the bare letters jump to a panel
+  (`input::inbox::handle_tree`); from a text box / sub-mode you `Esc` back to
+  the tree first (modal). `Ctrl+F` still opens the chat search from compose.
+  `Tab`/`Shift+Tab` also cycle focus via `input::common::cycle_focus`.
 - A panel is "focused" → accent + bold border/title
   (`view::mod::titled_block(title, focused, app)`); otherwise the `inactive`
   tint.
@@ -220,7 +221,7 @@ Conventions:
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
-its panels `─[/]-Search`, `─[Alt+2]-Chats`, `─[Alt+3]-Chat`, `─[Alt+4]-Command log`; Teams
+its panels `─[/]-Search`, `─[c]-Chats`, `─[m]-Chat`, `─[l]-Command log`; Teams
 uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.

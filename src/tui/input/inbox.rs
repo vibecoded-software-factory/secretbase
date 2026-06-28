@@ -107,25 +107,6 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             set_focus(app, cycle(app, false));
             return;
         }
-        // Go-to focus: each panel's border tag is its key. `/` (handled
-        // below) focuses the filter; the numbers/`^F` jump straight to a
-        // panel from anywhere (weechat-style), even mid-compose.
-        KeyCode::Char('2') if alt => {
-            set_focus(app, Focus::Tree);
-            return;
-        }
-        KeyCode::Char('3') if alt && app.open_conv_id.is_some() => {
-            set_focus(app, Focus::Chat);
-            return;
-        }
-        KeyCode::Char('4') if alt => {
-            set_focus(app, Focus::CmdLog);
-            return;
-        }
-        KeyCode::Char('f') | KeyCode::Char('F') if ctrl && app.open_conv_id.is_some() => {
-            set_focus(app, Focus::ChatSearch);
-            return;
-        }
         _ => {}
     }
 
@@ -228,10 +209,16 @@ fn handle_tree(app: &mut App, key: KeyEvent) {
         KeyCode::Home | KeyCode::Char('g') => app.tree_selected = 0,
         KeyCode::End | KeyCode::Char('G') => chat::tree_move(app, isize::MAX),
         // Enter / → opens a conversation (moving focus to the chat) or folds
-        // a group; `l` keeps the vim-style expand affordance.
-        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+        // a group.
+        KeyCode::Enter | KeyCode::Right => {
             chat::tree_activate(app);
         }
+        // Single-letter go-to (mutt-style; the tree is the navigation hub —
+        // each panel's border tag is the letter that jumps to it).
+        KeyCode::Char('c') => {} // already on Chats
+        KeyCode::Char('m') if app.open_conv_id.is_some() => set_focus(app, Focus::Chat),
+        KeyCode::Char('f') if app.open_conv_id.is_some() => set_focus(app, Focus::ChatSearch),
+        KeyCode::Char('l') => set_focus(app, Focus::CmdLog),
         _ => {}
     }
 }

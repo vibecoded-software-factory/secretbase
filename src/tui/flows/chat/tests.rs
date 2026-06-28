@@ -2226,15 +2226,15 @@ fn go_to_keys_focus_each_panel() {
         "c1",
     );
     rig.app.screen = Screen::Inbox;
+    // Single-letter go-to from the tree (mutt-style): l log, m chat, f find.
     rig.app.focus = Focus::Tree;
-    // Alt+4 → command log, Alt+2 → chats, Alt+3 → chat, Ctrl+F → chat search.
-    press(&mut rig.app, KeyCode::Char('4'), KeyModifiers::ALT);
+    press(&mut rig.app, KeyCode::Char('l'), KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::CmdLog);
-    press(&mut rig.app, KeyCode::Char('2'), KeyModifiers::ALT);
-    assert_eq!(rig.app.focus, Focus::Tree);
-    press(&mut rig.app, KeyCode::Char('3'), KeyModifiers::ALT);
+    rig.app.focus = Focus::Tree;
+    press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::Chat);
-    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::CONTROL);
+    rig.app.focus = Focus::Tree;
+    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::NONE);
     assert_eq!(rig.app.focus, Focus::ChatSearch);
     assert!(rig.app.conv_search_active);
 }

@@ -25,7 +25,7 @@ pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
         frame,
         app,
         area,
-        "Ctrl+F",
+        "f",
         "Search",
         "search this chat",
         &app.conv_search,
@@ -122,11 +122,11 @@ fn chat_title(app: &App) -> String {
                 })
         })
         .unwrap_or_default();
-    // `─[Alt+3]-` border tag → Alt+3 focuses the chat (matches the placeholder).
+    // `─[m]-` border tag → `m` (from the tree) focuses the chat.
     let mut title = if name.is_empty() {
-        "─[Alt+3]-Messages".to_string()
+        "─[m]-Messages".to_string()
     } else {
-        format!("─[Alt+3]-Messages — {name}")
+        format!("─[m]-Messages — {name}")
     };
     if let Some(pid) = app.pinned_msg_id {
         title.push_str(&format!("  📌 #{pid}"));
@@ -788,19 +788,18 @@ fn render_attachment(att: &AttachmentInfo, t: &crate::tui::theme::Theme) -> Vec<
             Style::default().fg(t.foreground),
         )));
     }
-    lines.push(Line::from(vec![
-        Span::styled("    ", Style::default()),
-        Span::styled(
-            att.filename.clone(),
-            Style::default()
-                .fg(t.conv_team)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            format!("  {size}  {mime}{state}"),
-            Style::default().fg(t.dim),
-        ),
-    ]));
+    // Filename on its own line; size + type on a dim line below it (more
+    // compact in a half-width chat than spreading them across one row).
+    lines.push(Line::from(Span::styled(
+        format!("    {}", att.filename),
+        Style::default()
+            .fg(t.conv_team)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(Span::styled(
+        format!("      {size} · {mime}{state}"),
+        Style::default().fg(t.dim),
+    )));
     lines
 }
 
