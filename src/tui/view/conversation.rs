@@ -544,7 +544,9 @@ fn select_actions_line(m: &Message, app: &App, t: &crate::tui::theme::Theme) -> 
     if is_attachment {
         actions.push(("s", "download"));
     }
-    let mut spans: Vec<Span<'static>> = vec![Span::raw("    ")];
+    // Flush to the left of the section (aligned with the message's "→"
+    // arrow), not the body indent — keeps the chat compact at half-width.
+    let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];
     for (i, (k, label)) in actions.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("  "));
