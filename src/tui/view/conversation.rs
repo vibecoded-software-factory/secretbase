@@ -811,12 +811,12 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-/// Same-day relative age: `now` / `{n}s` / `{n}m` / `{n}h`.
+/// Same-day relative age: `now` / `{n}m` / `{n}h`. The whole sub-minute range
+/// reads `now` (Discord-style) — a per-second counter on a fresh message is
+/// distracting, and the minute granularity is enough context.
 fn relative_short(secs: u64) -> String {
-    if secs < 5 {
+    if secs < 60 {
         "now".to_string()
-    } else if secs < 60 {
-        format!("{secs}s")
     } else if secs < 3600 {
         format!("{}m", secs / 60)
     } else {
@@ -825,7 +825,7 @@ fn relative_short(secs: u64) -> String {
 }
 
 /// Compact timestamp shown beside the sender (Discord-style): if the message
-/// is from **today** it's a relative age (`now`/`{n}s`/`{n}m`/`{n}h`);
+/// is from **today** it's a relative age (`now`/`{n}m`/`{n}h`);
 /// otherwise it's the **day + local clock time** (`yest 14:30`, `12/06 14:30`,
 /// or `12/06/24 14:30` for a different year).
 fn message_time(sent_at_s: u64, now_s: u64) -> String {
@@ -859,8 +859,11 @@ mod tests {
 
     #[test]
     fn relative_short_buckets() {
+        // The whole sub-minute range is "now" — no frenetic second counter.
         assert_eq!(relative_short(3), "now");
-        assert_eq!(relative_short(42), "42s");
+        assert_eq!(relative_short(42), "now");
+        assert_eq!(relative_short(59), "now");
+        assert_eq!(relative_short(60), "1m");
         assert_eq!(relative_short(5 * 60), "5m");
         assert_eq!(relative_short(3 * 3600), "3h");
     }
@@ -876,7 +879,8 @@ mod tests {
             .map(|d| d.as_secs())
             .unwrap_or(1_000_000);
         assert_eq!(message_time(now - 3, now), "now");
-        assert_eq!(message_time(now - 42, now), "42s");
+        assert_eq!(message_time(now - 42, now), "now");
+        assert_eq!(message_time(now - 90, now), "1m");
     }
 
     #[test]
