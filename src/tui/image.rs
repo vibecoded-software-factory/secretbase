@@ -213,23 +213,26 @@ fn apply_sgr(mut style: Style, seq: &str) -> Style {
 
 fn run_chafa(proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<Vec<u8>> {
     let size = format!("{cols}x{rows}");
+    let mut args: Vec<&str> = vec![
+        "-f",
+        proto.chafa_format(),
+        "--size",
+        &size,
+        // Quality: ordered dithering smooths gradients and the din99d colour
+        // space quantises perceptually (ignored by truecolor kitty/sixel).
+        "--dither=ordered",
+        "--color-space=din99d",
+    ];
+    if proto == ImgProto::Symbols {
+        // Sextants pack 2×3 sub-cell pixels (3× the detail of half-blocks);
+        // block+space cover solid areas. Needs "Symbols for Legacy Computing"
+        // glyphs in the font — falls to boxes otherwise, but most modern
+        // monospace / Nerd fonts include them.
+        args.push("--symbols=sextant+block+space");
+    }
+    args.extend(["--animate", "off", "--polite", "on", path]);
     let output = Command::new("chafa")
-        .args([
-            "-f",
-            proto.chafa_format(),
-            "--size",
-            &size,
-            // Quality: ordered dithering smooths gradients and the din99d
-            // colour space quantises perceptually — both matter most for the
-            // symbol path (ignored for truecolor kitty/sixel), no font risk.
-            "--dither=ordered",
-            "--color-space=din99d",
-            "--animate",
-            "off",
-            "--polite",
-            "on",
-            path,
-        ])
+        .args(&args)
         .output()
         .map_err(|e| io::Error::other(format!("chafa not available: {e}")))?;
     if !output.status.success() {
