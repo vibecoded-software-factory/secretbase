@@ -96,6 +96,7 @@ collapse a group); the header search fuzzy-filters it.
 | typing                  | Extend draft |
 | `Enter`                 | Send / save edit |
 | `Alt+Enter`             | New line (multi-line message) |
+| `@…` then `Tab`         | Mention autocomplete (`↑`/`↓` pick) |
 | `↑` / `↓` · `PgUp` / `PgDn` | Scroll history |
 | `←` / `→` · `Home` / `End`  | Compose cursor |
 | `Ctrl+F`                | Search this conversation (jump to a match) |

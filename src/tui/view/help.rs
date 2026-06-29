@@ -98,6 +98,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("(typing)", "extend draft"),
             ("Enter", "send / save edit"),
             ("Alt+Enter", "new line (multi-line message)"),
+            ("@… then Tab", "mention autocomplete (↑/↓ pick)"),
             ("↑/↓ PgUp/PgDn", "scroll history"),
             ("←/→ Home/End", "compose cursor"),
             ("F5 / Ctrl+R", "refresh"),

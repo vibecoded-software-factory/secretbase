@@ -136,7 +136,11 @@ on their own:
   separate "edited" line. **`@mentions`** are highlighted in accent — but only
   the *resolved* ones (`Message::mentions`, from the read's
   `userMentions`/`teamMentions`) plus `@here`/`@channel`/`@everyone`
-  (`conversation::mention_spans`), matching the GUI.
+  (`conversation::mention_spans`), matching the GUI. **Typing `@…`** in the
+  compose box opens an **autocomplete popup** (`draw_mention_popup`, floated
+  above the compose) of conversation members + people who've spoken
+  (`App::conv_members`); `↑/↓` pick and `Tab` inserts `@username `
+  (`domain::active_mention` detects the token, `chat::accept_mention` inserts).
   **Adding** a reaction (`+` in select mode) opens a searchable
   **reaction picker** (`Screen::React`): a `/`-style search over the emoji
   catalogue — a bundled curated set of common standard emojis

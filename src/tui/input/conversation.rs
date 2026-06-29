@@ -92,7 +92,25 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Enter if alt => app.compose.insert('\n'),
         KeyCode::Enter => submit_compose(app),
 
-        // ── history viewport scroll ────────────────────────────────────
+        // ── @-mention autocomplete (when its popup is open) ────────────
+        // Tab accepts the highlighted suggestion; ↑/↓ pick.
+        KeyCode::Tab if app.mention_popup_active() => {
+            let matches = app.mention_matches();
+            let sel = app.mention_selected.min(matches.len().saturating_sub(1));
+            if let Some(u) = matches.get(sel).cloned() {
+                chat::accept_mention(app, &u);
+            }
+        }
+
+        // ── history viewport scroll (↑/↓ pick a suggestion while the
+        // mention popup is open) ───────────────────────────────────────
+        KeyCode::Up if app.mention_popup_active() => {
+            app.mention_selected = app.mention_selected.saturating_sub(1);
+        }
+        KeyCode::Down if app.mention_popup_active() => {
+            let n = app.mention_matches().len();
+            app.mention_selected = (app.mention_selected + 1).min(n.saturating_sub(1));
+        }
         KeyCode::Up => {
             app.messages_scroll = app.messages_scroll.saturating_add(1);
             maybe_queue_older(app);
@@ -121,6 +139,8 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         // ── text input (cursor moves + edits) ──────────────────────────
         _ => {
             common::route_line_editor(&mut app.compose, key);
+            // A changed prefix re-filters the suggestions — restart at the top.
+            app.mention_selected = 0;
         }
     }
 }

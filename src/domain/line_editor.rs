@@ -49,6 +49,12 @@ impl LineEditor {
         self.cursor += c.len_utf8();
     }
 
+    /// Inserts `s` at the cursor and advances past it.
+    pub fn insert_str(&mut self, s: &str) {
+        self.text.insert_str(self.cursor, s);
+        self.cursor += s.len();
+    }
+
     /// Deletes the char before the cursor (Backspace).
     pub fn backspace(&mut self) {
         if self.cursor == 0 {

@@ -189,7 +189,9 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             chat::open_conv_action(app, crate::tui::app::ConvAction::Ignore);
             return;
         }
-        KeyCode::Tab => {
+        // Tab cycles focus — unless the @-mention popup is open, where it
+        // accepts the suggestion (handled in the compose handler below).
+        KeyCode::Tab if !app.mention_popup_active() => {
             set_focus(app, cycle(app, true));
             return;
         }

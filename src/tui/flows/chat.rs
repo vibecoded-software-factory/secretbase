@@ -405,6 +405,8 @@ fn enter_conversation(app: &mut App, id: String) {
     // Reveal the conversation in the tree (expand its group + move the cursor),
     // so opening from the quick switcher / global search keeps the tree in sync.
     reveal_in_tree(app, &id);
+    app.rebuild_conv_members(); // seed @-mention candidates from participants
+    app.mention_selected = 0;
     // The unified Home keeps everything on the inbox screen — the chat shows
     // in the right pane and takes focus.
     app.screen = crate::tui::screens::Screen::Inbox;
@@ -817,6 +819,7 @@ pub fn handle_load_messages_response(
         Ok((mut msgs, next)) => {
             msgs.reverse();
             app.messages = without_reaction_events(msgs);
+            app.rebuild_conv_members(); // add the people who've spoken
             let n = app.messages.len();
             app.messages_next = next;
             app.messages_loading_older = false;
@@ -1431,6 +1434,20 @@ pub fn do_open_url(app: &mut App) {
             app.push_cmd("open url", false, e);
         }
     }
+}
+
+/// Accepts the `@`-mention autocomplete: replaces the in-progress `@prefix`
+/// at the cursor with `@username ` (trailing space).
+pub fn accept_mention(app: &mut App, username: &str) {
+    let Some((start, _)) = crate::domain::active_mention(app.compose.text(), app.compose.cursor())
+    else {
+        return;
+    };
+    while app.compose.cursor() > start {
+        app.compose.backspace();
+    }
+    app.compose.insert_str(&format!("@{username} "));
+    app.mention_selected = 0;
 }
 
 /// Copies the first `http(s)` link in the selected message to the clipboard

@@ -280,6 +280,12 @@ pub struct App {
     /// Anchor for `Shift+↑/↓` range shading in Select mode — the fixed end of
     /// the contiguous selection while the cursor moves.
     pub select_anchor: Option<usize>,
+    /// Candidate usernames for `@`-mention autocomplete in the open
+    /// conversation (participants + people who've spoken). Rebuilt on
+    /// open / message-load (`rebuild_conv_members`).
+    pub conv_members: Vec<String>,
+    /// Selected row in the `@`-mention autocomplete popup.
+    pub mention_selected: usize,
 
     /// Search query in the reaction picker — also doubles as a custom
     /// `:shortcode:` if it matches no listed emoji. Separate from
@@ -523,6 +529,8 @@ impl App {
             select_from_compose: false,
             msg_marks: HashSet::new(),
             select_anchor: None,
+            conv_members: Vec::new(),
+            mention_selected: 0,
             react: LineEditor::default(),
             react_selected: 0,
             // Seed the bundled standard set so the picker has content and
@@ -864,6 +872,59 @@ impl App {
         if !self.cmdlog_marks.remove(&c) {
             self.cmdlog_marks.insert(c);
         }
+    }
+
+    /// Rebuilds the `@`-mention candidate list for the open conversation:
+    /// its participants (DM channel name) plus everyone who's spoken in the
+    /// loaded history. Sorted + de-duplicated.
+    pub fn rebuild_conv_members(&mut self) {
+        let mut set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if let Some(id) = self.open_conv_id.clone()
+            && let Some(c) = self.conversations.iter().find(|c| c.id == id)
+            && !c.channel.members_type.is_team()
+        {
+            for u in c.channel.name.split(',') {
+                let u = u.trim();
+                if !u.is_empty() {
+                    set.insert(u.to_string());
+                }
+            }
+        }
+        for m in &self.messages {
+            if !m.sender.is_empty() {
+                set.insert(m.sender.clone());
+            }
+        }
+        self.conv_members = set.into_iter().collect();
+    }
+
+    /// The autocomplete matches for the `@`-mention currently being typed in
+    /// the compose box (empty when not in a mention). Prefix-matched,
+    /// case-insensitive, capped.
+    pub fn mention_matches(&self) -> Vec<String> {
+        let Some((_, prefix)) =
+            crate::domain::active_mention(self.compose.text(), self.compose.cursor())
+        else {
+            return Vec::new();
+        };
+        let p = prefix.to_ascii_lowercase();
+        self.conv_members
+            .iter()
+            .filter(|m| m.to_ascii_lowercase().starts_with(&p))
+            .take(8)
+            .cloned()
+            .collect()
+    }
+
+    /// Whether the `@`-mention popup should be shown / capture keys — only in
+    /// the chat's compose mode with at least one match.
+    pub fn mention_popup_active(&self) -> bool {
+        self.focus == Focus::Chat
+            && self.open_conv_id.is_some()
+            && self.selected_msg_idx.is_none()
+            && !self.conv_search_active
+            && self.edit_target_id.is_none()
+            && !self.mention_matches().is_empty()
     }
 
     /// Updates `last_activity` to "now" — called on every keypress and

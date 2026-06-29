@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Clear, Paragraph},
 };
 
 use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo, message_time};
@@ -48,6 +48,52 @@ pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
 
     render_messages(frame, app, layout[0]);
     render_compose(frame, app, layout[1]);
+    if app.mention_popup_active() {
+        draw_mention_popup(frame, app, layout[1]);
+    }
+}
+
+/// The `@`-mention autocomplete popup, floated just above the compose box.
+fn draw_mention_popup(frame: &mut Frame, app: &App, compose_area: Rect) {
+    let t = &app.theme;
+    let matches = app.mention_matches();
+    if matches.is_empty() {
+        return;
+    }
+    let sel = app.mention_selected.min(matches.len() - 1);
+    let h = (matches.len() as u16 + 2).min(8);
+    let longest = matches.iter().map(|m| m.chars().count()).max().unwrap_or(8) as u16;
+    let w = (longest + 6).clamp(16, compose_area.width.max(16));
+    let rect = Rect {
+        x: compose_area.x,
+        y: compose_area.y.saturating_sub(h),
+        width: w,
+        height: h,
+    };
+    frame.render_widget(Clear, rect);
+    let block = titled_block("@mention", true, app);
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+    let rows = inner.height as usize;
+    let lines: Vec<Line<'static>> = matches
+        .iter()
+        .enumerate()
+        .take(rows)
+        .map(|(i, m)| {
+            let selected = i == sel;
+            let prefix = if selected { "▶ " } else { "  " };
+            let style = if selected {
+                Style::default()
+                    .fg(t.accent)
+                    .add_modifier(Modifier::BOLD)
+                    .bg(t.selected_bg)
+            } else {
+                Style::default().fg(t.foreground)
+            };
+            Line::from(Span::styled(format!("{prefix}@{m}"), style))
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// The status-strip hint for the chat, by interaction mode.

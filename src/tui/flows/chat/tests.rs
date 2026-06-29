@@ -2314,6 +2314,20 @@ fn ctrl_w_window_nav_moves_between_panels() {
 }
 
 #[test]
+fn mention_autocomplete_filters_and_accepts() {
+    let mut rig = build_rig();
+    rig.app.conv_members = vec!["alice".into(), "alfredo".into(), "bob".into()];
+    rig.app.compose.set("hey @al");
+    // Prefix-filtered (conv_members order preserved).
+    assert_eq!(rig.app.mention_matches(), vec!["alice", "alfredo"]);
+    // Accepting replaces "@al" with "@alice " (trailing space).
+    accept_mention(&mut rig.app, "alice");
+    assert_eq!(rig.app.compose.text(), "hey @alice ");
+    // A completed mention is no longer "active".
+    assert!(rig.app.mention_matches().is_empty());
+}
+
+#[test]
 fn open_url_opens_first_link_or_reports_none() {
     use crate::domain::{Message, MessageContent};
     let text = |body: &str| {

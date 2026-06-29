@@ -21,6 +21,7 @@ pub mod filter;
 pub mod identity;
 pub mod inbox_hit;
 pub mod line_editor;
+pub mod mention;
 pub mod message;
 pub mod search;
 pub mod team;
@@ -38,6 +39,7 @@ pub use filter::{InboxSource, STATUS_FILTERS, StatusFilter};
 pub use identity::IdentityInfo;
 pub use inbox_hit::InboxHit;
 pub use line_editor::LineEditor;
+pub use mention::active_mention;
 pub use message::{
     AttachmentInfo, Message, MessageContent, Reaction, SystemInfo, SystemKind, fold_edits,
     team_role_name,
