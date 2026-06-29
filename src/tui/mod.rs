@@ -153,27 +153,37 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
 
         terminal.draw(|frame| view::draw(frame, app))?;
 
-        // Inline image thumbnails: the view reserved their rows + recorded the
-        // visible rects; enqueue any pending downloads, then paint the ready
-        // ones over the reserved region (skipped while an overlay covers the
-        // chat, so graphics don't bleed over popups).
+        // Inline image thumbnails. Symbols render in-buffer (handled entirely
+        // by the view), so only the true-graphics protocols need the run loop
+        // to paint over the reserved region; either way, enqueue downloads.
         flows::chat::ensure_visible_images(app);
-        let want_images = app.image_proto.is_some() && !app.has_overlay();
-        let target: Vec<(ratatui::layout::Rect, String)> = if want_images {
-            app.image_areas.clone()
-        } else {
-            Vec::new()
-        };
-        if target != last_img || app.image_dirty {
-            let _ = image::clear();
-            if let Some(proto) = app.image_proto {
+        let graphics = matches!(app.image_proto, Some(p) if p != image::ImgProto::Symbols);
+        if let Some(proto) = app.image_proto.filter(|_| graphics) {
+            // Don't paint while an overlay covers the chat (no bleed over popups).
+            let target: Vec<(ratatui::layout::Rect, String)> = if app.has_overlay() {
+                Vec::new()
+            } else {
+                app.image_areas.clone()
+            };
+            if target != last_img || app.image_dirty {
+                if proto == image::ImgProto::Kitty {
+                    // Kitty graphics are a deletable layer.
+                    let _ = image::clear();
+                } else {
+                    // Sixel / iTerm are written outside Ratatui's buffer, so a
+                    // changed or cleared set (e.g. an overlay opening) would
+                    // ghost — the diff won't wipe cells it never tracked. Force
+                    // a full text repaint first.
+                    let _ = terminal.clear();
+                    terminal.draw(|frame| view::draw(frame, app))?;
+                }
                 for (rect, path) in &target {
                     let _ = image::render_into(&mut app.image_render_cache, proto, *rect, path);
                 }
+                last_img = target;
             }
-            last_img = target;
-            app.image_dirty = false;
         }
+        app.image_dirty = false;
 
         // Drain any worker response that arrived since the last
         // tick — non-blocking. The match in `apply_response` handles

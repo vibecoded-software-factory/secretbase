@@ -24,6 +24,8 @@ use std::process::{Command, Stdio};
 use crossterm::cursor::MoveTo;
 use crossterm::queue;
 use ratatui::layout::Rect;
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
 
 /// Image protocol used to render inline thumbnails.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,11 +114,101 @@ impl RenderCache {
         Ok(self.map.get(&key).map(Vec::as_slice).unwrap_or_default())
     }
 
+    /// Like [`Self::get`] but returns an owned copy — for the `symbols`
+    /// in-buffer path, which parses the bytes into Ratatui lines.
+    pub fn bytes(
+        &mut self,
+        proto: ImgProto,
+        path: &str,
+        cols: u16,
+        rows: u16,
+    ) -> io::Result<Vec<u8>> {
+        self.get(proto, path, cols, rows).map(<[u8]>::to_vec)
+    }
+
     /// Drops every cached render (e.g. on protocol change). The downloaded
     /// files are owned elsewhere; this only frees the rendered bytes.
     pub fn clear(&mut self) {
         self.map.clear();
     }
+}
+
+/// Parses `chafa -f symbols` ANSI output into Ratatui lines so the image can
+/// render **inside** the frame buffer (scroll, occlusion, and clearing then
+/// come for free — no direct-to-stdout ghosting). Handles 24-bit `38;2`/`48;2`
+/// SGR colours plus reset; each output row is left-padded by `indent` spaces.
+pub fn symbols_to_lines(bytes: &[u8], indent: usize, rows: u16) -> Vec<Line<'static>> {
+    let text = String::from_utf8_lossy(bytes);
+    let pad = " ".repeat(indent);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    for raw in text.split('\n').take(rows as usize) {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        if indent > 0 {
+            spans.push(Span::raw(pad.clone()));
+        }
+        let mut style = Style::default();
+        let mut buf = String::new();
+        let mut chars = raw.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                if !buf.is_empty() {
+                    spans.push(Span::styled(std::mem::take(&mut buf), style));
+                }
+                if chars.peek() == Some(&'[') {
+                    chars.next();
+                }
+                let mut seq = String::new();
+                for nc in chars.by_ref() {
+                    if nc == 'm' {
+                        break;
+                    }
+                    seq.push(nc);
+                }
+                style = apply_sgr(style, &seq);
+            } else {
+                buf.push(c);
+            }
+        }
+        if !buf.is_empty() {
+            spans.push(Span::styled(buf, style));
+        }
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+/// Applies a `;`-separated SGR parameter list to `style` (the subset chafa
+/// emits: reset, 24-bit fg/bg, default fg/bg).
+fn apply_sgr(mut style: Style, seq: &str) -> Style {
+    let codes: Vec<&str> = seq.split(';').collect();
+    let num = |s: &str| s.parse::<u8>().ok();
+    let mut i = 0;
+    while i < codes.len() {
+        match codes[i] {
+            "" | "0" => style = Style::default(),
+            "39" => style = style.fg(Color::Reset),
+            "49" => style = style.bg(Color::Reset),
+            "38" | "48" if codes.get(i + 1) == Some(&"2") => {
+                let rgb = (
+                    codes.get(i + 2).and_then(|s| num(s)),
+                    codes.get(i + 3).and_then(|s| num(s)),
+                    codes.get(i + 4).and_then(|s| num(s)),
+                );
+                if let (Some(r), Some(g), Some(b)) = rgb {
+                    let color = Color::Rgb(r, g, b);
+                    style = if codes[i] == "38" {
+                        style.fg(color)
+                    } else {
+                        style.bg(color)
+                    };
+                }
+                i += 4;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    style
 }
 
 fn run_chafa(proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<Vec<u8>> {
@@ -257,6 +349,20 @@ mod tests {
         assert_eq!(resolve("symbols"), Some(ImgProto::Symbols));
         // Unknown / auto → environment detection (always Some).
         assert!(resolve("auto").is_some());
+    }
+
+    #[test]
+    fn symbols_to_lines_parses_fg_and_indent() {
+        // "AB" in red, then reset, then "CD" default — single row (no newline).
+        let s = b"\x1b[38;2;255;0;0mAB\x1b[0mCD";
+        let lines = symbols_to_lines(s, 2, 4);
+        assert_eq!(lines.len(), 1);
+        let spans = &lines[0].spans;
+        assert_eq!(spans[0].content.as_ref(), "  "); // indent
+        let ab = spans.iter().find(|s| s.content.as_ref() == "AB").unwrap();
+        assert_eq!(ab.style.fg, Some(Color::Rgb(255, 0, 0)));
+        let cd = spans.iter().find(|s| s.content.as_ref() == "CD").unwrap();
+        assert_eq!(cd.style.fg, None);
     }
 
     #[test]

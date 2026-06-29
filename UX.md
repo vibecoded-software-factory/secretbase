@@ -88,7 +88,12 @@ conversation on normal terminals.
     (`{conv}-{msg}.ext`, background via the worker), a `⏳ loading…` placeholder
     holds the row meanwhile, and the run loop paints the cached graphic over the
     reserved rows — repainting only when the visible set/positions change, with
-    a per-`(path,size)` chafa-output cache so scrolling is cheap. In select
+    a per-`(path,size)` chafa-output cache so scrolling is cheap. **`symbols`
+    output is parsed into Ratatui spans and rendered *in-buffer*** (the chafa
+    ANSI → `image::symbols_to_lines`, spliced over the reserved rows) so scroll,
+    overlay occlusion and clearing all work via the frame diff — no
+    direct-to-stdout ghosting; only the true-graphics protocols paint over the
+    rows from the run loop. In select
     mode `c` **copies the image** to the clipboard (`wl-copy`/`xclip`/`pbcopy`,
     `image::copy_to_clipboard`) when an image is selected, and `s` downloads it.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log

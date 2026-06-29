@@ -392,33 +392,49 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // Inline images: map each reservation to a screen rect, but only when the
-    // whole thumbnail fits the viewport so the graphic can't overflow the
-    // panel. Ready ones go to `image_areas` (the run loop paints them); the
-    // rest queue a background download (`image_to_fetch`).
+    // Inline images. Two render paths by protocol:
+    //  • symbols — parsed into Ratatui lines and **spliced into the buffer**
+    //    over the reserved rows, so scrolling / overlays / clearing all work
+    //    via Ratatui (no direct-to-stdout ghosting);
+    //  • kitty/sixel/iterm — true graphics: recorded in `image_areas` for the
+    //    run loop to paint over the (blank) reserved rows, only when the whole
+    //    thumbnail fits so it can't overflow the panel.
+    // Either way an un-downloaded image queues a background fetch.
     app.image_areas.clear();
     app.image_to_fetch.clear();
-    if app.image_proto.is_some() {
-        let img_w = (body_width.saturating_sub(4)).clamp(10, 60) as u16;
+    if let Some(proto) = app.image_proto {
+        // Indent 4 + a small right margin so the thumbnail isn't glued to the
+        // border; cap it on very wide panels.
+        let img_w = body_width.saturating_sub(6).clamp(10, 72) as u16;
         let img_x = area.x + 1 + 4;
+        let symbols = proto == crate::tui::image::ImgProto::Symbols;
         for (abs, rows, msg_id, path) in img_reservations {
-            if abs < scroll_y {
+            if !app.image_ready.contains(&path) {
+                if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
+                    app.image_to_fetch.push((msg_id, path));
+                }
                 continue;
             }
-            let rel = abs - scroll_y;
-            if rel + rows as usize > viewport {
-                continue;
-            }
-            let rect = Rect {
-                x: img_x,
-                y: area.y + 1 + rel as u16,
-                width: img_w,
-                height: rows,
-            };
-            if app.image_ready.contains(&path) {
+            if symbols {
+                // Render in-buffer: overwrite the reserved blank rows.
+                if let Ok(bytes) = app.image_render_cache.bytes(proto, &path, img_w, rows) {
+                    for (i, cl) in crate::tui::image::symbols_to_lines(&bytes, 4, rows)
+                        .into_iter()
+                        .enumerate()
+                    {
+                        if abs + i < lines.len() {
+                            lines[abs + i] = cl;
+                        }
+                    }
+                }
+            } else if abs >= scroll_y && (abs - scroll_y) + rows as usize <= viewport {
+                let rect = Rect {
+                    x: img_x,
+                    y: area.y + 1 + (abs - scroll_y) as u16,
+                    width: img_w,
+                    height: rows,
+                };
                 app.image_areas.push((rect, path));
-            } else if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
-                app.image_to_fetch.push((msg_id, path));
             }
         }
     }
