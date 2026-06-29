@@ -327,6 +327,11 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     let mut spans_map: Vec<(usize, usize, usize)> = Vec::with_capacity(app.messages.len());
     // Absolute (line, rows, msg_id, cache path) reservations for inline images.
     let mut img_reservations: Vec<(usize, u16, u64, String)> = Vec::new();
+    // Thumbnail width (indent 4 + a right margin so it isn't glued to the
+    // border; capped on wide panels). Symbol images are pre-rendered to lines
+    // here so each reserves exactly its real height.
+    let img_w = body_width.saturating_sub(6).clamp(10, 72) as u16;
+    let symbol_imgs = symbol_image_lines(app, img_w);
     for (idx, m) in app.messages.iter().enumerate() {
         let start = lines.len();
         let is_selected = app.selected_msg_idx == Some(idx);
@@ -337,7 +342,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             selected_line = Some(start);
         }
         let mut local_img: Vec<ImgReservation> = Vec::new();
-        let mut block = message_lines(m, now_s, app, &t, body_width, &mut local_img);
+        let mut block = message_lines(m, now_s, app, &t, body_width, &mut local_img, &symbol_imgs);
         // Block-relative row ranges occupied by image thumbnails — these stay
         // unshaded so the selection background doesn't paint over the graphic.
         let img_ranges: Vec<(usize, usize)> = local_img
@@ -392,50 +397,28 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // Inline images. Two render paths by protocol:
-    //  • symbols — parsed into Ratatui lines and **spliced into the buffer**
-    //    over the reserved rows, so scrolling / overlays / clearing all work
-    //    via Ratatui (no direct-to-stdout ghosting);
-    //  • kitty/sixel/iterm — true graphics: recorded in `image_areas` for the
-    //    run loop to paint over the (blank) reserved rows, only when the whole
-    //    thumbnail fits so it can't overflow the panel.
-    // Either way an un-downloaded image queues a background fetch.
+    // Inline images. Symbols are already rendered in-buffer (pushed as lines by
+    // `message_lines`), so only `img_res` for graphics / still-downloading
+    // images remains: queue a fetch when not ready, else (true graphics)
+    // record a paint rect for the run loop — but only when the whole thumbnail
+    // fits the viewport so it can't overflow the panel.
     app.image_areas.clear();
     app.image_to_fetch.clear();
-    if let Some(proto) = app.image_proto {
-        // Indent 4 + a small right margin so the thumbnail isn't glued to the
-        // border; cap it on very wide panels.
-        let img_w = body_width.saturating_sub(6).clamp(10, 72) as u16;
-        let img_x = area.x + 1 + 4;
-        let symbols = proto == crate::tui::image::ImgProto::Symbols;
-        for (abs, rows, msg_id, path) in img_reservations {
-            if !app.image_ready.contains(&path) {
-                if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
-                    app.image_to_fetch.push((msg_id, path));
-                }
-                continue;
+    let graphics = matches!(app.image_proto, Some(p) if p != crate::tui::image::ImgProto::Symbols);
+    let img_x = area.x + 1 + 4;
+    for (abs, rows, msg_id, path) in img_reservations {
+        if !app.image_ready.contains(&path) {
+            if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
+                app.image_to_fetch.push((msg_id, path));
             }
-            if symbols {
-                // Render in-buffer: overwrite the reserved blank rows.
-                if let Ok(bytes) = app.image_render_cache.bytes(proto, &path, img_w, rows) {
-                    for (i, cl) in crate::tui::image::symbols_to_lines(&bytes, 4, rows)
-                        .into_iter()
-                        .enumerate()
-                    {
-                        if abs + i < lines.len() {
-                            lines[abs + i] = cl;
-                        }
-                    }
-                }
-            } else if abs >= scroll_y && (abs - scroll_y) + rows as usize <= viewport {
-                let rect = Rect {
-                    x: img_x,
-                    y: area.y + 1 + (abs - scroll_y) as u16,
-                    width: img_w,
-                    height: rows,
-                };
-                app.image_areas.push((rect, path));
-            }
+        } else if graphics && abs >= scroll_y && (abs - scroll_y) + rows as usize <= viewport {
+            let rect = Rect {
+                x: img_x,
+                y: area.y + 1 + (abs - scroll_y) as u16,
+                width: img_w,
+                height: rows,
+            };
+            app.image_areas.push((rect, path));
         }
     }
 
@@ -578,9 +561,61 @@ struct ImgReservation {
     path: String,
 }
 
-/// Reserved height (rows) for an inline image thumbnail. Each symbol cell packs
-/// two vertical pixels (half-blocks), so this is ~2× in real detail.
-const IMAGE_ROWS: u16 = 16;
+/// Max height (rows) for an inline image thumbnail. The actual height follows
+/// the image's aspect (chafa doesn't pad), so wide images use fewer rows.
+const IMAGE_ROWS: u16 = 24;
+
+/// True when a rendered line carries no visible glyphs (only padding) — used to
+/// trim the trailing blank row chafa's output leaves.
+fn line_is_blank(l: &Line<'static>) -> bool {
+    l.spans.iter().all(|s| s.content.trim().is_empty())
+}
+
+/// Pre-renders every **ready** image attachment in the open conversation to
+/// chafa symbol lines (cached), keyed by message id, trimmed to the image's
+/// real height. Only for the `symbols` protocol — those render in-buffer, so we
+/// need the exact line count to reserve precisely (no blank gap below).
+fn symbol_image_lines(
+    app: &mut App,
+    img_w: u16,
+) -> std::collections::HashMap<u64, Vec<Line<'static>>> {
+    let mut map = std::collections::HashMap::new();
+    let Some(proto) = app.image_proto else {
+        return map;
+    };
+    if proto != crate::tui::image::ImgProto::Symbols {
+        return map;
+    }
+    let conv_id = app.open_conv_id.clone().unwrap_or_default();
+    let items: Vec<(u64, String)> = app
+        .messages
+        .iter()
+        .filter_map(|m| match &m.content {
+            MessageContent::Attachment(a)
+                if crate::tui::image::is_image(&a.mime_type, &a.filename) =>
+            {
+                let path = crate::tui::flows::chat::image_path_for(&conv_id, m.id, &a.filename);
+                app.image_ready.contains(&path).then_some((m.id, path))
+            }
+            _ => None,
+        })
+        .collect();
+    for (id, path) in items {
+        if let Ok(bytes) = app
+            .image_render_cache
+            .bytes(proto, &path, img_w, IMAGE_ROWS)
+        {
+            let mut lines = crate::tui::image::symbols_to_lines(&bytes, 4, IMAGE_ROWS);
+            while lines.last().is_some_and(line_is_blank) {
+                lines.pop();
+            }
+            if !lines.is_empty() {
+                map.insert(id, lines);
+            }
+        }
+    }
+    map
+}
 
 fn message_lines(
     m: &Message,
@@ -589,6 +624,7 @@ fn message_lines(
     t: &crate::tui::theme::Theme,
     width: usize,
     img_res: &mut Vec<ImgReservation>,
+    symbol_imgs: &std::collections::HashMap<u64, Vec<Line<'static>>>,
 ) -> Vec<Line<'static>> {
     let is_system = matches!(
         m.content,
@@ -665,26 +701,42 @@ fn message_lines(
                 format!("      {} · {mime}", format_size(att.size)),
                 Style::default().fg(t.dim),
             )));
-            let block_offset = lines.len();
-            if app.image_ready.contains(&path) {
-                for _ in 0..IMAGE_ROWS {
-                    lines.push(Line::from(Span::raw("")));
-                }
+            if let Some(sym) = symbol_imgs.get(&m.id) {
+                // Symbols, ready: the pre-rendered lines *are* the image — push
+                // them directly at their real height (no reserved blank gap).
+                // Recorded in `img_res` only so the selection shading skips
+                // them; the mapping loop ignores ready symbol entries.
+                let block_offset = lines.len();
+                lines.extend(sym.iter().cloned());
+                img_res.push(ImgReservation {
+                    block_offset,
+                    rows: sym.len() as u16,
+                    msg_id: m.id,
+                    path,
+                });
             } else {
-                lines.push(Line::from(Span::styled(
-                    "      ⏳ loading image…",
-                    Style::default().fg(t.dim),
-                )));
-                for _ in 1..IMAGE_ROWS {
-                    lines.push(Line::from(Span::raw("")));
+                // Graphics (run loop paints) or still downloading: reserve rows.
+                let block_offset = lines.len();
+                if !app.image_ready.contains(&path) {
+                    lines.push(Line::from(Span::styled(
+                        "      ⏳ loading image…",
+                        Style::default().fg(t.dim),
+                    )));
+                    for _ in 1..IMAGE_ROWS {
+                        lines.push(Line::from(Span::raw("")));
+                    }
+                } else {
+                    for _ in 0..IMAGE_ROWS {
+                        lines.push(Line::from(Span::raw("")));
+                    }
                 }
+                img_res.push(ImgReservation {
+                    block_offset,
+                    rows: IMAGE_ROWS,
+                    msg_id: m.id,
+                    path,
+                });
             }
-            img_res.push(ImgReservation {
-                block_offset,
-                rows: IMAGE_ROWS,
-                msg_id: m.id,
-                path,
-            });
             rendered_image = true;
         }
     }
