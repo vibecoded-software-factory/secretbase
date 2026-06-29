@@ -15,7 +15,7 @@ use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo, message
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
-use crate::tui::view::widgets::{draw_search_box, editor_lines};
+use crate::tui::view::widgets::{draw_search_box, editor_lines, trim_end_ellipsis};
 
 /// Renders the chat's in-conversation **search** box (`searchregexp`, Ctrl+F)
 /// into `area`. The conversation name now lives on the Messages panel title
@@ -206,14 +206,7 @@ fn render_conv_search_results(frame: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line<'static>> = Vec::new();
     for (i, hit) in results.iter().enumerate().skip(scroll).take(per_view) {
         let selected = i == sel;
-        let snippet: String = hit
-            .body_summary
-            .lines()
-            .next()
-            .unwrap_or("")
-            .chars()
-            .take(max_w)
-            .collect();
+        let snippet = trim_end_ellipsis(hit.body_summary.lines().next().unwrap_or(""), max_w);
         let mut spans = vec![
             Span::styled(
                 if selected { "▶ " } else { "  " }.to_string(),
@@ -819,13 +812,7 @@ fn reply_quote_line(
     // the panel width with a trailing `…` (adapts to the screen, not a fixed
     // character count).
     let full = format!("   ↩ {label}");
-    let max = width.max(8);
-    let line = if full.chars().count() > max {
-        let head: String = full.chars().take(max.saturating_sub(1)).collect();
-        format!("{head}…")
-    } else {
-        full
-    };
+    let line = trim_end_ellipsis(&full, width.max(8));
     Line::from(Span::styled(
         line,
         Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
