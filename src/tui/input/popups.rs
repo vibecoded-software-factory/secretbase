@@ -34,11 +34,12 @@ pub fn search_global(app: &mut App, key: KeyEvent) {
         }
         KeyCode::F(5) => chat::request_search_inbox_remote(app),
         KeyCode::Up => {
-            app.search_global_selected = app.search_global_selected.saturating_sub(1);
+            let len = app.search_global_results.len();
+            app.search_global_selected = common::clamp_move(app.search_global_selected, -1, len);
         }
         KeyCode::Down => {
-            let max = app.search_global_results.len().saturating_sub(1);
-            app.search_global_selected = (app.search_global_selected + 1).min(max);
+            let len = app.search_global_results.len();
+            app.search_global_selected = common::clamp_move(app.search_global_selected, 1, len);
         }
         _ => {
             common::route_line_editor(&mut app.search_global_input, key);
@@ -93,11 +94,7 @@ pub fn react(app: &mut App, key: KeyEvent) {
 
 fn react_move(app: &mut App, delta: isize) {
     let len = app.filtered_emoji_indices().len();
-    if len == 0 {
-        return;
-    }
-    let last = (len - 1) as isize;
-    app.react_selected = ((app.react_selected as isize + delta).clamp(0, last)) as usize;
+    app.react_selected = common::clamp_move(app.react_selected, delta, len);
 }
 
 // ── Quick switcher (Ctrl+K) ───────────────────────────────────────────
@@ -120,9 +117,5 @@ pub fn quick_switcher(app: &mut App, key: KeyEvent) {
 
 fn switcher_move(app: &mut App, delta: isize) {
     let len = app.switcher_selectable().len();
-    if len == 0 {
-        return;
-    }
-    let last = (len - 1) as isize;
-    app.switcher_selected = ((app.switcher_selected as isize + delta).clamp(0, last)) as usize;
+    app.switcher_selected = common::clamp_move(app.switcher_selected, delta, len);
 }
