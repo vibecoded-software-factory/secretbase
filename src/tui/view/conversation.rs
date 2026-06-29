@@ -833,10 +833,35 @@ fn render_text_body(
     }
     // Parse each line into styled runs (markdown + mentions), then wrap the
     // runs to the panel width (minus the 4-space body indent), preserving the
-    // styles across line breaks.
+    // styles across line breaks. Block elements (``` fences, > quotes) are
+    // handled at the line level around the inline pass.
     let wrap_w = width.saturating_sub(4).max(8);
     let mut lines = Vec::new();
+    let mut in_fence = false;
     for l in body.lines() {
+        // Fenced code block: a ``` line toggles it (the fence line is hidden).
+        if l.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            push_code_block_line(&mut lines, l, wrap_w, t);
+            continue;
+        }
+        // Blockquote: `>` (with an optional space) → a dim `▏` bar + content.
+        if let Some(rest) = l.trim_start().strip_prefix('>') {
+            let rest = rest.strip_prefix(' ').unwrap_or(rest);
+            let runs = crate::domain::parse_inline(rest, mentions);
+            for spans in wrap_runs(&runs, wrap_w.saturating_sub(2), t) {
+                let mut row = vec![
+                    Span::raw("   "),
+                    Span::styled("▏ ", Style::default().fg(t.dim)),
+                ];
+                row.extend(spans);
+                lines.push(Line::from(row));
+            }
+            continue;
+        }
         let runs = crate::domain::parse_inline(l, mentions);
         for spans in wrap_runs(&runs, wrap_w, t) {
             let mut row = vec![Span::raw("    ")];
@@ -845,6 +870,32 @@ fn render_text_body(
         }
     }
     lines
+}
+
+/// Renders one verbatim line of a fenced code block: a dim `▏` bar plus the
+/// raw text in the code colour, hard-wrapped (no markup, no word-wrap).
+fn push_code_block_line(
+    lines: &mut Vec<Line<'static>>,
+    raw: &str,
+    width: usize,
+    t: &crate::tui::theme::Theme,
+) {
+    let style = Style::default().fg(t.conv_team);
+    let bar = Style::default().fg(t.dim);
+    let inner = width.saturating_sub(2).max(4);
+    let chars: Vec<char> = raw.chars().collect();
+    if chars.is_empty() {
+        lines.push(Line::from(vec![Span::raw("   "), Span::styled("▏ ", bar)]));
+        return;
+    }
+    for chunk in chars.chunks(inner) {
+        let s: String = chunk.iter().collect();
+        lines.push(Line::from(vec![
+            Span::raw("   "),
+            Span::styled("▏ ", bar),
+            Span::styled(s, style),
+        ]));
+    }
 }
 
 /// The ratatui style for a parsed markdown [`crate::domain::Run`].
@@ -1062,6 +1113,22 @@ mod tests {
         // Narrow → wraps onto multiple lines without losing content.
         let narrow = wrap_runs(&runs, 6, &t);
         assert!(narrow.len() > 1);
+    }
+
+    #[test]
+    fn block_markdown_hides_fences_and_marks_quotes() {
+        let t = crate::tui::theme::Theme::default();
+        let body = "before\n```\ncode line\n```\n> quoted";
+        let lines = render_text_body(body, &t, 40, &[]);
+        let rows: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // The ``` fence markers are not rendered.
+        assert!(rows.iter().all(|r: &String| !r.contains("```")));
+        // The code line and the quoted line (with its ▏ bar) survive.
+        assert!(rows.iter().any(|r| r.contains("code line")));
+        assert!(rows.iter().any(|r| r.contains("▏") && r.contains("quoted")));
     }
 
     #[test]

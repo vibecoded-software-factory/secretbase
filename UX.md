@@ -73,10 +73,14 @@ conversation on normal terminals.
     name/search are on the shared top row) when a conversation is open, else a
     placeholder. `Focus::Chat` routes keys to `input::conversation::handle`
     (compose / select / in-conv search); `Esc` on an empty compose closes the
-    conversation (focus back to `Tree`). Message bodies **wrap** to the panel
-    width (`conversation::wrap_line`) instead of being cut off. There is **no
-    standalone full-screen conversation screen** — the unified Home is the only
-    chat surface.
+    conversation (focus back to `Tree`). Message bodies render **inline
+    markdown** (Keybase's set: `*bold*`, `_italic_`, `~strike~`, `` `code` ``;
+    `domain::parse_inline` → styled runs, markers hidden, `code` verbatim) plus
+    block elements (` ``` ` fenced code and `>` blockquotes with a dim `▏` bar),
+    **wrapped** to the panel width preserving styles (`conversation::wrap_runs`)
+    instead of being cut off — `@mentions` are highlighted in the same pass.
+    There is **no standalone full-screen conversation screen** — the unified
+    Home is the only chat surface.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom). When focused
   (`Focus::CmdLog`) it is a **visual multi-select**: a `▶` cursor walks the
@@ -142,7 +146,7 @@ on their own:
   separate "edited" line. **`@mentions`** are highlighted in accent — but only
   the *resolved* ones (`Message::mentions`, from the read's
   `userMentions`/`teamMentions`) plus `@here`/`@channel`/`@everyone`
-  (`conversation::mention_spans`), matching the GUI. **Typing `@…`** in the
+  (highlighted by `domain::parse_inline`), matching the GUI. **Typing `@…`** in the
   compose box opens an **autocomplete popup** (`draw_mention_popup`, floated
   above the compose) of conversation members + people who've spoken
   (`App::conv_members`); `↑/↓` pick and `Tab` inserts `@username `

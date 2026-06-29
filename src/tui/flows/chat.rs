@@ -679,7 +679,7 @@ fn load_fake_messages(app: &mut App) {
         fake_msg(
             11,
             m,
-            "después de la demo lo hacemos 👍",
+            "copio el snippet del fix:\n```\nif token.is_empty() {\n    bail!(\"no auth\")\n}\n```\n> probalo y avisá 👍",
             Some(10),
             &[],
             ago(3 * 60),
