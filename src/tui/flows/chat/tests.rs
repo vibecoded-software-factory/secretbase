@@ -2324,10 +2324,16 @@ fn open_url_opens_first_link_or_reports_none() {
     do_open_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
     assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "open url");
+    // Copy the same link.
+    do_copy_url(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+    assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "clipboard write");
 
     rig.app.messages = vec![text("no link here")];
     rig.app.selected_msg_idx = Some(0);
     do_open_url(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    do_copy_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
 

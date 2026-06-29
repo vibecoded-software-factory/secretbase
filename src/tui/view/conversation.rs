@@ -55,7 +55,7 @@ pub(crate) fn chat_hint(app: &App) -> &'static str {
     if app.conv_search_active {
         "type · Enter search/jump · ↑/↓ pick · Esc close"
     } else if app.selected_msg_idx.is_some() {
-        "↑/↓ move · Space mark · y/c copy · o link · : react · Esc back"
+        "↑/↓ move · Space mark · y/c copy · o/l link · + react · Esc back"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
@@ -581,7 +581,7 @@ fn select_actions_lines(
         vec![
             ("y", "copy all"),
             ("c", "content"),
-            (":", "react"),
+            ("+", "react"),
             ("Space", "±"),
             ("Esc", "done"),
         ]
@@ -592,10 +592,10 @@ fn select_actions_lines(
             ("Space", "select"),
             ("y", "copy"),
             ("c", "content"),
-            (":", "react"),
+            ("+", "react"),
             ("r", "reply"),
         ];
-        // Only offer "open link" when the message actually has one.
+        // Offer open/copy-link only when the message actually has a link.
         let body_text = match &m.content {
             MessageContent::Text(b) => b.as_str(),
             MessageContent::Edit { body, .. } => body.as_str(),
@@ -603,7 +603,8 @@ fn select_actions_lines(
             _ => "",
         };
         if !crate::domain::extract_urls(body_text).is_empty() {
-            actions.push(("o", "link"));
+            actions.push(("o", "open link"));
+            actions.push(("l", "copy link"));
         }
         if is_me {
             actions.push(("e", "edit"));

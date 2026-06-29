@@ -171,7 +171,8 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Char('y') => chat::do_copy_messages(app, true), // author + time + body
         KeyCode::Char('c') => chat::do_copy_messages(app, false), // content only
         KeyCode::Char('o') => chat::do_open_url(app),            // open first link
-        KeyCode::Char(':') => chat::open_react_for_selected(app),
+        KeyCode::Char('l') => chat::do_copy_url(app),            // copy first link
+        KeyCode::Char('+') => chat::open_react_for_selected(app), // react (emoji)
         // Single-message actions (operate on the cursor message).
         KeyCode::Char('e') => chat::open_edit_for_selected(app),
         KeyCode::Char('d') => chat::open_delete_for_selected(app),

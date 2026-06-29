@@ -1387,12 +1387,12 @@ fn message_copy_body(m: &crate::domain::Message) -> Option<String> {
     }
 }
 
-/// Opens the first `http(s)` link in the selected message with the OS browser
-/// (`o` in select mode). Reports when the message has no link.
-pub fn do_open_url(app: &mut App) {
+/// The `http(s)` links in the selected message, in order (empty if none / no
+/// selection). Shared by the open-link and copy-link actions.
+fn selected_message_urls(app: &App) -> Vec<String> {
     use crate::domain::MessageContent;
     let Some(idx) = app.selected_msg_idx else {
-        return;
+        return Vec::new();
     };
     let body = match app.messages.get(idx).map(|m| &m.content) {
         Some(MessageContent::Text(b)) => b.clone(),
@@ -1400,7 +1400,13 @@ pub fn do_open_url(app: &mut App) {
         Some(MessageContent::Attachment(a)) => a.title.clone(),
         _ => String::new(),
     };
-    let urls = crate::domain::extract_urls(&body);
+    crate::domain::extract_urls(&body)
+}
+
+/// Opens the first `http(s)` link in the selected message with the OS browser
+/// (`o` in select mode). Reports when the message has no link.
+pub fn do_open_url(app: &mut App) {
+    let urls = selected_message_urls(app);
     let Some(url) = urls.first().cloned() else {
         app.set_action(ActionState::Error("No link in this message".into()));
         return;
@@ -1418,6 +1424,26 @@ pub fn do_open_url(app: &mut App) {
         Err(e) => {
             app.set_action(ActionState::Error(e.clone()));
             app.push_cmd("open url", false, e);
+        }
+    }
+}
+
+/// Copies the first `http(s)` link in the selected message to the clipboard
+/// (`L` in select mode). Reports when the message has no link.
+pub fn do_copy_url(app: &mut App) {
+    let Some(url) = selected_message_urls(app).into_iter().next() else {
+        app.set_action(ActionState::Error("No link in this message".into()));
+        return;
+    };
+    let secs = app.settings_cache.clipboard_clear_secs;
+    match app.clipboard.write_with_clear(&url, secs) {
+        Ok(()) => {
+            app.set_action(ActionState::Done("Link copied".into()));
+            app.push_cmd("clipboard write", true, url);
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("clipboard write", false, e.to_string());
         }
     }
 }

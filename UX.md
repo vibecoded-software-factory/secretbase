@@ -134,7 +134,7 @@ on their own:
   envelope is dropped, the target's body is replaced with the latest edit, and
   it carries a dim `(edited)` marker in its header (Discord-style) instead of a
   separate "edited" line.
-  **Adding** a reaction (`Alt+J`, or `:` in select-mode) opens a searchable
+  **Adding** a reaction (`+` in select mode) opens a searchable
   **reaction picker** (`Screen::React`): a `/`-style search over the emoji
   catalogue — a bundled curated set of common standard emojis
   (`domain::emoji::standard`, searchable by keyword so "thumb" finds 👍)
@@ -147,9 +147,9 @@ on their own:
   catalogue), collapsed under the message.
 - **Select mode** (`Alt+V`) shows a contextual **action bar** under the
   highlighted message listing what you can do with it and the key for each
-  (`: react`, `r reply`, `e edit`/`d delete` on your own messages,
-  `p pin`, `s download` on attachments, `o link` when the message contains a
-  URL) — visual feedback that accompanies the direct keybindings, it doesn't
+  (`+ react`, `r reply`, `e edit`/`d delete` on your own messages,
+  `p pin`, `s download` on attachments, `o open link`/`l copy link` when the
+  message contains a URL) — visual feedback that accompanies the direct keybindings, it doesn't
   replace them. `o` opens the first `http(s)` link
   (`domain::extract_urls` → `ports::OpenerPort`, the `xdg-open`/`open` adapter).
   The bar **packs onto one line when it fits and wraps onto continuation lines

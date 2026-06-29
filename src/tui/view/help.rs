@@ -132,8 +132,8 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Space", "mark / unmark (multi-select)"),
             ("y", "copy selection (author + time + body)"),
             ("c", "copy selection (message body only)"),
-            ("o", "open the first link in the message"),
-            ("e / d / : / p", "edit / del / react / pin"),
+            ("o / l", "open / copy the first link in the message"),
+            ("e / d / + / p", "edit / del / react / pin"),
             ("r / s", "reply / download"),
             ("i / Enter / Esc", "back to compose"),
         ] {
