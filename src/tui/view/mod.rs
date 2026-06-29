@@ -140,11 +140,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // The embedded file picker sits above everything else as a modal.
     if app.file_picker.is_some() {
         let t = app.theme.clone();
-        let full = frame.area();
-        let h = (full.height.saturating_mul(4) / 5).max(8);
-        // Width adapts to the terminal — never wider than it (minus a margin).
-        let w = 72.min(full.width.saturating_sub(4)).max(20);
-        let area = widgets::center_rect(w, h, full);
+        // Compact, scrollable modal — same size as the quick switcher / global
+        // search (60% wide, 18 rows; `center_rect` width is a percentage).
+        let area = widgets::center_rect(60, 18, frame.area());
         if let Some(picker) = app.file_picker.as_mut() {
             picker.render(frame, area, &t);
         }

@@ -26,9 +26,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let lines = build_lines(from, chat, &t);
 
     let h = (frame.area().height.saturating_mul(82) / 100).max(8);
-    // Width adapts to the terminal — never wider than it (minus a margin).
-    let w = 72.min(frame.area().width.saturating_sub(4)).max(20);
-    let popup = center_rect(w, h, frame.area());
+    // `center_rect` width is a percentage, so the popup already scales with
+    // the terminal (72% wide, ~82% tall — see `h`).
+    let popup = center_rect(72, h, frame.area());
     frame.render_widget(Clear, popup);
 
     let inner = Rect {
