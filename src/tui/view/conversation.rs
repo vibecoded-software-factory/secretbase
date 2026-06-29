@@ -558,11 +558,11 @@ fn message_lines(
     lines.push(Line::from(header_spans));
     // Threaded reply: quote the message being replied to, above the body.
     if let Some(target) = m.reply_to {
-        lines.push(reply_quote_line(target, app, t));
+        lines.push(reply_quote_line(target, app, t, width));
     }
     lines.extend(body_lines(&m.content, t, width, &m.mentions));
     if !m.reactions.is_empty() {
-        lines.push(reactions_line(&m.reactions, app, t));
+        lines.push(reactions_line(&m.reactions, app, t, width));
     }
     lines
 }
@@ -570,7 +570,12 @@ fn message_lines(
 /// A dim, italic quote of the message a reply targets (`↩ sender · snippet`),
 /// rendered just above the reply's own body. Falls back to `↩ #id` when the
 /// parent isn't in the loaded history.
-fn reply_quote_line(target: u64, app: &App, t: &crate::tui::theme::Theme) -> Line<'static> {
+fn reply_quote_line(
+    target: u64,
+    app: &App,
+    t: &crate::tui::theme::Theme,
+    width: usize,
+) -> Line<'static> {
     let label = app
         .messages
         .iter()
@@ -582,7 +587,7 @@ fn reply_quote_line(target: u64, app: &App, t: &crate::tui::theme::Theme) -> Lin
                 MessageContent::Attachment(a) => a.filename.as_str(),
                 _ => "",
             };
-            let snippet: String = body.lines().next().unwrap_or("").chars().take(48).collect();
+            let snippet = body.lines().next().unwrap_or("");
             if snippet.is_empty() {
                 format!("#{target}")
             } else {
@@ -590,8 +595,19 @@ fn reply_quote_line(target: u64, app: &App, t: &crate::tui::theme::Theme) -> Lin
             }
         })
         .unwrap_or_else(|| format!("#{target}"));
+    // A quote is a one-line preview: show it whole if it fits, else trim to
+    // the panel width with a trailing `…` (adapts to the screen, not a fixed
+    // character count).
+    let full = format!("   ↩ {label}");
+    let max = width.max(8);
+    let line = if full.chars().count() > max {
+        let head: String = full.chars().take(max.saturating_sub(1)).collect();
+        format!("{head}…")
+    } else {
+        full
+    };
     Line::from(Span::styled(
-        format!("   ↩ {label}"),
+        line,
         Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
     ))
 }
@@ -600,17 +616,28 @@ fn reactions_line(
     reactions: &[crate::domain::Reaction],
     app: &App,
     t: &crate::tui::theme::Theme,
+    width: usize,
 ) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = vec![Span::raw("    ")];
+    // Approximate column budget so a message with many reactions can't run
+    // off the panel — drop the overflow behind a trailing `…`.
+    let mut used = 4usize;
     for (i, r) in reactions.iter().enumerate() {
+        let glyph = resolve_reaction_glyph(app, &r.emoji);
+        let count = r.usernames.len();
+        let piece = format!("{glyph} {count}");
+        let sep = if i > 0 { 2 } else { 0 };
+        // +2 emoji glyphs often render two columns wide.
+        let piece_w = piece.chars().count() + 1 + sep;
+        if i > 0 && used + piece_w + 1 > width {
+            spans.push(Span::styled("  …", Style::default().fg(t.dim)));
+            break;
+        }
         if i > 0 {
             spans.push(Span::raw("  "));
         }
-        let count = r.usernames.len();
-        spans.push(Span::styled(
-            format!("{} {count}", resolve_reaction_glyph(app, &r.emoji)),
-            Style::default().fg(t.conv_unread),
-        ));
+        spans.push(Span::styled(piece, Style::default().fg(t.conv_unread)));
+        used += piece_w;
     }
     Line::from(spans)
 }

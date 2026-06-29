@@ -6,6 +6,12 @@ push** (see `CLAUDE.md`). The whole point is that every screen looks and
 behaves the same — when in doubt, reuse an existing component; never invent
 a one-off.
 
+**Responsiveness is a hard rule.** Every element must adapt to the panel
+width: show in full when it fits, otherwise **wrap** onto continuation lines
+(action bars, message bodies) or **trim to the width** with a trailing `…`
+(reply quotes, reaction rows, snippets) — never a fixed character cap that the
+terminal then clips. Size against the real content width, not a magic number.
+
 The design system: the `split_main` vertical stack, the top identity bar, the
 single `widgets::list_table` list renderer, `draw_search_box`, `draw_cmd_log`,
 `draw_status_strip`, the navigable `draw_confirm_popup`, and the
