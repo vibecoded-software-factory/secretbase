@@ -118,11 +118,11 @@ fn push_mentions(out: &mut Vec<Run>, text: &str, base: &Run, mentions: &[String]
     let mut rest = text;
     while let Some(at) = rest.find('@') {
         let after = &rest[at + 1..];
-        let name: String = after
+        let token: String = after
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
             .collect();
-        if !name.is_empty() && is_mention(&name, mentions) {
+        if let Some(name) = resolve_mention(&token, mentions) {
             if at > 0 {
                 out.push(Run {
                     text: rest[..at].to_string(),
@@ -134,6 +134,8 @@ fn push_mentions(out: &mut Vec<Run>, text: &str, base: &Run, mentions: &[String]
                 mention: true,
                 ..base.clone()
             });
+            // `name` is a prefix of the ASCII `token`, so its byte length is a
+            // valid boundary in `after`; any trimmed trailing `.` stays plain.
             rest = &after[name.len()..];
         } else {
             // Emit up to and including the `@`, keep scanning.
@@ -157,6 +159,22 @@ fn push_mentions(out: &mut Vec<Run>, text: &str, base: &Run, mentions: &[String]
 pub fn is_mention(name: &str, mentions: &[String]) -> bool {
     matches!(name, "here" | "channel" | "everyone")
         || mentions.iter().any(|m| m.eq_ignore_ascii_case(name))
+}
+
+/// Resolves a `@`-token to the slice that should be highlighted: the token
+/// as-is first (so dotted team names like `phoenix.bots` match), then the
+/// token with **trailing** `.`s trimmed (so `@alice.` at the end of a sentence
+/// still highlights `alice`, leaving the period as plain text). Only trailing
+/// dots are stripped, so a real dotted name is never split. `None` when nothing
+/// resolves.
+fn resolve_mention<'a>(token: &'a str, mentions: &[String]) -> Option<&'a str> {
+    let mut cand = token;
+    loop {
+        if !cand.is_empty() && is_mention(cand, mentions) {
+            return Some(cand);
+        }
+        cand = cand.strip_suffix('.')?;
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +217,42 @@ mod tests {
         let bob = r.iter().find(|r| r.text == "@bob").unwrap();
         assert!(bob.mention && bob.bold);
         assert!(r.iter().any(|r| r.text == "@alice" && r.mention));
+    }
+
+    #[test]
+    fn mention_before_a_period_still_highlights() {
+        // "thanks @alice." — the trailing sentence period must not swallow the
+        // username and suppress the highlight.
+        let r = parse_inline("thanks @alice.", &["alice".into()]);
+        assert!(
+            r.iter().any(|r| r.text == "@alice" && r.mention),
+            "@alice should highlight even with a trailing period"
+        );
+        // The period survives as plain text.
+        assert!(r.iter().any(|r| r.text.contains('.') && !r.mention));
+    }
+
+    #[test]
+    fn dotted_team_mention_is_not_split() {
+        // A genuine dotted name resolves whole; trailing-dot trimming must not
+        // chop it down to a shorter prefix.
+        let r = parse_inline("ping @phoenix.bots", &["phoenix.bots".into()]);
+        assert!(r.iter().any(|r| r.text == "@phoenix.bots" && r.mention));
+        // And if only the parent resolves, the dotted token is left alone
+        // (we only strip *trailing* dots, never interior segments).
+        let r2 = parse_inline("ping @phoenix.bots", &["phoenix".into()]);
+        assert!(!r2.iter().any(|r| r.mention));
+    }
+
+    #[test]
+    fn channel_special_with_trailing_period_highlights() {
+        let r = parse_inline("heads up @here.", &[]);
+        assert!(r.iter().any(|r| r.text == "@here" && r.mention));
+    }
+
+    #[test]
+    fn unresolved_mention_is_plain() {
+        let r = parse_inline("hi @stranger", &["alice".into()]);
+        assert!(!r.iter().any(|r| r.mention));
     }
 }
