@@ -104,10 +104,10 @@ fn handle_key(app: &mut App, key: KeyEvent) {
 
     if matches!(key.code, KeyCode::F(9)) {
         // F9 toggles the Settings overlay. It opens only from the base
-        // screens (never stacked on another overlay) and closes (cancel)
-        // when already open.
+        // screens (never stacked on another overlay) and closes when already
+        // open (changes apply+persist live, so closing keeps them).
         if app.screen == Screen::Settings {
-            app.settings_cancel();
+            app.close_settings();
         } else if matches!(app.screen, Screen::Login | Screen::Inbox | Screen::Teams) {
             app.open_settings();
         }

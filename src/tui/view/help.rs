@@ -170,19 +170,24 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             Screen::Settings => {
                 lines.push(section("Settings (F9)", t));
                 for (k, d) in [
-                    ("Tab", "switch sidebar / panel"),
-                    ("↑/↓ k/j", "move within pane"),
+                    ("↑/↓ k/j", "section (sidebar) · row (panel)"),
                     ("→ / Enter", "open section (from sidebar)"),
-                    ("← / h", "back to sidebar (from panel)"),
+                    ("Tab", "switch sidebar ↔ panel"),
+                    ("←/→ h/l", "change the focused setting"),
+                    ("Enter / Space", "toggle / next option"),
+                    ("Esc / F9", "close (changes save live)"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
                 lines.push(Line::raw(""));
-                lines.push(section("Theme", t));
+                lines.push(section("Sections", t));
                 for (k, d) in [
-                    ("↑/↓", "preview a preset live"),
-                    ("Enter", "apply + save to config.toml"),
-                    ("Esc / F9", "cancel — restore previous theme"),
+                    ("Identity", "your username + device (read-only)"),
+                    ("Theme", "live preset picker"),
+                    ("Chat", "mark-read-on-open · inbox resync"),
+                    ("Clipboard", "auto-clear delay"),
+                    ("Network", "inbox / download timeouts"),
+                    ("Images", "protocol · chafa symbol set"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
@@ -248,7 +253,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
     lines.push(section("Global", t));
     for (k, d) in [
         ("F1", "toggle help"),
-        ("F9", "settings (theme…)"),
+        ("F9", "settings"),
         ("↑/↓ j/k", "scroll help"),
         ("q / Esc", "close help"),
         ("Ctrl+C", "quit"),

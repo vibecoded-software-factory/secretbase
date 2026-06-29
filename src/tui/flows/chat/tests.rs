@@ -315,8 +315,7 @@ impl SettingsPort for FakeSettings {
     fn read(&self) -> UserSettings {
         UserSettings::default()
     }
-    fn write_auto_mark_read(&self, _: bool) {}
-    fn write_clipboard_clear_secs(&self, _: u64) {}
+    fn write_setting(&self, _: &str, _: &str) {}
     fn write_theme_name(&self, _: &str) {}
     fn config_dir(&self) -> PathBuf {
         PathBuf::from(".")
@@ -2144,6 +2143,34 @@ fn print_timings(label: &str, times: &[std::time::Duration]) {
     let p99 = sorted[sorted.len() * 99 / 100];
     let max = sorted.last().copied().unwrap_or_default();
     println!("{label}: avg={avg:?} p50={p50:?} p99={p99:?} max={max:?}");
+}
+
+#[test]
+fn settings_screen_renders_every_section_without_panicking() {
+    use crate::tui::app::{SettingsFocus, SettingsSection};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut rig = build_rig();
+    rig.app.identity.username = "alice".into();
+    rig.app.identity.device_name = "Debian desktop".into();
+    rig.app.identity.device_type = "desktop".into();
+    rig.app.screen = Screen::Inbox;
+    rig.app.open_settings();
+    // A long value to exercise the panel's value-trimming path.
+    rig.app.settings_cache.image_symbols = "octant+sextant+block+space".into();
+
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
+    for section in 0..SettingsSection::ALL.len() {
+        rig.app.settings_section = section;
+        rig.app.settings_item = 0;
+        for focus in [SettingsFocus::Sidebar, SettingsFocus::Panel] {
+            rig.app.settings_focus = focus;
+            terminal
+                .draw(|f| crate::tui::view::draw(f, &mut rig.app))
+                .expect("draw must not panic");
+        }
+    }
 }
 
 #[test]

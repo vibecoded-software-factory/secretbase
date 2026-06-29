@@ -440,13 +440,25 @@ hex entries override it. The Settings picker applies live. Adding a preset = one
 `F9` opens a centered **Settings** overlay (`Screen::Settings`, drawn over
 `settings_from` like Help) — `view::settings::draw_popup`, input in
 `input::settings`. Layout: a left **section sidebar** + the active section's
-**panel**, `Tab`/arrows move between and within them. It's **sectioned so the
-preferences surface can grow** (Clipboard, Notifications…) without changing the
-chrome; today the only section is **Theme**, a preset picker that **previews
-live** as you move (`App::settings_preview_theme`) — `Enter` applies + persists
-`name = "<preset>"` to `config.toml` (`SettingsPort::write_theme_name`), `Esc`/`F9`
-cancels and restores the pre-open theme. Add a new section by extending
-`SettingsSection`.
+**panel**; `Tab` switches sidebar ↔ panel, `↑/↓` move within (section or row),
+`←/→` change the focused setting. The sections (`SettingsSection`): **Identity**
+(read-only — your username + device + device type, from `keybase status`),
+**Theme** (the live preset picker), **Chat** (`auto_mark_read`,
+`inbox_refresh_secs`), **Clipboard** (`clipboard_clear_secs`), **Network**
+(`list_inbox_timeout_secs`, `download_timeout_secs`) and **Images**
+(`image_protocol`, `image_symbols`).
+
+Each non-Identity row is one of three controls keyed off `SettingId::kind`: a
+**toggle**, a **number stepper** (clamped, `0` shown as `off` where it disables),
+or a **choice** (cycles a fixed list). **Apply-immediately**: every change is
+written to `settings_cache` *and* persisted to `config.toml` the instant you
+adjust it (`App::settings_adjust` → `SettingsPort::write_setting`; the theme
+picker uses `App::apply_theme_idx` → `write_theme_name`), so `Esc`/`F9` just
+closes — there is no separate confirm/cancel. A changed image protocol /
+symbol set re-resolves `image_proto` / rebuilds the render cache live. Add a
+new section by extending `SettingsSection::ALL` + `rows`; a new setting by
+adding a `SettingId` arm. An over-long value is trimmed with
+`widgets::trim_end_ellipsis` so the panel never overflows.
 
 ## Golden rules
 

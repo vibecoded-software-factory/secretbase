@@ -1,14 +1,15 @@
 //! Settings overlay input.
 //!
 //! Two panes: a section sidebar (left) and the active section's panel
-//! (right). `Tab` / arrows move between and within them. `Esc`/`F9`
-//! cancel (restoring any live preview); `Enter` confirms. Today the only
-//! section is Theme — a live-previewing preset picker.
+//! (right). `Tab` moves between them; `↑/↓` navigate within them; `←/→`
+//! adjust the focused setting. Every change applies and persists immediately
+//! (apply-immediately — there is no separate confirm/cancel step). `Esc`/`F9`
+//! close the overlay.
 
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::tui::App;
-use crate::tui::app::{SettingsFocus, SettingsSection};
+use crate::tui::app::{SettingId, SettingsFocus, SettingsSection};
 use crate::tui::theme;
 
 pub fn handle(app: &mut App, key: KeyEvent) {
@@ -21,7 +22,7 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 fn handle_sidebar(app: &mut App, key: KeyEvent) {
     let len = SettingsSection::ALL.len();
     match key.code {
-        KeyCode::Esc | KeyCode::F(9) => app.settings_cancel(),
+        KeyCode::Esc | KeyCode::F(9) => app.close_settings(),
         KeyCode::Char('j') | KeyCode::Down if app.settings_section + 1 < len => {
             app.settings_section += 1;
         }
@@ -29,6 +30,7 @@ fn handle_sidebar(app: &mut App, key: KeyEvent) {
             app.settings_section = app.settings_section.saturating_sub(1);
         }
         KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => {
+            app.settings_item = 0;
             app.settings_focus = SettingsFocus::Panel;
         }
         _ => {}
@@ -36,27 +38,48 @@ fn handle_sidebar(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_panel(app: &mut App, key: KeyEvent) {
-    match SettingsSection::ALL[app.settings_section] {
-        SettingsSection::Theme => handle_theme_panel(app, key),
+    if app.settings_section_obj() == SettingsSection::Theme {
+        return handle_theme_panel(app, key);
+    }
+    let rows = app.settings_section_obj().rows();
+    let n = rows.len();
+    match key.code {
+        KeyCode::Esc | KeyCode::F(9) => app.close_settings(),
+        KeyCode::Tab | KeyCode::BackTab => app.settings_focus = SettingsFocus::Sidebar,
+        KeyCode::Char('j') | KeyCode::Down if n > 0 && app.settings_item + 1 < n => {
+            app.settings_item += 1;
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.settings_item = app.settings_item.saturating_sub(1);
+        }
+        KeyCode::Left | KeyCode::Char('h') => adjust(app, rows, -1),
+        KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter | KeyCode::Char(' ') => {
+            adjust(app, rows, 1);
+        }
+        _ => {}
+    }
+}
+
+fn adjust(app: &mut App, rows: &[SettingId], delta: isize) {
+    if let Some(&id) = rows.get(app.settings_item) {
+        app.settings_adjust(id, delta);
     }
 }
 
 fn handle_theme_panel(app: &mut App, key: KeyEvent) {
     let len = theme::Preset::ALL.len();
     match key.code {
-        KeyCode::Esc | KeyCode::F(9) => app.settings_cancel(),
-        KeyCode::Char('h') | KeyCode::Left | KeyCode::Tab | KeyCode::BackTab => {
-            app.settings_focus = SettingsFocus::Sidebar;
+        KeyCode::Esc | KeyCode::F(9) => app.close_settings(),
+        KeyCode::Tab | KeyCode::BackTab => app.settings_focus = SettingsFocus::Sidebar,
+        KeyCode::Char('j') | KeyCode::Down | KeyCode::Char('l') | KeyCode::Right
+            if app.settings_theme_idx + 1 < len =>
+        {
+            app.apply_theme_idx(app.settings_theme_idx + 1);
         }
-        KeyCode::Char('j') | KeyCode::Down if app.settings_theme_idx + 1 < len => {
-            app.settings_theme_idx += 1;
-            app.settings_preview_theme();
+        KeyCode::Char('k') | KeyCode::Up | KeyCode::Char('h') | KeyCode::Left => {
+            app.apply_theme_idx(app.settings_theme_idx.saturating_sub(1));
         }
-        KeyCode::Char('k') | KeyCode::Up if app.settings_theme_idx > 0 => {
-            app.settings_theme_idx -= 1;
-            app.settings_preview_theme();
-        }
-        KeyCode::Enter => app.settings_confirm_theme(),
+        KeyCode::Enter => app.apply_theme_idx(app.settings_theme_idx),
         _ => {}
     }
 }

@@ -84,24 +84,179 @@ pub enum SettingsFocus {
     Panel,
 }
 
-/// A section of the Settings overlay. Sectioned so the preferences
-/// surface can grow (Clipboard, Notifications…) without changing the
-/// layout. Today only [`SettingsSection::Theme`] exists.
+/// A section of the Settings overlay, in sidebar order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
+    /// Read-only: who you're signed in as and on which device.
+    Identity,
+    /// The live-previewing theme-preset picker.
     Theme,
+    /// Chat behaviour: auto-mark-read, safety-net refresh cadence.
+    Chat,
+    /// Clipboard auto-clear delay.
+    Clipboard,
+    /// `keybase` call timeouts (inbox list, attachment download).
+    Network,
+    /// Inline-image protocol + chafa symbol set.
+    Images,
 }
 
 impl SettingsSection {
     /// Every section, in sidebar order.
-    pub const ALL: [SettingsSection; 1] = [SettingsSection::Theme];
+    pub const ALL: [SettingsSection; 6] = [
+        SettingsSection::Identity,
+        SettingsSection::Theme,
+        SettingsSection::Chat,
+        SettingsSection::Clipboard,
+        SettingsSection::Network,
+        SettingsSection::Images,
+    ];
 
     /// The sidebar label.
     pub fn label(self) -> &'static str {
         match self {
+            SettingsSection::Identity => "Identity",
             SettingsSection::Theme => "Theme",
+            SettingsSection::Chat => "Chat",
+            SettingsSection::Clipboard => "Clipboard",
+            SettingsSection::Network => "Network",
+            SettingsSection::Images => "Images",
         }
     }
+
+    /// The editable / displayed rows of this section, in order. Empty for
+    /// [`SettingsSection::Theme`], which uses its own preset picker.
+    pub fn rows(self) -> &'static [SettingId] {
+        use SettingId::*;
+        match self {
+            SettingsSection::Identity => &[Username, Device, DeviceType],
+            SettingsSection::Theme => &[],
+            SettingsSection::Chat => &[AutoMarkRead, InboxRefresh],
+            SettingsSection::Clipboard => &[ClipboardClear],
+            SettingsSection::Network => &[ListTimeout, DownloadTimeout],
+            SettingsSection::Images => &[ImageProtocol, ImageSymbols],
+        }
+    }
+}
+
+/// One setting (or read-only identity field) shown as a row in a Settings
+/// panel. The kind ([`SettingId::kind`]) drives both how the value renders and
+/// how `←/→` adjusts it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingId {
+    Username,
+    Device,
+    DeviceType,
+    AutoMarkRead,
+    InboxRefresh,
+    ClipboardClear,
+    ListTimeout,
+    DownloadTimeout,
+    ImageProtocol,
+    ImageSymbols,
+}
+
+/// The chafa symbol sets offered in the Images section (the meaningful presets
+/// from the README; a hand-edited config value still loads, it just won't be in
+/// this cycle).
+pub const IMAGE_SYMBOL_SETS: [&str; 3] =
+    ["sextant+block+space", "octant+sextant+block+space", "half"];
+
+/// The inline-image protocols offered in the Images section.
+pub const IMAGE_PROTOCOLS: [&str; 6] = ["auto", "kitty", "sixel", "iterm", "symbols", "off"];
+
+/// How a [`SettingId`] is displayed and adjusted.
+pub enum SettingKind {
+    /// Read-only label (identity fields).
+    Info,
+    /// Boolean on/off.
+    Toggle,
+    /// Numeric stepper (seconds), clamped to `[min, max]`, `0` shown as "off"
+    /// when `min == 0`.
+    Number { step: u64, min: u64, max: u64 },
+    /// Cycle through a fixed option list.
+    Choice(&'static [&'static str]),
+}
+
+impl SettingId {
+    /// The row label shown in the panel.
+    pub fn label(self) -> &'static str {
+        match self {
+            SettingId::Username => "Username",
+            SettingId::Device => "Device",
+            SettingId::DeviceType => "Device type",
+            SettingId::AutoMarkRead => "Mark read on open",
+            SettingId::InboxRefresh => "Inbox resync",
+            SettingId::ClipboardClear => "Clipboard auto-clear",
+            SettingId::ListTimeout => "Inbox list timeout",
+            SettingId::DownloadTimeout => "Download timeout",
+            SettingId::ImageProtocol => "Image protocol",
+            SettingId::ImageSymbols => "Symbol set",
+        }
+    }
+
+    /// The control kind — drives rendering + adjustment.
+    pub fn kind(self) -> SettingKind {
+        match self {
+            SettingId::Username | SettingId::Device | SettingId::DeviceType => SettingKind::Info,
+            SettingId::AutoMarkRead => SettingKind::Toggle,
+            SettingId::InboxRefresh => SettingKind::Number {
+                step: 30,
+                min: 0,
+                max: 3600,
+            },
+            SettingId::ClipboardClear => SettingKind::Number {
+                step: 5,
+                min: 0,
+                max: 600,
+            },
+            SettingId::ListTimeout => SettingKind::Number {
+                step: 5,
+                min: 5,
+                max: 600,
+            },
+            SettingId::DownloadTimeout => SettingKind::Number {
+                step: 30,
+                min: 10,
+                max: 3600,
+            },
+            SettingId::ImageProtocol => SettingKind::Choice(&IMAGE_PROTOCOLS),
+            SettingId::ImageSymbols => SettingKind::Choice(&IMAGE_SYMBOL_SETS),
+        }
+    }
+
+    /// A short hint shown under the focused row.
+    pub fn hint(self) -> &'static str {
+        match self.kind() {
+            SettingKind::Info => "read-only",
+            SettingKind::Toggle => "←/→ or Enter to toggle",
+            SettingKind::Number { .. } => "←/→ to adjust",
+            SettingKind::Choice(_) => "←/→ to choose",
+        }
+    }
+}
+
+/// `s` or an em-dash placeholder when empty (read-only identity fields).
+fn or_dash(s: &str) -> String {
+    if s.is_empty() {
+        "—".to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+/// `cur ± delta·step`, clamped to `[min, max]` (saturating, no underflow).
+fn step_clamp(cur: u64, delta: isize, step: u64, min: u64, max: u64) -> u64 {
+    let next = cur as isize + delta * step as isize;
+    next.clamp(min as isize, max as isize) as u64
+}
+
+/// The option `delta` steps from `cur` in `opts`, wrapping. Falls back to the
+/// first option when `cur` isn't in the list (a hand-edited config value).
+fn cycle(opts: &[&str], cur: &str, delta: isize) -> String {
+    let n = opts.len() as isize;
+    let i = opts.iter().position(|&o| o == cur).unwrap_or(0) as isize;
+    opts[(((i + delta) % n + n) % n) as usize].to_string()
 }
 
 /// Delivery state of an optimistic [`PendingSend`].
@@ -408,12 +563,12 @@ pub struct App {
     /// Highlighted section in the sidebar (index into
     /// [`SettingsSection::ALL`]).
     pub settings_section: usize,
+    /// Highlighted row within the active section's panel (index into
+    /// [`SettingsSection::rows`]). Unused by the Theme section.
+    pub settings_item: usize,
     /// Highlighted preset in the Theme panel (index into
-    /// [`theme::Preset::ALL`]). Previews live as it moves.
+    /// [`theme::Preset::ALL`]). Applies live as it moves.
     pub settings_theme_idx: usize,
-    /// Theme active when the Settings overlay opened — restored if the
-    /// user cancels (`Esc`/`F9`) instead of confirming.
-    pub theme_before_settings: Theme,
     /// Screen the Settings overlay was opened from (returned to on close).
     pub settings_from: Screen,
 
@@ -615,11 +770,11 @@ impl App {
             gif_anims: HashMap::new(),
             anim_ms: 0,
             gif_animating: false,
-            theme: theme.clone(),
+            theme,
             settings_focus: SettingsFocus::Sidebar,
             settings_section: 0,
+            settings_item: 0,
             settings_theme_idx,
-            theme_before_settings: theme,
             settings_from: Screen::Inbox,
             should_quit: false,
             last_activity: Instant::now(),
@@ -746,42 +901,130 @@ impl App {
             .collect()
     }
 
-    /// Opens the Settings overlay over the current screen. Stashes the
-    /// originating screen and the active theme (so `Esc`/`F9` can restore
-    /// it), and starts focus on the section sidebar.
+    /// Opens the Settings overlay over the current screen, focus on the
+    /// section sidebar. Every change applies (and persists) immediately, so
+    /// there is nothing to stash for a cancel.
     pub fn open_settings(&mut self) {
         self.settings_from = self.screen;
-        self.theme_before_settings = self.theme.clone();
         self.settings_focus = SettingsFocus::Sidebar;
         self.settings_section = 0;
+        self.settings_item = 0;
         self.screen = Screen::Settings;
     }
 
-    /// Applies the highlighted preset to [`Self::theme`] as a live
-    /// preview — no persistence. Called whenever the picker moves.
-    pub fn settings_preview_theme(&mut self) {
-        if let Some(&p) = theme::Preset::ALL.get(self.settings_theme_idx) {
-            self.theme = Theme::from_palette(&p.palette());
-        }
-    }
-
-    /// Confirms the highlighted preset: applies it, persists
-    /// `name = "<preset>"` to `config.toml`, and closes the overlay.
-    pub fn settings_confirm_theme(&mut self) {
-        if let Some(&p) = theme::Preset::ALL.get(self.settings_theme_idx) {
-            self.theme = Theme::from_palette(&p.palette());
-            self.settings.write_theme_name(p.name());
-            self.push_cmd("theme", true, format!("saved {}", p.name()));
-            self.set_action(ActionState::Done(format!("Theme: {}", p.label())));
-        }
+    /// Closes the Settings overlay, returning to where it was opened.
+    pub fn close_settings(&mut self) {
         self.screen = self.settings_from;
     }
 
-    /// Cancels the Settings overlay: restores the theme that was active
-    /// when it opened (dropping any live preview) and closes it.
-    pub fn settings_cancel(&mut self) {
-        self.theme = self.theme_before_settings.clone();
-        self.screen = self.settings_from;
+    /// The section currently highlighted in the sidebar.
+    pub fn settings_section_obj(&self) -> SettingsSection {
+        SettingsSection::ALL[self.settings_section.min(SettingsSection::ALL.len() - 1)]
+    }
+
+    /// Applies (and persists) the theme preset at `idx`, live. The Theme
+    /// picker calls this as its cursor moves — apply-immediately, no
+    /// separate confirm step.
+    pub fn apply_theme_idx(&mut self, idx: usize) {
+        let Some(&p) = theme::Preset::ALL.get(idx) else {
+            return;
+        };
+        self.settings_theme_idx = idx;
+        self.theme = Theme::from_palette(&p.palette());
+        self.settings.write_theme_name(p.name());
+    }
+
+    /// The display value of a Settings row.
+    pub fn setting_value(&self, id: SettingId) -> String {
+        let s = &self.settings_cache;
+        let secs_off = |n: u64| {
+            if n == 0 {
+                "off".to_string()
+            } else {
+                format!("{n}s")
+            }
+        };
+        match id {
+            SettingId::Username => or_dash(&self.identity.username),
+            SettingId::Device => or_dash(&self.identity.device_name),
+            SettingId::DeviceType => or_dash(&self.identity.device_type),
+            SettingId::AutoMarkRead => if s.auto_mark_read { "on" } else { "off" }.to_string(),
+            SettingId::InboxRefresh => secs_off(s.inbox_refresh_secs),
+            SettingId::ClipboardClear => secs_off(s.clipboard_clear_secs),
+            SettingId::ListTimeout => format!("{}s", s.list_inbox_timeout_secs),
+            SettingId::DownloadTimeout => format!("{}s", s.download_timeout_secs),
+            SettingId::ImageProtocol => s.image_protocol.clone(),
+            SettingId::ImageSymbols => s.image_symbols.clone(),
+        }
+    }
+
+    /// Adjusts a Settings row by `delta` (−1 / +1 from `←`/`→`), applying it
+    /// live to `settings_cache` and persisting to `config.toml`. Read-only
+    /// identity rows are no-ops.
+    pub fn settings_adjust(&mut self, id: SettingId, delta: isize) {
+        let (key, value): (&str, String) = match id {
+            SettingId::Username | SettingId::Device | SettingId::DeviceType => return,
+            SettingId::AutoMarkRead => {
+                let v = !self.settings_cache.auto_mark_read;
+                self.settings_cache.auto_mark_read = v;
+                (
+                    "auto_mark_read",
+                    if v { "true" } else { "false" }.to_string(),
+                )
+            }
+            SettingId::InboxRefresh => {
+                let n = step_clamp(self.settings_cache.inbox_refresh_secs, delta, 30, 0, 3600);
+                self.settings_cache.inbox_refresh_secs = n;
+                ("inbox_refresh_secs", n.to_string())
+            }
+            SettingId::ClipboardClear => {
+                let n = step_clamp(self.settings_cache.clipboard_clear_secs, delta, 5, 0, 600);
+                self.settings_cache.clipboard_clear_secs = n;
+                ("clipboard_clear_secs", n.to_string())
+            }
+            SettingId::ListTimeout => {
+                let n = step_clamp(
+                    self.settings_cache.list_inbox_timeout_secs,
+                    delta,
+                    5,
+                    5,
+                    600,
+                );
+                self.settings_cache.list_inbox_timeout_secs = n;
+                ("list_inbox_timeout_secs", n.to_string())
+            }
+            SettingId::DownloadTimeout => {
+                let n = step_clamp(
+                    self.settings_cache.download_timeout_secs,
+                    delta,
+                    30,
+                    10,
+                    3600,
+                );
+                self.settings_cache.download_timeout_secs = n;
+                ("download_timeout_secs", n.to_string())
+            }
+            SettingId::ImageProtocol => {
+                let next = cycle(&IMAGE_PROTOCOLS, &self.settings_cache.image_protocol, delta);
+                self.settings_cache.image_protocol = next.clone();
+                // Take effect immediately for the next render.
+                self.image_proto = crate::tui::image::resolve(&next);
+                self.image_dirty = true;
+                ("image_protocol", format!("\"{next}\""))
+            }
+            SettingId::ImageSymbols => {
+                let next = cycle(
+                    &IMAGE_SYMBOL_SETS,
+                    &self.settings_cache.image_symbols,
+                    delta,
+                );
+                self.settings_cache.image_symbols = next.clone();
+                self.image_render_cache = crate::tui::image::RenderCache::new(next.clone());
+                self.image_dirty = true;
+                ("image_symbols", format!("\"{next}\""))
+            }
+        };
+        self.settings.write_setting(key, &value);
     }
 
     /// Convenience: whether the worker is currently processing a
@@ -1190,8 +1433,7 @@ mod tests {
         fn read(&self) -> UserSettings {
             UserSettings::default()
         }
-        fn write_auto_mark_read(&self, _: bool) {}
-        fn write_clipboard_clear_secs(&self, _: u64) {}
+        fn write_setting(&self, _: &str, _: &str) {}
         fn write_theme_name(&self, _: &str) {}
         fn config_dir(&self) -> PathBuf {
             PathBuf::from(".")
@@ -1218,33 +1460,56 @@ mod tests {
     }
 
     #[test]
-    fn settings_open_preview_cancel_restores_theme() {
+    fn settings_open_and_close_round_trip() {
         let mut app = fresh_app();
         app.screen = Screen::Inbox;
-        let original = app.theme.accent;
         app.open_settings();
         assert_eq!(app.screen, Screen::Settings);
         assert_eq!(app.settings_from, Screen::Inbox);
-        app.settings_theme_idx = 1; // dracula
-        app.settings_preview_theme();
-        assert_ne!(app.theme.accent, original);
-        app.settings_cancel();
-        assert_eq!(app.theme.accent, original);
+        app.close_settings();
         assert_eq!(app.screen, Screen::Inbox);
     }
 
     #[test]
-    fn settings_confirm_applies_and_closes() {
+    fn apply_theme_idx_applies_and_persists_live() {
         let mut app = fresh_app();
         app.screen = Screen::Teams;
         app.open_settings();
-        app.settings_theme_idx = 1; // dracula
-        app.settings_confirm_theme();
+        app.apply_theme_idx(1); // dracula
+        assert_eq!(app.settings_theme_idx, 1);
+        assert_eq!(
+            app.theme.accent,
+            Theme::from_palette(&theme::Preset::Dracula.palette()).accent
+        );
+        // Apply-immediately: closing keeps the change (no cancel/restore).
+        app.close_settings();
         assert_eq!(app.screen, Screen::Teams);
         assert_eq!(
             app.theme.accent,
             Theme::from_palette(&theme::Preset::Dracula.palette()).accent
         );
+    }
+
+    #[test]
+    fn settings_adjust_toggle_number_choice() {
+        use crate::tui::app::SettingId;
+        let mut app = fresh_app();
+        // Toggle flips.
+        let before = app.settings_cache.auto_mark_read;
+        app.settings_adjust(SettingId::AutoMarkRead, 1);
+        assert_eq!(app.settings_cache.auto_mark_read, !before);
+        // Number steps and clamps at the floor.
+        app.settings_cache.clipboard_clear_secs = 5;
+        app.settings_adjust(SettingId::ClipboardClear, -1); // step 5 → 0
+        assert_eq!(app.settings_cache.clipboard_clear_secs, 0);
+        app.settings_adjust(SettingId::ClipboardClear, -1); // clamped at min 0
+        assert_eq!(app.settings_cache.clipboard_clear_secs, 0);
+        // Choice cycles.
+        app.settings_cache.image_protocol = "auto".into();
+        app.settings_adjust(SettingId::ImageProtocol, 1);
+        assert_eq!(app.settings_cache.image_protocol, "kitty");
+        // Read-only identity row is a no-op.
+        app.settings_adjust(SettingId::Username, 1);
     }
 
     #[test]

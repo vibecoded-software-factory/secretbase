@@ -238,15 +238,11 @@ impl SettingsPort for TomlSettingsAdapter {
         cfg
     }
 
-    fn write_auto_mark_read(&self, auto: bool) {
-        self.rewrite(|buf| {
-            buf.set("auto_mark_read", if auto { "true" } else { "false" });
-        });
-    }
-
-    fn write_clipboard_clear_secs(&self, secs: u64) {
-        self.rewrite(|buf| {
-            buf.set("clipboard_clear_secs", &secs.to_string());
+    fn write_setting(&self, key: &str, value: &str) {
+        let key = key.to_string();
+        let value = value.to_string();
+        self.rewrite(move |buf| {
+            buf.set(&key, &value);
         });
     }
 
@@ -463,8 +459,8 @@ mod tests {
     fn write_then_read_round_trips_owned_keys() {
         let tmp = TempDir::new().unwrap();
         let a = adapter_in(&tmp);
-        a.write_auto_mark_read(false);
-        a.write_clipboard_clear_secs(120);
+        a.write_setting("auto_mark_read", "false");
+        a.write_setting("clipboard_clear_secs", "120");
         let cfg = a.read();
         assert!(!cfg.auto_mark_read);
         assert_eq!(cfg.clipboard_clear_secs, 120);
@@ -480,7 +476,7 @@ mod tests {
             "auto_mark_read = true\n[theme]\naccent = \"#abcdef\"\n",
         )
         .unwrap();
-        a.write_auto_mark_read(false);
+        a.write_setting("auto_mark_read", "false");
         let txt = fs::read_to_string(a.file()).unwrap();
         assert!(txt.contains("[theme]"));
         assert!(txt.contains("accent = \"#abcdef\""));
@@ -592,7 +588,7 @@ mod tests {
     fn write_leaves_no_tmp_file_after_success() {
         let tmp = TempDir::new().unwrap();
         let a = adapter_in(&tmp);
-        a.write_auto_mark_read(false);
+        a.write_setting("auto_mark_read", "false");
         // The sibling `.tmp` must be gone — rename swapped it in.
         let tmp_sidecar = a.file().with_extension("toml.tmp");
         // file().with_extension(".tmp") replaces .toml with .tmp,
@@ -654,7 +650,7 @@ mod tests {
     fn write_preserves_owner_only_perms() {
         let tmp = TempDir::new().unwrap();
         let a = adapter_in(&tmp);
-        a.write_clipboard_clear_secs(60);
+        a.write_setting("clipboard_clear_secs", "60");
         let mode = fs::metadata(a.file()).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "config.toml must be owner-only");
     }
@@ -681,7 +677,7 @@ mod tests {
         )
         .unwrap();
         // Overwrite a single key — the rest must round-trip.
-        a.write_clipboard_clear_secs(15);
+        a.write_setting("clipboard_clear_secs", "15");
         let body = fs::read_to_string(a.file()).unwrap();
         assert!(body.contains("clipboard_clear_secs = 15"));
         assert!(body.contains("auto_mark_read = false"));
