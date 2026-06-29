@@ -70,6 +70,12 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
             chat::handle_emojis_response(app, r);
             return;
         }
+        // Background image preview downloads — routed by variant (no
+        // `in_flight` ticket; many run concurrently while the user works).
+        WorkerResponse::PreviewImage(path, r) => {
+            chat::handle_preview_image_response(app, path, r);
+            return;
+        }
         other => other,
     };
 

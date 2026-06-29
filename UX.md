@@ -80,7 +80,15 @@ conversation on normal terminals.
     **wrapped** to the panel width preserving styles (`conversation::wrap_runs`)
     instead of being cut off — `@mentions` are highlighted in the same pass.
     There is **no standalone full-screen conversation screen** — the unified
-    Home is the only chat surface.
+    Home is the only chat surface. **Image attachments render inline**: the
+    filename + size/type sit above a thumbnail painted with the terminal's
+    image protocol (kitty/sixel/iterm) or `chafa` symbols as a fallback
+    (`tui::image`, `image_protocol` setting, `auto` by default; `off` disables).
+    The file is downloaded once to `$XDG_CACHE_HOME/secretbase/images`
+    (`{conv}-{msg}.ext`, background via the worker), a `⏳ loading…` placeholder
+    holds the row meanwhile, and the run loop paints the cached graphic over the
+    reserved rows — repainting only when the visible set/positions change, with
+    a per-`(path,size)` chafa-output cache so scrolling is cheap.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom). When focused
   (`Focus::CmdLog`) it is a **visual multi-select**: a `▶` cursor walks the

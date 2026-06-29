@@ -32,6 +32,10 @@ pub struct UserSettings {
     /// devices, deletions, status changes), so it can be infrequent.
     /// `0` disables it.
     pub inbox_refresh_secs: u64,
+    /// Which terminal image protocol to use for inline image attachments:
+    /// `auto` (detect), `kitty`, `sixel`, `iterm`, `symbols` (chafa ANSI), or
+    /// `off` to disable. Every path shells out to `chafa`.
+    pub image_protocol: String,
 }
 
 impl Default for UserSettings {
@@ -42,6 +46,7 @@ impl Default for UserSettings {
             download_timeout_secs: 300,
             auto_mark_read: true,
             inbox_refresh_secs: 180,
+            image_protocol: "auto".to_string(),
         }
     }
 }

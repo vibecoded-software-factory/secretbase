@@ -19,6 +19,7 @@ pub mod app;
 pub mod debug_log;
 pub mod file_picker;
 pub mod flows;
+pub mod image;
 pub mod input;
 pub mod mouse_areas;
 pub mod screens;
@@ -127,6 +128,10 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
     let mut done_ticks: u8 = 0;
     let mut last_size = terminal.size()?;
     let mut prev_overlay = false;
+    // Image rects painted last frame — repaint only when the visible set or
+    // their positions change (scroll, download, resize) so the graphics don't
+    // flicker on every idle redraw.
+    let mut last_img: Vec<(ratatui::layout::Rect, String)> = Vec::new();
 
     loop {
         let size = terminal.size()?;
@@ -147,6 +152,28 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
         app.last_terminal_size = (size.width, size.height);
 
         terminal.draw(|frame| view::draw(frame, app))?;
+
+        // Inline image thumbnails: the view reserved their rows + recorded the
+        // visible rects; enqueue any pending downloads, then paint the ready
+        // ones over the reserved region (skipped while an overlay covers the
+        // chat, so graphics don't bleed over popups).
+        flows::chat::ensure_visible_images(app);
+        let want_images = app.image_proto.is_some() && !app.has_overlay();
+        let target: Vec<(ratatui::layout::Rect, String)> = if want_images {
+            app.image_areas.clone()
+        } else {
+            Vec::new()
+        };
+        if target != last_img || app.image_dirty {
+            let _ = image::clear();
+            if let Some(proto) = app.image_proto {
+                for (rect, path) in &target {
+                    let _ = image::render_into(&mut app.image_render_cache, proto, *rect, path);
+                }
+            }
+            last_img = target;
+            app.image_dirty = false;
+        }
 
         // Drain any worker response that arrived since the last
         // tick — non-blocking. The match in `apply_response` handles

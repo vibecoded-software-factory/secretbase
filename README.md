@@ -135,6 +135,8 @@ clipboard_clear_secs = 30          # clipboard auto-clear (0 disables)
 list_inbox_timeout_secs = 30       # wall-clock budget for `keybase chat api list`
 download_timeout_secs = 300        # wall-clock budget for attachment downloads
 auto_mark_read = true              # mark conversations as read when opened
+image_protocol = "auto"            # inline image attachments: auto | kitty | sixel
+                                    # | iterm | symbols | off  (all via `chafa`)
 
 [theme]
 name         = "nord"              # bundled preset: nord (default),
@@ -144,6 +146,10 @@ inactive     = "#6c7086"
 selected_bg  = "#313244"
 # … see src/tui/theme.rs for the full key list
 ```
+
+Inline image thumbnails require the **`chafa`** binary on `PATH` (it emits the
+kitty/sixel/iterm graphics or ANSI symbols); without it, image attachments fall
+back to their filename/size text. Set `image_protocol = "off"` to disable.
 
 Pick a bundled palette with `name`, then override individual keys if you want.
 Omitting `name` keeps the default (Nord with terminal-inherited text). You can

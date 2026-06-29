@@ -1701,6 +1701,88 @@ pub fn request_download_to(
     });
 }
 
+/// Cache directory for downloaded inline-preview images
+/// (`$XDG_CACHE_HOME/secretbase/images`, falling back to `~/.cache` / tmp).
+pub fn image_cache_dir() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("secretbase").join("images")
+}
+
+/// Stable cache path for an attachment image, `{conv}-{msg}.{ext}` — unique
+/// per conversation so per-conversation message ids can't collide.
+pub fn image_path_for(conv_id: &str, msg_id: u64, filename: &str) -> String {
+    let ext = std::path::Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("img");
+    image_cache_dir()
+        .join(format!("{conv_id}-{msg_id}.{ext}"))
+        .to_string_lossy()
+        .to_string()
+}
+
+/// Enqueues background downloads for every visible image that isn't already
+/// cached, in flight, or known-failed. Called from the run loop after each
+/// draw (the view fills `image_to_fetch` with `(message_id, cache path)`).
+pub fn ensure_visible_images(app: &mut App) {
+    if app.image_to_fetch.is_empty() {
+        return;
+    }
+    let to_fetch = std::mem::take(&mut app.image_to_fetch);
+    let Some(conv_id) = app.open_conv_id.clone() else {
+        return;
+    };
+    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
+        return;
+    };
+    let Ok(channel) = read_channel_from_conv(conv) else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(image_cache_dir());
+    for (msg_id, output) in to_fetch {
+        if app.image_ready.contains(&output)
+            || app.image_pending.contains(&output)
+            || app.image_failed.contains(&output)
+        {
+            continue;
+        }
+        // Reuse a file fetched in an earlier session rather than re-downloading.
+        if std::path::Path::new(&output).exists() {
+            app.image_ready.insert(output);
+            app.image_dirty = true;
+            continue;
+        }
+        app.image_pending.insert(output.clone());
+        let _ = app.worker_tx.send(WorkerRequest::PreviewImage {
+            channel: channel.clone(),
+            message_id: msg_id,
+            output,
+        });
+    }
+}
+
+/// Applies a finished background image download: mark the cache path ready (or
+/// failed) and flag a repaint.
+pub fn handle_preview_image_response(
+    app: &mut App,
+    path: String,
+    result: Result<(), KeybaseError>,
+) {
+    app.image_pending.remove(&path);
+    match result {
+        Ok(()) => {
+            app.image_ready.insert(path);
+        }
+        Err(_) => {
+            app.image_failed.insert(path);
+        }
+    }
+    app.image_dirty = true;
+}
+
 pub fn handle_download_attachment_response(
     app: &mut App,
     result: Result<(), KeybaseError>,

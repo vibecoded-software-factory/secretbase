@@ -143,6 +143,14 @@ pub enum WorkerRequest {
         message_id: u64,
         output: String,
     },
+    /// Background download of an image attachment to a cache path for inline
+    /// rendering. Carries `message_id` so the response can be matched back to
+    /// the right attachment (many run concurrently).
+    PreviewImage {
+        channel: ReadChannel,
+        message_id: u64,
+        output: String,
+    },
     UploadAttachment {
         channel: ReadChannel,
         filename: String,
@@ -180,6 +188,9 @@ pub enum WorkerResponse {
     PinMessage(Result<(), KeybaseError>),
     UnpinMessage(Result<(), KeybaseError>),
     DownloadAttachment(Result<(), KeybaseError>),
+    /// The cache **path** + the download result (the path is carried even on
+    /// error so the failure can be pinned to the right attachment).
+    PreviewImage(String, Result<(), KeybaseError>),
     UploadAttachment(Result<(), KeybaseError>),
     Emojis(Result<Vec<Emoji>, KeybaseError>),
     ListSelfMemberships(Result<ListTeamsOk, KeybaseError>),
@@ -545,6 +556,7 @@ mod tests {
                 Self::PinMessage(r) => write!(f, "PinMessage({r:?})"),
                 Self::UnpinMessage(r) => write!(f, "UnpinMessage({r:?})"),
                 Self::DownloadAttachment(r) => write!(f, "DownloadAttachment({r:?})"),
+                Self::PreviewImage(p, r) => write!(f, "PreviewImage({p}, {r:?})"),
                 Self::UploadAttachment(r) => write!(f, "UploadAttachment({r:?})"),
                 Self::Emojis(_) => f.write_str("Emojis(..)"),
                 Self::ListSelfMemberships(_) => f.write_str("ListSelfMemberships(..)"),
@@ -642,6 +654,14 @@ fn run_worker(
             } => WorkerResponse::DownloadAttachment(run_caught(|| {
                 keybase.download_attachment(&channel, message_id, &output)
             })),
+            WorkerRequest::PreviewImage {
+                channel,
+                message_id,
+                output,
+            } => WorkerResponse::PreviewImage(
+                output.clone(),
+                run_caught(|| keybase.download_attachment(&channel, message_id, &output)),
+            ),
             WorkerRequest::UploadAttachment {
                 channel,
                 filename,

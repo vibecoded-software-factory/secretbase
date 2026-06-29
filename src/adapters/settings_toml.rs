@@ -163,6 +163,7 @@ impl SettingsPort for TomlSettingsAdapter {
             download_timeout_secs: DEFAULT_DOWNLOAD_TIMEOUT_SECS,
             auto_mark_read: true,
             inbox_refresh_secs: DEFAULT_INBOX_REFRESH_SECS,
+            image_protocol: "auto".to_string(),
         };
         let Ok(text) = fs::read_to_string(self.file()) else {
             return cfg;
@@ -223,6 +224,9 @@ impl SettingsPort for TomlSettingsAdapter {
                     if let Ok(n) = value.parse::<u64>() {
                         cfg.inbox_refresh_secs = n;
                     }
+                }
+                "image_protocol" if !value.is_empty() => {
+                    cfg.image_protocol = value.to_ascii_lowercase();
                 }
                 _ => {}
             }
@@ -306,6 +310,7 @@ impl UpdateBuffer {
         "download_timeout_secs",
         "auto_mark_read",
         "inbox_refresh_secs",
+        "image_protocol",
     ];
 
     fn parse(text: &str) -> Self {

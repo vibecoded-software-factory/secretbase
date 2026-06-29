@@ -467,6 +467,31 @@ pub struct App {
     /// when the listener couldn't spawn (e.g. logged out at launch).
     pub chat_rx: Option<Receiver<ChatEvent>>,
 
+    // ── Inline image attachments (chafa / kitty …) ────────────────────────
+    // Keyed by the on-disk cache **path** (`{conv}-{msg}.ext`), not the message
+    // id — Keybase numbers message ids per conversation, so an id alone would
+    // collide across chats.
+    /// Resolved image protocol, or `None` when images are disabled / no
+    /// terminal support configured. Set once at boot from settings.
+    pub image_proto: Option<crate::tui::image::ImgProto>,
+    /// Cache paths that finished downloading and are ready to paint.
+    pub image_ready: HashSet<String>,
+    /// Downloads currently in flight (cache paths).
+    pub image_pending: HashSet<String>,
+    /// Downloads that failed — show the text fallback, don't retry.
+    pub image_failed: HashSet<String>,
+    /// Screen rects + cache paths of the **ready** images visible this frame
+    /// (rebuilt every render), painted by the run loop after the text draw.
+    pub image_areas: Vec<(ratatui::layout::Rect, String)>,
+    /// Visible images still needing a download `(message_id, cache path)` —
+    /// drained by the run loop, which enqueues the background fetches.
+    pub image_to_fetch: Vec<(u64, String)>,
+    /// Set when the visible image set / positions changed and the graphics
+    /// need repainting (scroll, new download, resize…).
+    pub image_dirty: bool,
+    /// Cache of chafa output bytes per `(path, cols, rows)`.
+    pub image_render_cache: crate::tui::image::RenderCache,
+
     // ── Injected ports (synchronous, stay on the render thread) ───────────
     pub clipboard: Box<dyn ClipboardPort>,
     pub opener: Box<dyn OpenerPort>,
@@ -491,6 +516,7 @@ impl App {
         settings: Box<dyn SettingsPort>,
     ) -> Self {
         let settings_cache = settings.read();
+        let image_proto = crate::tui::image::resolve(&settings_cache.image_protocol);
         let theme = theme::load(&settings.config_dir());
         // Preselect the picker on the configured preset, else the shared
         // default (Nord).
@@ -572,6 +598,14 @@ impl App {
             cmdlog_anchor: None,
             pending_pane_nav: false,
             settings_cache,
+            image_proto,
+            image_ready: HashSet::new(),
+            image_pending: HashSet::new(),
+            image_failed: HashSet::new(),
+            image_areas: Vec::new(),
+            image_to_fetch: Vec::new(),
+            image_dirty: false,
+            image_render_cache: crate::tui::image::RenderCache::default(),
             theme: theme.clone(),
             settings_focus: SettingsFocus::Sidebar,
             settings_section: 0,

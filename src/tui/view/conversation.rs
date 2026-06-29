@@ -325,6 +325,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     let mut selected_line: Option<usize> = None;
     // Line span [start, end) each message occupies, for click-to-select.
     let mut spans_map: Vec<(usize, usize, usize)> = Vec::with_capacity(app.messages.len());
+    // Absolute (line, rows, msg_id, cache path) reservations for inline images.
+    let mut img_reservations: Vec<(usize, u16, u64, String)> = Vec::new();
     for (idx, m) in app.messages.iter().enumerate() {
         let start = lines.len();
         let is_selected = app.selected_msg_idx == Some(idx);
@@ -334,17 +336,27 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         if is_selected {
             selected_line = Some(start);
         }
-        let mut block = message_lines(m, now_s, app, &t, body_width);
+        let mut local_img: Vec<ImgReservation> = Vec::new();
+        let mut block = message_lines(m, now_s, app, &t, body_width, &mut local_img);
+        // Block-relative row ranges occupied by image thumbnails — these stay
+        // unshaded so the selection background doesn't paint over the graphic.
+        let img_ranges: Vec<(usize, usize)> = local_img
+            .iter()
+            .map(|r| (r.block_offset, r.block_offset + r.rows as usize))
+            .collect();
+        for r in local_img.drain(..) {
+            img_reservations.push((start + r.block_offset, r.rows, r.msg_id, r.path));
+        }
         if is_selected || is_marked {
-            for line in &mut block {
-                let bg = t.selected_bg;
+            let bg = t.selected_bg;
+            for (li, line) in block.iter_mut().enumerate() {
+                if img_ranges.iter().any(|&(s, e)| li >= s && li < e) {
+                    continue;
+                }
                 line.spans = line
                     .spans
                     .iter()
-                    .map(|s| {
-                        let style = s.style.bg(bg);
-                        Span::styled(s.content.clone(), style)
-                    })
+                    .map(|s| Span::styled(s.content.clone(), s.style.bg(bg)))
                     .collect();
             }
         }
@@ -377,6 +389,37 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             scroll_y = sel;
         } else if sel >= scroll_y + viewport {
             scroll_y = sel + 1 - viewport;
+        }
+    }
+
+    // Inline images: map each reservation to a screen rect, but only when the
+    // whole thumbnail fits the viewport so the graphic can't overflow the
+    // panel. Ready ones go to `image_areas` (the run loop paints them); the
+    // rest queue a background download (`image_to_fetch`).
+    app.image_areas.clear();
+    app.image_to_fetch.clear();
+    if app.image_proto.is_some() {
+        let img_w = (body_width.saturating_sub(4)).clamp(10, 60) as u16;
+        let img_x = area.x + 1 + 4;
+        for (abs, rows, msg_id, path) in img_reservations {
+            if abs < scroll_y {
+                continue;
+            }
+            let rel = abs - scroll_y;
+            if rel + rows as usize > viewport {
+                continue;
+            }
+            let rect = Rect {
+                x: img_x,
+                y: area.y + 1 + rel as u16,
+                width: img_w,
+                height: rows,
+            };
+            if app.image_ready.contains(&path) {
+                app.image_areas.push((rect, path));
+            } else if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
+                app.image_to_fetch.push((msg_id, path));
+            }
         }
     }
 
@@ -506,12 +549,29 @@ fn outbox_lines(
     lines
 }
 
+/// A block-relative reservation of blank rows for an inline image, recorded by
+/// [`message_lines`] and mapped to a screen rect (after scroll) by the caller.
+struct ImgReservation {
+    /// Index of the first graphic row within the message's block.
+    block_offset: usize,
+    /// Number of rows reserved for the image.
+    rows: u16,
+    /// Message id the image belongs to (to enqueue its download).
+    msg_id: u64,
+    /// On-disk cache path for the image.
+    path: String,
+}
+
+/// Reserved height (rows) for an inline image thumbnail.
+const IMAGE_ROWS: u16 = 12;
+
 fn message_lines(
     m: &Message,
     now_s: u64,
     app: &App,
     t: &crate::tui::theme::Theme,
     width: usize,
+    img_res: &mut Vec<ImgReservation>,
 ) -> Vec<Line<'static>> {
     let is_system = matches!(
         m.content,
@@ -560,7 +620,60 @@ fn message_lines(
     if let Some(target) = m.reply_to {
         lines.push(reply_quote_line(target, app, t, width));
     }
-    lines.extend(body_lines(&m.content, t, width, &m.mentions));
+    // Inline image attachment: the filename above, then reserved rows the run
+    // loop paints the thumbnail into (kitty / sixel / chafa). Falls back to the
+    // normal attachment text when images are off or the download failed.
+    let mut rendered_image = false;
+    if let MessageContent::Attachment(att) = &m.content
+        && app.image_proto.is_some()
+        && crate::tui::image::is_image(&att.mime_type, &att.filename)
+    {
+        let conv_id = app.open_conv_id.as_deref().unwrap_or("");
+        let path = crate::tui::flows::chat::image_path_for(conv_id, m.id, &att.filename);
+        // A failed download drops through to the normal attachment text.
+        if !app.image_failed.contains(&path) {
+            // Name above the photo, size + type on a dim line below.
+            lines.push(Line::from(Span::styled(
+                format!("    🖼 {}", att.filename),
+                Style::default()
+                    .fg(t.conv_team)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            let mime = if att.mime_type.is_empty() {
+                "image".to_string()
+            } else {
+                att.mime_type.clone()
+            };
+            lines.push(Line::from(Span::styled(
+                format!("      {} · {mime}", format_size(att.size)),
+                Style::default().fg(t.dim),
+            )));
+            let block_offset = lines.len();
+            if app.image_ready.contains(&path) {
+                for _ in 0..IMAGE_ROWS {
+                    lines.push(Line::from(Span::raw("")));
+                }
+            } else {
+                lines.push(Line::from(Span::styled(
+                    "      ⏳ loading image…",
+                    Style::default().fg(t.dim),
+                )));
+                for _ in 1..IMAGE_ROWS {
+                    lines.push(Line::from(Span::raw("")));
+                }
+            }
+            img_res.push(ImgReservation {
+                block_offset,
+                rows: IMAGE_ROWS,
+                msg_id: m.id,
+                path,
+            });
+            rendered_image = true;
+        }
+    }
+    if !rendered_image {
+        lines.extend(body_lines(&m.content, t, width, &m.mentions));
+    }
     if !m.reactions.is_empty() {
         lines.push(reactions_line(&m.reactions, app, t, width));
     }
