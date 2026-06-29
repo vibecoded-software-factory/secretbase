@@ -299,8 +299,8 @@ Rules:
   may be `Min`.
 - Row-level color overrides are per `Cell` (unread `conv_unread`, members-type
   tag `conv_dm` / `conv_team`, team role color).
-- Map mouse clicks with `widgets::table_row_at(rect, y, scroll, len)` (via
-  `input::common::list_click`).
+- Map mouse clicks with `widgets::table_row_at(rect, y, scroll, len)` (called
+  from `input::mouse`).
 - Truncate an overflowing primary column with `widgets::middle_ellipsis`
   (head-biased, UTF-8 safe).
 
@@ -311,14 +311,17 @@ exceptions (custom `Paragraph` / `List`).
 ## List state convention (`App`)
 
 The inbox keeps: `filtered_cache: Vec<usize>` (indices into `conversations`
-surviving the active filter + search), `search: LineEditor`, `list_selected`
-(indexes the **filtered** cache), `list_scroll`. Rebuild via
-`rebuild_filter()`; ranking is `domain::search::fuzzy_score_lowered` over the
-pre-lowercased `LoweredConversation` projection (channel 100, topic 60,
-creator 20), then sorted most-recent-first by `active_at_ms`.
-`rebuild_lowered` refreshes the projection + per-filter counts once per load.
-`clamp_list_selected` runs in `draw` so the selection and the `· N of M`
-title never disagree. Selection always indexes the filtered cache.
+surviving the active filter + search), `search: LineEditor`, `tree_selected`
+(the cursor into the visible `tree_rows()`), `list_scroll` (the tree's scroll
+offset). Rebuild via `rebuild_filter()`; ranking is
+`domain::search::fuzzy_score_lowered` over the pre-lowercased
+`LoweredConversation` projection (channel 100, topic 60, creator 20), then
+sorted most-recent-first by `active_at_ms`. `rebuild_lowered` refreshes the
+projection + per-filter counts once per load. `rebuild_filter` re-seats
+`tree_selected` on the first conversation row; `handle_load_inbox_response`
+then restores it onto the same conversation **by id** so a background resync
+doesn't yank the cursor. `tree_selected` only ever indexes `tree_rows()` via
+`.get()`, so it can never point out of bounds.
 
 ## Chrome & widgets (`view::widgets` + `view::mod`)
 

@@ -16,22 +16,29 @@ top.
 
 ## Status
 
-**v0.1.0 — MVP**
+**v0.1.0**
 
-End-to-end feature working: **chat inbox list** (read-only).
+A working terminal client for everyday Keybase chat. Highlights:
 
-* `keybase status --json` on boot to detect the session.
-* `keybase chat api {"method":"list"}` to load conversations.
+* `keybase status --json` on boot to detect the session; logout with
+  confirmation.
 * Discord-style unified two-pane Home: a collapsible **conversation tree**
   (Direct messages + a group per team; unread in bold) on the left, the open
   **chat** on the right; the header search fuzzy-filters the tree.
-* Local fuzzy search (channel name, topic name, creator).
-* Mark conversation as read (`m`).
-* Copy conversation label to clipboard (`y`).
-* Logout flow with confirmation.
-
-The rest of Chat + Teams is **scaffolded but not yet wired** — see
-[`ROADMAP.md`](ROADMAP.md) for the planned next steps.
+* **Real-time** updates over `keybase chat api-listen` — incoming messages
+  append live and bump the inbox; the periodic `list` is only a safety-net
+  resync.
+* **Compose & message actions**: send (multi-line), edit / delete / react /
+  pin / reply, optimistic send with resend-on-failure, `@`-mention
+  autocomplete, inline markdown (`*bold*`, `_italic_`, `~strike~`,
+  `` `code` ``, fenced blocks, quotes).
+* **Attachments**: upload via the built-in file picker, download to a chosen
+  folder, and inline image thumbnails / animated-GIF playback via `chafa`.
+* **Search**: local fuzzy filter, server-side inbox search (`Ctrl+G`),
+  in-conversation regexp search (`Ctrl+F`), and a quick switcher (`Ctrl+K`).
+* **Teams**: list your memberships with role and member count (`Alt+T`).
+* New conversation (`Alt+N`), mark read, mute / unmute, ignore, copy label.
+* Live-previewing **theme** picker in Settings (`F9`).
 
 ## Requirements
 
@@ -135,6 +142,8 @@ clipboard_clear_secs = 30          # clipboard auto-clear (0 disables)
 list_inbox_timeout_secs = 30       # wall-clock budget for `keybase chat api list`
 download_timeout_secs = 300        # wall-clock budget for attachment downloads
 auto_mark_read = true              # mark conversations as read when opened
+inbox_refresh_secs = 180           # safety-net inbox resync cadence (0 disables;
+                                    # real-time updates come from api-listen)
 image_protocol = "auto"            # inline image attachments: auto | kitty | sixel
                                     # | iterm | symbols | off  (all via `chafa`)
 image_symbols = "sextant+block+space"  # chafa --symbols set (symbol path only):
@@ -172,7 +181,7 @@ src/
 │   ├── message.rs          # Message + MessageContent variants
 │   ├── team.rs             # TeamMembership, TeamRole
 │   ├── identity.rs         # IdentityInfo (keybase status)
-│   ├── filter.rs           # StatusFilter (All/Unread) + InboxSource (DMs/team)
+│   ├── filter.rs           # StatusFilter (All/Unread)
 │   ├── search.rs           # Fuzzy ranking
 │   └── validation.rs       # username validators
 ├── ports/                  # trait abstractions
@@ -203,7 +212,7 @@ src/
 ## Testing
 
 ```sh
-cargo test          # ~150 unit tests
+cargo test          # ~330 unit tests
 cargo clippy --all-targets -- -D warnings
 ```
 

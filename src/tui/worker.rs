@@ -32,7 +32,7 @@
 //! ## No tokio
 //!
 //! This is `std::thread` + `std::sync::mpsc`, deliberately. The
-//! project rule (`ROADMAP.md`) forbids a background async runtime —
+//! project rule (`CLAUDE.md`) forbids a background async runtime —
 //! the worker thread costs ~80 KB of stack and zero runtime overhead.
 
 use std::panic::AssertUnwindSafe;

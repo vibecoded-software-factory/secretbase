@@ -77,9 +77,10 @@ restrained night-sky splash. When in doubt, reuse the documented component.
      Any new screen/keybinding must be added to the matching section.
    - List filtering follows the `App::filtered_cache: Vec<usize>` +
      `search: LineEditor` + `rebuild_filter()` convention, ranked with
-     `domain::search::fuzzy_score` over the pre-lowercased
-     `LoweredConversation` projection. Selection (`list_selected`) indexes
-     the **filtered** cache, never the raw `conversations` vec.
+     `domain::search::fuzzy_score_lowered` over the pre-lowercased
+     `LoweredConversation` projection. The tree cursor (`tree_selected`)
+     indexes the visible `tree_rows()`, which are built from the **filtered**
+     cache, never the raw `conversations` vec.
    - Global keys are consistent across screens (`/` focus search, `Esc`
      back, `F1` help, `Tab` cycle focus). **Only `Ctrl+C` quits**
      (everything else is free for navigation / type-to-search). Per-list
@@ -215,8 +216,8 @@ main ──► tui ──► flows ──► ports ◄── adapters
 ```
 
 - `src/domain/` — pure types and rules, no I/O (e.g. `Conversation`,
-  `Message`/`MessageContent`, `TeamMembership`, `ConversationFilter`,
-  `fuzzy_score`/`LoweredConversation`, validators).
+  `Message`/`MessageContent`, `TeamMembership`, `StatusFilter`,
+  `fuzzy_score_lowered`/`LoweredConversation`, validators).
 - `src/ports/` — trait abstractions: `KeybasePort`, `ClipboardPort`,
   `SettingsPort`, `KeybaseError`.
 - `src/adapters/` — the only layer allowed to do I/O: `keybase_cli/`
@@ -236,7 +237,7 @@ main ──► tui ──► flows ──► ports ◄── adapters
   - `input/` — per-screen keyboard handlers (wired in `input/mod.rs`) +
     `mouse.rs`; shared mechanics in `input/common.rs` (`clamp_move`,
     `cycle_focus`, `busy_blocks`, `route_line_editor`, `search_key`,
-    `confirm_key`, `list_click`) + list `nav.rs`. New handlers delegate here.
+    `confirm_key`). New handlers delegate here.
   - `view/` — per-screen Ratatui renderers (router in `view/mod.rs::draw`,
     which owns `split_main` + `titled_block`) + the shared `list_table` and
     chrome in `view/widgets.rs`; `theme.rs`, `logo.rs`, `starfield.rs`
