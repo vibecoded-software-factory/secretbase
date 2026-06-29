@@ -1877,6 +1877,38 @@ fn mark_read_falls_back_to_zero_when_no_messages_loaded() {
     assert_eq!(st.mark_reads, vec![0]);
 }
 
+#[test]
+fn mark_read_clears_the_tree_selected_conversation_not_list_selected() {
+    // Regression: mark-read used to flip `unread` on
+    // `filtered_cache[list_selected]`, but the tree cursor
+    // (`tree_selected`) — what `selected_conversation` reads — is a
+    // different index that `list_selected` no longer tracks. The two
+    // disagreeing meant the wrong row's badge cleared (and an oversized
+    // `list_selected` could panic). It must clear the tree-selected row.
+    let mut rig = build_rig();
+    let mut c1 = conv("c1", "alice", MembersType::ImpTeamNative);
+    c1.unread = true;
+    let mut c2 = conv("c2", "bob", MembersType::ImpTeamNative);
+    c2.unread = true;
+    // Seats the tree cursor on c2.
+    preload_inbox(&mut rig.app, &rig.mock, vec![c1, c2], "c2");
+    // Force the legacy list cursor to a *different* row — the exact desync
+    // the bug exploited (the old code would have cleared c1).
+    rig.app.list_selected = 0;
+    request_mark_read(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let unread = |id: &str| {
+        rig.app
+            .conversations
+            .iter()
+            .find(|c| c.id == id)
+            .unwrap()
+            .unread
+    };
+    assert!(!unread("c2"), "tree-selected conversation should be read");
+    assert!(unread("c1"), "the other conversation must stay unread");
+}
+
 // ── Render perf smoke (manual: `cargo test -- --ignored`) ──────────
 
 /// Runs the full TUI render `iterations` times against an in-memory

@@ -118,8 +118,8 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
             chat::handle_load_older_messages_response(app, r);
         }
         // ── Mark read ─────────────────────────────────────────────
-        (InFlight::MarkRead { conv_idx }, WorkerResponse::MarkRead(r)) => {
-            chat::handle_mark_read_response(app, r, conv_idx);
+        (InFlight::MarkRead { conv_id }, WorkerResponse::MarkRead(r)) => {
+            chat::handle_mark_read_response(app, r, conv_id);
         }
         // ── Search inbox ──────────────────────────────────────────
         (InFlight::SearchInboxRemote, WorkerResponse::SearchInboxHits(r)) => {

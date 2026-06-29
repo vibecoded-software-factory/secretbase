@@ -159,11 +159,17 @@ pub fn request_mark_read(app: &mut App) {
         Some(id) if id == this_conv_id => app.messages.last().map(|m| m.id).unwrap_or(0),
         _ => 0,
     };
-    let conv_idx = app.filtered_cache[app.list_selected];
     let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
         return;
     };
-    if !app.begin(InFlight::MarkRead { conv_idx }) {
+    // Carry the conversation *id* (not a `filtered_cache` index): the row
+    // being marked is the tree-selected one, which `list_selected` no
+    // longer tracks, and a background inbox refresh can reorder/replace
+    // `conversations` before the response lands — an index would then flip
+    // `unread` on the wrong row (or be out of bounds).
+    if !app.begin(InFlight::MarkRead {
+        conv_id: this_conv_id,
+    }) {
         return;
     }
     app.set_action(ActionState::Running("Marking as read…".into()));
@@ -173,10 +179,10 @@ pub fn request_mark_read(app: &mut App) {
     });
 }
 
-pub fn handle_mark_read_response(app: &mut App, result: Result<(), KeybaseError>, conv_idx: usize) {
+pub fn handle_mark_read_response(app: &mut App, result: Result<(), KeybaseError>, conv_id: String) {
     match result {
         Ok(()) => {
-            if let Some(c) = app.conversations.get_mut(conv_idx) {
+            if let Some(c) = app.conversations.iter_mut().find(|c| c.id == conv_id) {
                 c.unread = false;
             }
             // Refresh the lowered cache + per-filter counts so the

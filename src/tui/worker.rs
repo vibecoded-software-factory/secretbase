@@ -214,7 +214,7 @@ pub enum InFlight {
     LoadMessages,
     LoadOlderMessages,
     MarkRead {
-        conv_idx: usize,
+        conv_id: String,
     },
     SearchInboxRemote,
     ConvSearch,
