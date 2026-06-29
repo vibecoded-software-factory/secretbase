@@ -19,11 +19,10 @@ pub fn relative_short(secs: u64) -> String {
 
 /// Compact timestamp shown beside the sender (Discord-style): if the message
 /// is from **today** it's a relative age (`now`/`{n}m`/`{n}h`); otherwise it's
-/// the **day + local clock time** (`yest 14:30`, `12/06 14:30`, or
-/// `12/06/24 14:30` for a different year). Empty when the timestamp is unknown
-/// or in the future.
+/// the **full local date + clock with seconds** (`21/04/2025 12:02:34`).
+/// Empty when the timestamp is unknown or in the future.
 pub fn message_time(sent_at_s: u64, now_s: u64) -> String {
-    use chrono::{Datelike, Local, TimeZone};
+    use chrono::{Local, TimeZone};
     if sent_at_s == 0 || now_s == 0 || sent_at_s > now_s {
         return String::new();
     }
@@ -36,15 +35,8 @@ pub fn message_time(sent_at_s: u64, now_s: u64) -> String {
     if sent.date_naive() == now.date_naive() {
         return relative_short(now_s - sent_at_s);
     }
-    let hm = sent.format("%H:%M");
-    let days = (now.date_naive() - sent.date_naive()).num_days();
-    if days == 1 {
-        format!("yest {hm}")
-    } else if sent.year() == now.year() {
-        sent.format("%d/%m %H:%M").to_string()
-    } else {
-        sent.format("%d/%m/%y %H:%M").to_string()
-    }
+    // Older than today → full day/month/year + hours:minutes:seconds.
+    sent.format("%d/%m/%Y %H:%M:%S").to_string()
 }
 
 #[cfg(test)]
@@ -76,5 +68,17 @@ mod tests {
         assert_eq!(message_time(now - 3, now), "now");
         assert_eq!(message_time(now - 42, now), "now");
         assert_eq!(message_time(now - 90, now), "1m");
+    }
+
+    #[test]
+    fn message_time_older_is_full_date_with_seconds() {
+        // A timestamp days earlier renders as DD/MM/YYYY HH:MM:SS — full year
+        // and seconds (exact digits depend on the local timezone).
+        let sent = 1_700_000_000; // 2023
+        let now = sent + 10 * 86_400; // ten days later
+        let s = message_time(sent, now);
+        assert_eq!(s.matches(':').count(), 2, "{s} should carry seconds");
+        assert_eq!(s.matches('/').count(), 2, "{s} should be day/month/year");
+        assert!(s.contains("/2023 "), "{s} should carry the full year");
     }
 }
