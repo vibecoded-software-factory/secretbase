@@ -218,8 +218,10 @@ fn run_chafa(proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<Ve
         proto.chafa_format(),
         "--size",
         &size,
-        // Quality: ordered dithering smooths gradients and the din99d colour
-        // space quantises perceptually (ignored by truecolor kitty/sixel).
+        // Quality: max effort on symbol/colour selection, ordered dithering to
+        // smooth gradients, and the din99d colour space for perceptual
+        // quantisation (the last two are ignored by truecolor kitty/sixel).
+        "--work=9",
         "--dither=ordered",
         "--color-space=din99d",
     ];
