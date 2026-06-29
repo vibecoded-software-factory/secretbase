@@ -1057,10 +1057,21 @@ fn render_text_body(
     let mut fence: Option<(String, Vec<String>)> = None;
     for l in body.lines() {
         // A ``` line opens or closes a fenced code block (the marker is hidden).
-        if let Some(info) = l.trim_start().strip_prefix("```") {
-            match fence.take() {
-                Some((lang, code)) => push_code_block(&mut lines, &code, &lang, wrap_w, t),
-                None => fence = Some((info.trim().to_string(), Vec::new())),
+        if let Some(after) = l.trim_start().strip_prefix("```") {
+            if let Some((lang, code)) = fence.take() {
+                // Closing fence → flush the accumulated block.
+                push_code_block(&mut lines, &code, &lang, wrap_w, t);
+            } else if let Some(close) = after.rfind("```") {
+                // A single-line ```lang code``` is a one-line code block, not a
+                // multi-line fence — render it now. Treated as a fence opener it
+                // would capture no content and emit nothing, so the whole
+                // message body rendered invisibly.
+                let (lang, code) = split_inline_fence(&after[..close]);
+                push_code_block(&mut lines, std::slice::from_ref(&code), &lang, wrap_w, t);
+            } else {
+                // Opening a multi-line fence; only the first token is the language.
+                let lang = after.split_whitespace().next().unwrap_or("").to_string();
+                fence = Some((lang, Vec::new()));
             }
             continue;
         }
@@ -1093,7 +1104,41 @@ fn render_text_body(
     if let Some((lang, code)) = fence.take() {
         push_code_block(&mut lines, &code, &lang, wrap_w, t);
     }
+    // Safety net: a non-empty body must never render to nothing (e.g. a
+    // malformed or empty fence). Fall back to the raw text so the message is
+    // never invisible.
+    if lines.is_empty() {
+        for raw in body.lines() {
+            lines.push(Line::from(vec![
+                Span::raw("    "),
+                Span::raw(raw.to_string()),
+            ]));
+        }
+        if lines.is_empty() {
+            lines.push(Line::from(Span::raw("    ")));
+        }
+    }
     lines
+}
+
+/// Splits the inner text of a single-line ```…``` fence into `(language, code)`.
+/// The first whitespace-delimited token is taken as the language only when it
+/// looks like a language tag and code follows it (so ```rust foo``` →
+/// `("rust", "foo")`); otherwise the whole thing is code with no language (so
+/// ```{"a":1}``` stays intact and just renders flat).
+fn split_inline_fence(inner: &str) -> (String, String) {
+    let trimmed = inner.trim();
+    if let Some((first, rest)) = trimmed.split_once(char::is_whitespace) {
+        let rest = rest.trim_start();
+        let looks_like_lang = !first.is_empty()
+            && first
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '#' | '-' | '_'));
+        if looks_like_lang && !rest.is_empty() {
+            return (first.to_string(), rest.to_string());
+        }
+    }
+    (String::new(), trimmed.to_string())
 }
 
 /// Renders a whole fenced code block. When the fence named a language
@@ -1456,6 +1501,67 @@ mod tests {
         assert!(
             colors.len() > 3,
             "expected multiple token colours from syntect, got {colors:?}"
+        );
+    }
+
+    #[test]
+    fn single_line_fence_is_not_invisible() {
+        // Regression: ```json {"ok": true}``` on ONE line used to open a fence
+        // that captured no content and rendered zero lines — an invisible
+        // message body.
+        let t = crate::tui::theme::Theme::default();
+        let lines = render_text_body("```json {\"ok\": true}```", &t, 60, &[]);
+        assert!(
+            !lines.is_empty(),
+            "a single-line fence must render something"
+        );
+        let text: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            text.contains("{\"ok\": true}"),
+            "code must be visible: {text:?}"
+        );
+        assert!(!text.contains("```"), "fence markers stay hidden: {text:?}");
+    }
+
+    #[test]
+    fn single_line_fence_without_language_renders_flat() {
+        let t = crate::tui::theme::Theme::default();
+        let lines = render_text_body("```{\"a\":1}```", &t, 60, &[]);
+        let text: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(text.contains("{\"a\":1}"), "got {text:?}");
+    }
+
+    #[test]
+    fn malformed_fence_body_is_never_invisible() {
+        // An opening fence with no content and no close must still render
+        // *something* (the raw text), never an empty body.
+        let t = crate::tui::theme::Theme::default();
+        assert!(!render_text_body("```", &t, 60, &[]).is_empty());
+        assert!(!render_text_body("```json", &t, 60, &[]).is_empty());
+    }
+
+    #[test]
+    fn split_inline_fence_extracts_language_or_keeps_code() {
+        assert_eq!(
+            split_inline_fence("json {\"ok\": true}"),
+            ("json".to_string(), "{\"ok\": true}".to_string())
+        );
+        // No language tag → the whole thing is code, kept intact.
+        assert_eq!(
+            split_inline_fence("{\"a\":1}"),
+            (String::new(), "{\"a\":1}".to_string())
+        );
+        assert_eq!(
+            split_inline_fence("{\"a\": 1}"),
+            (String::new(), "{\"a\": 1}".to_string())
         );
     }
 
