@@ -39,7 +39,8 @@ A working terminal client for everyday Keybase chat. Highlights:
   in-conversation regexp search (`Ctrl+F`), and a quick switcher (`Ctrl+K`).
 * **Teams**: list your memberships with role and member count (`Alt+T`).
 * New conversation (`Alt+N`), mark read, mute / unmute, ignore, copy label.
-* Live-previewing **theme** picker in Settings (`F9`).
+* Full **Settings** screen (`F9`): your identity, a live theme picker, and
+  every preference below — edited in place and saved immediately.
 
 ## Requirements
 
@@ -131,11 +132,13 @@ copy detail only · `Esc` clear / leave.
 | Key | Action |
 |---|---|
 | `F1`                    | Toggle help |
-| `F9`                    | Open Settings (Theme preset picker; more sections coming) |
+| `F9`                    | Open Settings |
 | `Ctrl+C`                | Quit |
 
 ## Configuration
 
+Everything below can be edited live from the in-app **Settings** screen
+(`F9`) — changes save to `config.toml` immediately — or by hand in
 `~/.config/secretbase/config.toml`:
 
 ```toml

@@ -170,19 +170,11 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             Screen::Settings => {
                 lines.push(section("Settings (F9)", t));
                 for (k, d) in [
-                    ("Tab", "switch sidebar / panel"),
-                    ("↑/↓ k/j", "move within pane"),
-                    ("→ / Enter", "open section (from sidebar)"),
-                    ("← / h", "back to sidebar (from panel)"),
-                ] {
-                    lines.push(help_line(k, d, t));
-                }
-                lines.push(Line::raw(""));
-                lines.push(section("Theme", t));
-                for (k, d) in [
-                    ("↑/↓", "preview a preset live"),
-                    ("Enter", "apply + save to config.toml"),
-                    ("Esc / F9", "cancel — restore previous theme"),
+                    ("↑/↓", "navigate"),
+                    ("Tab", "sidebar ↔ panel"),
+                    ("←/→", "change setting"),
+                    ("Enter / Space", "toggle · next option"),
+                    ("Esc / F9", "close"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
@@ -248,7 +240,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
     lines.push(section("Global", t));
     for (k, d) in [
         ("F1", "toggle help"),
-        ("F9", "settings (theme…)"),
+        ("F9", "settings"),
         ("↑/↓ j/k", "scroll help"),
         ("q / Esc", "close help"),
         ("Ctrl+C", "quit"),

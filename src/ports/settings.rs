@@ -62,11 +62,11 @@ pub trait SettingsPort {
     /// the file is missing or malformed).
     fn read(&self) -> UserSettings;
 
-    /// Writes the `auto_mark_read` flag.
-    fn write_auto_mark_read(&self, auto: bool);
-
-    /// Writes the `clipboard_clear_secs` value.
-    fn write_clipboard_clear_secs(&self, secs: u64);
+    /// Persists a single top-level `key = value`, preserving every other key
+    /// and section. `value` must already be TOML-formatted by the caller:
+    /// bare for numbers/bools (`30`, `true`), quoted for strings (`"kitty"`).
+    /// Best-effort, like every writer here.
+    fn write_setting(&self, key: &str, value: &str);
 
     /// Persists the chosen theme preset as `name = "<preset>"` inside the
     /// `[theme]` section, preserving every other key (incl. per-color
