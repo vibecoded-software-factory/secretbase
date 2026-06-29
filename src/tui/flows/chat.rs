@@ -253,6 +253,32 @@ fn resolve_channel_or_fail(
     }
 }
 
+/// Resolves the currently-open conversation into the `(conv_id, channel)`
+/// pair a worker call needs. Surfaces the standard errors on the feedback
+/// strip and returns `None` when no conversation is open, it has left the
+/// inbox, or its `members_type` is unsupported — so callers short-circuit
+/// with `let Some((conv_id, channel)) = open_channel(app) else { return; };`.
+///
+/// Collapses the resolution boilerplate every `request_*` for the open
+/// conversation used to repeat. (The inbox-cursor variants
+/// [`request_mark_read`] / [`set_conv_status_request`] resolve from
+/// [`App::selected_conversation`] instead, and [`request_load_messages`]
+/// keeps its own copy because it also recovers the screen state when the
+/// conversation has vanished.)
+fn open_channel(app: &mut App) -> Option<(String, ReadChannel)> {
+    let Some(conv_id) = app.open_conv_id.clone() else {
+        app.set_action(ActionState::Error("No conversation open".into()));
+        return None;
+    };
+    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
+        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
+        return None;
+    };
+    let channel_result = read_channel_from_conv(conv);
+    let channel = resolve_channel_or_fail(app, channel_result)?;
+    Some((conv_id, channel))
+}
+
 // ── Filter / search query helpers (pure, sync) ───────────────────────
 
 /// Cycles the **status** axis (All ↔ Unread) by `delta` and refreshes.
@@ -663,20 +689,10 @@ pub fn request_load_older_messages(app: &mut App) {
         app.set_action(ActionState::Done("No more history".into()));
         return;
     };
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        app.messages_loading_older = false;
-        app.set_action(ActionState::Error("No conversation open".into()));
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.messages_loading_older = false;
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
-        // Channel mapping failed — clear the in-progress flag so the
-        // viewport doesn't get stuck showing "loading older…".
+    let Some((_, channel)) = open_channel(app) else {
+        // No open conversation, it left the inbox, or its type is
+        // unsupported — clear the in-progress flag so the viewport
+        // doesn't get stuck showing "loading older…".
         app.messages_loading_older = false;
         return;
     };
@@ -949,15 +965,7 @@ pub fn request_conv_search(app: &mut App) {
         app.set_action(ActionState::Error("Search is empty".into()));
         return;
     }
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     if !app.begin(InFlight::ConvSearch) {
@@ -1264,16 +1272,7 @@ pub fn request_save_edit(app: &mut App) {
         app.set_action(ActionState::Error("Edit body is empty".into()));
         return;
     }
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        app.set_action(ActionState::Error("No conversation open".into()));
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     if !app.begin(InFlight::EditMessage { target_id }) {
@@ -1399,16 +1398,7 @@ pub fn request_download_to(
     filename: String,
 ) {
     let output = dir.join(&filename).to_string_lossy().to_string();
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        app.set_action(ActionState::Error("No conversation open".into()));
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     if !app.begin(InFlight::DownloadAttachment {
@@ -1632,16 +1622,7 @@ pub fn request_delete_selected_message(app: &mut App) {
     let Some(msg_id) = app.messages.get(idx).map(|m| m.id) else {
         return;
     };
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        app.set_action(ActionState::Error("No conversation open".into()));
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     if !app.begin(InFlight::DeleteMessage { message_id: msg_id }) {
@@ -1784,14 +1765,7 @@ pub fn request_send_reaction(app: &mut App) {
     let Some(msg_id) = app.messages.get(idx).map(|m| m.id) else {
         return;
     };
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     if !app.begin(InFlight::SendReaction { body: body.clone() }) {
@@ -1839,14 +1813,7 @@ pub fn request_pin_selected_message(app: &mut App) {
     let Some(msg_id) = app.messages.get(idx).map(|m| m.id) else {
         return;
     };
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     if !app.begin(InFlight::PinMessage { message_id: msg_id }) {
@@ -1879,14 +1846,7 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
 }
 
 pub fn request_unpin_conversation(app: &mut App) {
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     if !app.begin(InFlight::UnpinConversation) {
@@ -1922,16 +1882,7 @@ pub fn request_send_message(app: &mut App) {
         app.set_action(ActionState::Error("Message is empty".into()));
         return;
     }
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        app.set_action(ActionState::Error("No conversation open".into()));
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((conv_id, channel)) = open_channel(app) else {
         return;
     };
     let reply_to = app.reply_to_id;
@@ -2040,12 +1991,7 @@ pub fn request_resend_message(app: &mut App) {
         app.set_action(ActionState::Error("No failed message to resend".into()));
         return;
     };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     let body = app.outbox[idx].body.clone();
@@ -2072,16 +2018,7 @@ pub fn request_resend_message(app: &mut App) {
 /// (`keybase chat api {"method":"attach"}`). The path comes from the
 /// embedded file picker.
 pub fn request_upload_attachment(app: &mut App, path: std::path::PathBuf) {
-    let Some(conv_id) = app.open_conv_id.clone() else {
-        app.set_action(ActionState::Error("No conversation open".into()));
-        return;
-    };
-    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
-        app.set_action(ActionState::Error("Conversation no longer in inbox".into()));
-        return;
-    };
-    let channel_result = read_channel_from_conv(conv);
-    let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
+    let Some((_, channel)) = open_channel(app) else {
         return;
     };
     let filename = path.to_string_lossy().to_string();
