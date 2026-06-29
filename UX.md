@@ -133,7 +133,10 @@ on their own:
   **Edits fold in place** (`domain::fold_edits`): the standalone `edit`
   envelope is dropped, the target's body is replaced with the latest edit, and
   it carries a dim `(edited)` marker in its header (Discord-style) instead of a
-  separate "edited" line.
+  separate "edited" line. **`@mentions`** are highlighted in accent — but only
+  the *resolved* ones (`Message::mentions`, from the read's
+  `userMentions`/`teamMentions`) plus `@here`/`@channel`/`@everyone`
+  (`conversation::mention_spans`), matching the GUI.
   **Adding** a reaction (`+` in select mode) opens a searchable
   **reaction picker** (`Screen::React`): a `/`-style search over the emoji
   catalogue — a bundled curated set of common standard emojis

@@ -449,7 +449,12 @@ fn outbox_lines(
             Span::styled(format!("{me} "), sender_style),
             status,
         ]));
-        lines.extend(body_lines(&MessageContent::Text(p.body.clone()), t, width));
+        lines.extend(body_lines(
+            &MessageContent::Text(p.body.clone()),
+            t,
+            width,
+            &[],
+        ));
         lines.push(Line::from(Span::raw("")));
     }
     lines
@@ -509,7 +514,7 @@ fn message_lines(
     if let Some(target) = m.reply_to {
         lines.push(reply_quote_line(target, app, t));
     }
-    lines.extend(body_lines(&m.content, t, width));
+    lines.extend(body_lines(&m.content, t, width, &m.mentions));
     if !m.reactions.is_empty() {
         lines.push(reactions_line(&m.reactions, app, t));
     }
@@ -687,16 +692,17 @@ fn body_lines(
     content: &MessageContent,
     t: &crate::tui::theme::Theme,
     width: usize,
+    mentions: &[String],
 ) -> Vec<Line<'static>> {
     match content {
-        MessageContent::Text(body) => render_text_body(body, t, width),
+        MessageContent::Text(body) => render_text_body(body, t, width, mentions),
         MessageContent::Edit { target_id, body } => {
             let label = format!("(edited msg #{target_id})");
             let mut lines = vec![Line::from(Span::styled(
                 format!("    {label}"),
                 Style::default().fg(t.dim),
             ))];
-            lines.extend(render_text_body(body, t, width));
+            lines.extend(render_text_body(body, t, width, mentions));
             lines
         }
         MessageContent::Delete { target_ids } => {
@@ -742,23 +748,68 @@ fn placeholder(s: &str, t: &crate::tui::theme::Theme) -> Vec<Line<'static>> {
     ))]
 }
 
-fn render_text_body(body: &str, t: &crate::tui::theme::Theme, width: usize) -> Vec<Line<'static>> {
+fn render_text_body(
+    body: &str,
+    t: &crate::tui::theme::Theme,
+    width: usize,
+    mentions: &[String],
+) -> Vec<Line<'static>> {
     if body.is_empty() {
         return placeholder("(empty)", t);
     }
     // Wrap each line to the panel width (minus the 4-space body indent) so
     // long messages flow onto continuation lines instead of being cut off.
     let wrap_w = width.saturating_sub(4).max(8);
+    let base = Style::default().fg(t.foreground);
     let mut lines = Vec::new();
     for l in body.lines() {
         for piece in wrap_line(l, wrap_w) {
-            lines.push(Line::from(Span::styled(
-                format!("    {piece}"),
-                Style::default().fg(t.foreground),
-            )));
+            let mut spans = vec![Span::styled("    ".to_string(), base)];
+            spans.extend(mention_spans(&piece, base, mentions, t));
+            lines.push(Line::from(spans));
         }
     }
     lines
+}
+
+/// Splits `piece` into spans, styling resolved `@mention`s (and the special
+/// `@here` / `@channel` / `@everyone`) in accent — everything else `base`.
+fn mention_spans(
+    piece: &str,
+    base: Style,
+    mentions: &[String],
+    t: &crate::tui::theme::Theme,
+) -> Vec<Span<'static>> {
+    let hl = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut rest = piece;
+    while let Some(at) = rest.find('@') {
+        if at > 0 {
+            spans.push(Span::styled(rest[..at].to_string(), base));
+        }
+        let after = &rest[at + 1..];
+        // Usernames / team names are ASCII [a-z0-9_.] (and @here/@channel/…).
+        let name: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
+            .collect();
+        if !name.is_empty() && is_mention(&name, mentions) {
+            spans.push(Span::styled(format!("@{name}"), hl));
+            rest = &after[name.len()..];
+        } else {
+            spans.push(Span::styled("@".to_string(), base));
+            rest = after;
+        }
+    }
+    if !rest.is_empty() {
+        spans.push(Span::styled(rest.to_string(), base));
+    }
+    spans
+}
+
+fn is_mention(name: &str, mentions: &[String]) -> bool {
+    matches!(name, "here" | "channel" | "everyone")
+        || mentions.iter().any(|m| m.eq_ignore_ascii_case(name))
 }
 
 /// Word-wraps `line` to `width` columns (char-based; long words are
@@ -895,6 +946,21 @@ fn format_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mentions_only_highlight_resolved_names_and_specials() {
+        let m = vec!["alice".to_string()];
+        assert!(is_mention("alice", &m));
+        assert!(is_mention("Alice", &m)); // case-insensitive
+        assert!(is_mention("here", &m)); // special
+        assert!(is_mention("channel", &m));
+        assert!(!is_mention("bob", &m)); // not a real mention
+        // The body splits into 3 spans: "hey ", "@alice", " there".
+        let t = crate::tui::theme::Theme::default();
+        let spans = mention_spans("hey @alice there", Style::default(), &m, &t);
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[1].content, "@alice");
+    }
 
     #[test]
     fn attachment_type_inline_when_it_fits_else_below() {

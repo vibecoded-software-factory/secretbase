@@ -715,6 +715,7 @@ pub(crate) fn parse_message(msg: &Value) -> Option<Message> {
     let reactions = parse_reactions(msg.get("reactions").unwrap_or(&Value::Null));
     // Threaded-reply target lives at `content.text.replyTo` (a message id).
     let reply_to = msg.pointer("/content/text/replyTo").and_then(Value::as_u64);
+    let mentions = parse_mentions(msg.pointer("/content/text"));
     Some(Message {
         id,
         sender,
@@ -725,7 +726,30 @@ pub(crate) fn parse_message(msg: &Value) -> Option<Message> {
         reactions,
         reply_to,
         edited: false, // set later by domain::fold_edits when an edit folds in
+        mentions,
     })
+}
+
+/// Resolved mention names from a text message's `userMentions` (chat1
+/// `KnownUserMention.text`) and `teamMentions` (`KnownTeamMention.name`).
+fn parse_mentions(text: Option<&Value>) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(text) = text else { return out };
+    if let Some(arr) = text.get("userMentions").and_then(Value::as_array) {
+        out.extend(
+            arr.iter()
+                .filter_map(|m| m.get("text").and_then(Value::as_str))
+                .map(str::to_string),
+        );
+    }
+    if let Some(arr) = text.get("teamMentions").and_then(Value::as_array) {
+        out.extend(
+            arr.iter()
+                .filter_map(|m| m.get("name").and_then(Value::as_str))
+                .map(str::to_string),
+        );
+    }
+    out
 }
 
 /// Extracts the `reactions.reactions[emoji].users{}` map into a flat
@@ -1357,6 +1381,19 @@ mod content_parse_tests {
             MessageContent::Text(s) => assert_eq!(s, "hello"),
             other => panic!("expected Text, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_mentions_pulls_user_and_team_names() {
+        let text = json!({
+            "body": "hey @alice and @acme.devs",
+            "userMentions": [{"text": "alice", "uid": "x"}],
+            "teamMentions": [{"name": "acme.devs", "channel": "general"}],
+        });
+        assert_eq!(parse_mentions(Some(&text)), vec!["alice", "acme.devs"]);
+        // No mentions / missing text → empty.
+        assert!(parse_mentions(None).is_empty());
+        assert!(parse_mentions(Some(&json!({"body": "hi"}))).is_empty());
     }
 
     #[test]

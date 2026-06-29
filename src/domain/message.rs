@@ -225,6 +225,11 @@ pub struct Message {
     /// the dim `(edited)` indicator in the view.
     #[zeroize(skip)]
     pub edited: bool,
+
+    /// Resolved `@`-mention names in this message (usernames from
+    /// `content.text.userMentions`, team names from `teamMentions`). Used to
+    /// highlight only *real* mentions in the body, matching the GUI.
+    pub mentions: Vec<String>,
 }
 
 /// Folds keybase `edit` messages into their targets: the target message's body

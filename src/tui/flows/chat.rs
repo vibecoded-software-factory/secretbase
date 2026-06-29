@@ -621,14 +621,19 @@ fn load_fake_messages(app: &mut App) {
             &[],
             ago(4 * 3600),
         ),
-        fake_msg(
-            5,
-            "ana",
-            "¿Alguien miró el bug del login? 🐛",
-            None,
-            &[],
-            ago(3 * 3600),
-        ),
+        {
+            // Demo an @mention (highlighted because it's in `mentions`).
+            let mut msg = fake_msg(
+                5,
+                "ana",
+                &format!("@{m} miraste el bug del login? 🐛"),
+                None,
+                &[],
+                ago(3 * 3600),
+            );
+            msg.mentions = vec![m.to_string()];
+            msg
+        },
         fake_msg(
             6,
             m,
