@@ -226,11 +226,11 @@ fn run_chafa(proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<Ve
         "--color-space=din99d",
     ];
     if proto == ImgProto::Symbols {
-        // Sextants pack 2×3 sub-cell pixels (3× the detail of half-blocks);
-        // block+space cover solid areas. Needs "Symbols for Legacy Computing"
-        // glyphs in the font — falls to boxes otherwise, but most modern
-        // monospace / Nerd fonts include them.
-        args.push("--symbols=sextant+block+space");
+        // Octants pack 2×4 sub-cell pixels (33% denser than sextants' 2×3),
+        // with sextant/block/space as fallback for less-detailed areas. Octants
+        // are Unicode 16 (2024) "Legacy Computing Supplement" — newer than
+        // sextants, so they need an up-to-date font (boxes otherwise).
+        args.push("--symbols=octant+sextant+block+space");
     }
     args.extend(["--animate", "off", "--polite", "on", path]);
     let output = Command::new("chafa")
