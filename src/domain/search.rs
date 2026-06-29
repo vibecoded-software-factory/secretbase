@@ -57,10 +57,11 @@ impl LoweredConversation {
     }
 }
 
-/// Scores `query` against a single conversation.
+/// Scores `query` against a conversation's pre-lowercased projection.
 ///
 /// The query is lowercased once by the caller for efficiency — pass it
-/// in already-normalised. Higher scores rank higher.
+/// in already-normalised — and the [`LoweredConversation`] amortises the
+/// per-field lowercasing across keystrokes. Higher scores rank higher.
 ///
 /// Weighting:
 ///   * channel name match → 100
@@ -70,16 +71,6 @@ impl LoweredConversation {
 /// Substring matches always beat non-matches. The empty query returns
 /// `1` for every conversation so an unsearched list keeps its input
 /// order.
-pub fn fuzzy_score(conv: &Conversation, query_lc: &str) -> u32 {
-    if query_lc.is_empty() {
-        return 1;
-    }
-    let l = LoweredConversation::from(conv, None);
-    fuzzy_score_lowered(&l, query_lc)
-}
-
-/// Same as [`fuzzy_score`] but takes the pre-lowercased projection so
-/// the caller can amortise the lowercasing across keystrokes.
 pub fn fuzzy_score_lowered(l: &LoweredConversation, query_lc: &str) -> u32 {
     if query_lc.is_empty() {
         return 1;

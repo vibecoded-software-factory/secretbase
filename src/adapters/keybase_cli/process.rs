@@ -7,15 +7,6 @@ use std::time::{Duration, Instant};
 
 use crate::ports::KeybaseError;
 
-/// Defense-in-depth timeout for *local-only* `keybase` invocations
-/// (`status`, `chat api {"method":"list"}` against the local cache).
-/// These should finish in milliseconds, but a wedged `keybased`
-/// service — or a future bug that adds an unexpected hidden prompt —
-/// would otherwise freeze the TUI indefinitely. 10 s is many orders of
-/// magnitude above the expected runtime, so it never fires in
-/// practice; it's purely a panic-prevention floor.
-const LOCAL_OP_FALLBACK_TIMEOUT: u64 = 10;
-
 /// Polls a spawned child until it exits or the wall-clock deadline is
 /// reached. On timeout the child is killed and an error is returned.
 ///
@@ -98,12 +89,6 @@ fn wait_with_timeout(mut child: Child, secs: u64, label: &str) -> Result<Output,
     }
 }
 
-/// Runs `keybase <args>` and returns the raw [`Output`] with the
-/// default local-op timeout.
-pub fn keybase_run(args: &[&str]) -> Result<Output, KeybaseError> {
-    keybase_run_timeout(args, LOCAL_OP_FALLBACK_TIMEOUT)
-}
-
 /// Runs `keybase <args>` with a wall-clock timeout.
 pub fn keybase_run_timeout(args: &[&str], secs: u64) -> Result<Output, KeybaseError> {
     let child = Command::new("keybase")
@@ -122,13 +107,9 @@ pub fn keybase_run_timeout(args: &[&str], secs: u64) -> Result<Output, KeybaseEr
 }
 
 /// Runs `keybase <args>` after writing `stdin_input` to the child's
-/// stdin. Used by every JSON-API call: `keybase chat api` and
-/// `keybase team api` read their request body from stdin.
-pub fn keybase_run_with_stdin(args: &[&str], stdin_input: &str) -> Result<Output, KeybaseError> {
-    keybase_run_with_stdin_timeout(args, stdin_input, LOCAL_OP_FALLBACK_TIMEOUT)
-}
-
-/// Like [`keybase_run_with_stdin`] but with a wall-clock timeout.
+/// stdin, with a wall-clock timeout. Used by every JSON-API call:
+/// `keybase chat api` and `keybase team api` read their request body
+/// from stdin.
 pub fn keybase_run_with_stdin_timeout(
     args: &[&str],
     stdin_input: &str,

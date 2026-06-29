@@ -1101,19 +1101,6 @@ impl App {
         }
     }
 
-    /// Whether a conversation counts toward the sidebar tallies.
-    fn is_active(c: &Conversation) -> bool {
-        c.member_status == MemberStatus::Active
-    }
-
-    /// Count of active conversations matching `filter` (whole inbox).
-    pub fn count_status(&self, filter: StatusFilter) -> usize {
-        self.conversations
-            .iter()
-            .filter(|c| Self::is_active(c) && filter.includes(c))
-            .count()
-    }
-
     /// Sentinel collapse-key for the Direct-messages group (a NUL byte can't
     /// occur in a team name, so it never collides).
     pub const DMS_KEY: &'static str = "\u{0}dms";
