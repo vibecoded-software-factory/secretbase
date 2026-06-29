@@ -89,11 +89,27 @@ pub fn handle_load_inbox_response(
 ) {
     match result {
         Ok(load) => {
+            // Remember which conversation the tree cursor was on so a
+            // background safety-net refresh doesn't yank it to the top:
+            // `rebuild_filter` re-seats `tree_selected` on the first row
+            // (the right behaviour for a new search/filter, not for a
+            // resync), so we restore it by id afterwards. Recency re-sorts
+            // the rows, so the old position would land on a different
+            // conversation — an id is stable.
+            let prev_selected_id = app.selected_conversation().map(|c| c.id.clone());
             let n = load.conversations.len();
             let skipped_count = load.skipped.len();
             app.conversations = load.conversations;
             app.rebuild_lowered();
             app.rebuild_filter();
+            if let Some(id) = prev_selected_id
+                && let Some(pos) = app.tree_rows().iter().position(|r| {
+                    matches!(r, crate::tui::app::TreeRow::Conv { idx }
+                        if app.conversations[*idx].id == id)
+                })
+            {
+                app.tree_selected = pos;
+            }
             app.last_inbox_load = std::time::Instant::now();
             let summary = if skipped_count == 0 {
                 format!("{n} conversations")
