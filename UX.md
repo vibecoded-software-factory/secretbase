@@ -76,7 +76,12 @@ conversation on normal terminals.
     conversation (focus back to `Tree`). Message bodies render **inline
     markdown** (Keybase's set: `*bold*`, `_italic_`, `~strike~`, `` `code` ``;
     `domain::parse_inline` → styled runs, markers hidden, `code` verbatim) plus
-    block elements (` ``` ` fenced code and `>` blockquotes with a dim `▏` bar),
+    block elements (` ``` ` fenced code and `>` blockquotes with a dim `▏` bar).
+    A fenced block that names a language (e.g. ` ```rust `) is **syntax-
+    highlighted** via `syntect` (`tui::syntax`, dark/light theme picked from the
+    active theme's brightness, foreground-only so the terminal background shows
+    through, memoized per block so scrolling is cheap); an unknown / absent
+    language falls back to the flat code colour. Bodies are
     **wrapped** to the panel width preserving styles (`conversation::wrap_runs`)
     instead of being cut off — `@mentions` are highlighted in the same pass.
     There is **no standalone full-screen conversation screen** — the unified

@@ -31,7 +31,8 @@ A working terminal client for everyday Keybase chat. Highlights:
 * **Compose & message actions**: send (multi-line), edit / delete / react /
   pin / reply, optimistic send with resend-on-failure, `@`-mention
   autocomplete, inline markdown (`*bold*`, `_italic_`, `~strike~`,
-  `` `code` ``, fenced blocks, quotes).
+  `` `code` ``, quotes) and **syntax-highlighted** fenced code blocks
+  (` ```rust ` …, via `syntect`).
 * **Attachments**: upload via the built-in file picker, download to a chosen
   folder, and inline image thumbnails / animated-GIF playback via `chafa`.
 * **Search**: local fuzzy filter, server-side inbox search (`Ctrl+G`),

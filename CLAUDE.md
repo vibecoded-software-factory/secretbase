@@ -129,7 +129,10 @@ and the `view/help.rs` popup in sync when shortcuts change.
   (bundled `src/tui/assets/slant.flf`, no system `figlet` needed),
   **zeroize** to wipe chat/credential-bearing buffers, **chrono**
   (`clock`, no default features) for local-timezone chat timestamps,
-  **emojis** for the full standard Unicode emoji set (reaction picker).
+  **emojis** for the full standard Unicode emoji set (reaction picker),
+  **syntect** (`regex-fancy`, no oniguruma C FFI — stays pure-Rust and
+  `forbid(unsafe_code)`-clean) for fenced-code syntax highlighting
+  (`tui::syntax`).
 - `tempfile` is a dev-dependency only (test fixtures).
 - Release profile is size-optimized (`opt-level = "s"`, `lto`, `strip`).
 

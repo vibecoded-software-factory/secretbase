@@ -16,6 +16,15 @@ zeroize = { version = "1", features = ["derive"] }
 # features, so no oldtime/serde bloat).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 emojis = "0.9.0"
+# Syntax highlighting for fenced code blocks. Pure-Rust build: `regex-fancy`
+# (no oniguruma C FFI) + miniz_oxide-backed dump-load, so it stays compatible
+# with `#![forbid(unsafe_code)]` and needs no system libraries.
+syntect = { version = "5", default-features = false, features = [
+    "parsing",
+    "default-syntaxes",
+    "default-themes",
+    "regex-fancy",
+] }
 
 [dev-dependencies]
 tempfile = "3"
