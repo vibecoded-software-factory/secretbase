@@ -134,17 +134,22 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     String::new()
                 };
-                // Groups with unread conversations are bold (on top of the
-                // count) so they stand out.
+                // Groups with unread conversations are bold and get a golden
+                // ● next to the name (on top of the count) so they stand out.
                 let mut style = Style::default().fg(color);
+                let mut name_spans = vec![Span::styled(format!("{arrow} {icon} {label}"), style)];
                 if *unread > 0 {
                     style = style.add_modifier(Modifier::BOLD);
+                    name_spans[0].style = style;
+                    name_spans.push(Span::styled(
+                        " ●",
+                        Style::default()
+                            .fg(t.conv_unread)
+                            .add_modifier(Modifier::BOLD),
+                    ));
                 }
                 Row::new(vec![
-                    ratatui::widgets::Cell::from(Span::styled(
-                        format!("{arrow} {icon} {label}"),
-                        style,
-                    )),
+                    ratatui::widgets::Cell::from(Line::from(name_spans)),
                     ratatui::widgets::Cell::from(Span::styled(
                         count,
                         Style::default()
