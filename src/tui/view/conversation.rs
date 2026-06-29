@@ -578,8 +578,9 @@ struct ImgReservation {
     path: String,
 }
 
-/// Reserved height (rows) for an inline image thumbnail.
-const IMAGE_ROWS: u16 = 12;
+/// Reserved height (rows) for an inline image thumbnail. Each symbol cell packs
+/// two vertical pixels (half-blocks), so this is ~2× in real detail.
+const IMAGE_ROWS: u16 = 16;
 
 fn message_lines(
     m: &Message,
