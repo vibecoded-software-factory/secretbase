@@ -589,12 +589,13 @@ fn reply_quote_line(
             };
             let snippet = body.lines().next().unwrap_or("");
             if snippet.is_empty() {
-                format!("#{target}")
+                format!("{} · …", m.sender)
             } else {
                 format!("{} · {snippet}", m.sender)
             }
         })
-        .unwrap_or_else(|| format!("#{target}"));
+        // Parent not in the loaded window — no raw message id, just an ellipsis.
+        .unwrap_or_else(|| "…".to_string());
     // A quote is a one-line preview: show it whole if it fits, else trim to
     // the panel width with a trailing `…` (adapts to the screen, not a fixed
     // character count).

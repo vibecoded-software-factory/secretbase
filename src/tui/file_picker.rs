@@ -22,7 +22,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::domain::LineEditor;
 use crate::tui::theme::Theme;
@@ -336,6 +336,9 @@ impl FilePicker {
             .title_bottom(Line::from(Span::styled(hints, Style::default().fg(t.dim))))
             .border_style(Style::default().fg(t.accent));
         let inner = block.inner(area);
+        // Clear the area first so the Home underneath doesn't bleed through the
+        // modal (every other overlay does this).
+        frame.render_widget(Clear, area);
         frame.render_widget(block, area);
 
         // Reserve the bottom inner row for the filter input when active.

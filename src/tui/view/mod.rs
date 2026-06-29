@@ -142,7 +142,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         let t = app.theme.clone();
         let full = frame.area();
         let h = (full.height.saturating_mul(4) / 5).max(8);
-        let area = widgets::center_rect(72, h, full);
+        // Width adapts to the terminal — never wider than it (minus a margin).
+        let w = 72.min(full.width.saturating_sub(4)).max(20);
+        let area = widgets::center_rect(w, h, full);
         if let Some(picker) = app.file_picker.as_mut() {
             picker.render(frame, area, &t);
         }
