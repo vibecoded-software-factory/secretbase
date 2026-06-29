@@ -677,6 +677,34 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
+/// Trims a ` · `-separated hint to the whole segments that fit `max` columns,
+/// appending ` …` when some are dropped (the rest lives in F1). If even the
+/// first segment is too wide it hard-trims with a trailing `…`.
+fn fit_segments(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    for seg in s.split(" · ") {
+        let candidate = if out.is_empty() {
+            seg.to_string()
+        } else {
+            format!("{out} · {seg}")
+        };
+        if candidate.chars().count() + 2 > max {
+            break; // leave room for a trailing " …"
+        }
+        out = candidate;
+    }
+    if out.is_empty() {
+        let mut head: String = s.chars().take(max.saturating_sub(1)).collect();
+        head.push('…');
+        return head;
+    }
+    out.push_str(" …");
+    out
+}
+
 /// Renders the bottom status / feedback strip. While an action is in
 /// flight (or just finished) it shows the spinner/✓/✗ message full
 /// width; idle, it shows `footer_hint` on the left with `F1 help`
@@ -707,7 +735,9 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, area: Rect, footer_hint: 
     const HELP_ANCHOR: &str = "F1 help · F9 settings";
     let anchor_block = HELP_ANCHOR.chars().count() + 2;
     let avail = (area.width as usize).saturating_sub(anchor_block);
-    let hint: String = footer_hint.chars().take(avail).collect();
+    // Show only the hint segments that fully fit — the rest lives in F1 (don't
+    // cut a keybinding in half).
+    let hint = fit_segments(footer_hint, avail);
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
             hint,
@@ -732,6 +762,18 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, area: Rect, footer_hint: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fit_segments_keeps_whole_items() {
+        let hint = "↑/↓ nav · Enter open · Alt+N new · Tab cycle";
+        // Fits → unchanged.
+        assert_eq!(fit_segments(hint, 100), hint);
+        // Doesn't fit → only whole segments + a trailing " …", never a half item.
+        let out = fit_segments(hint, 20);
+        assert!(out.ends_with(" …"));
+        assert!(!out.contains("Alt+N ne")); // no mid-item cut
+        assert!(out.chars().count() <= 20);
+    }
 
     #[test]
     fn list_title_formats() {
