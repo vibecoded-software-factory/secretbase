@@ -831,103 +831,132 @@ fn render_text_body(
     if body.is_empty() {
         return placeholder("(empty)", t);
     }
-    // Wrap each line to the panel width (minus the 4-space body indent) so
-    // long messages flow onto continuation lines instead of being cut off.
+    // Parse each line into styled runs (markdown + mentions), then wrap the
+    // runs to the panel width (minus the 4-space body indent), preserving the
+    // styles across line breaks.
     let wrap_w = width.saturating_sub(4).max(8);
-    let base = Style::default().fg(t.foreground);
     let mut lines = Vec::new();
     for l in body.lines() {
-        for piece in wrap_line(l, wrap_w) {
-            let mut spans = vec![Span::styled("    ".to_string(), base)];
-            spans.extend(mention_spans(&piece, base, mentions, t));
-            lines.push(Line::from(spans));
+        let runs = crate::domain::parse_inline(l, mentions);
+        for spans in wrap_runs(&runs, wrap_w, t) {
+            let mut row = vec![Span::raw("    ")];
+            row.extend(spans);
+            lines.push(Line::from(row));
         }
     }
     lines
 }
 
-/// Splits `piece` into spans, styling resolved `@mention`s (and the special
-/// `@here` / `@channel` / `@everyone`) in accent — everything else `base`.
-fn mention_spans(
-    piece: &str,
-    base: Style,
-    mentions: &[String],
+/// The ratatui style for a parsed markdown [`crate::domain::Run`].
+fn run_style(r: &crate::domain::Run, t: &crate::tui::theme::Theme) -> Style {
+    let fg = if r.mention {
+        t.accent
+    } else if r.code {
+        t.conv_team
+    } else {
+        t.foreground
+    };
+    let mut m = Modifier::empty();
+    if r.bold || r.mention {
+        m |= Modifier::BOLD;
+    }
+    if r.italic {
+        m |= Modifier::ITALIC;
+    }
+    if r.strike {
+        m |= Modifier::CROSSED_OUT;
+    }
+    Style::default().fg(fg).add_modifier(m)
+}
+
+/// Word-wraps styled runs to `width` columns, producing one span list per
+/// output line. Styles are carried across the wrap; over-long words hard-split.
+fn wrap_runs(
+    runs: &[crate::domain::Run],
+    width: usize,
     t: &crate::tui::theme::Theme,
-) -> Vec<Span<'static>> {
-    let hl = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut rest = piece;
-    while let Some(at) = rest.find('@') {
-        if at > 0 {
-            spans.push(Span::styled(rest[..at].to_string(), base));
-        }
-        let after = &rest[at + 1..];
-        // Usernames / team names are ASCII [a-z0-9_.] (and @here/@channel/…).
-        let name: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
-            .collect();
-        if !name.is_empty() && is_mention(&name, mentions) {
-            spans.push(Span::styled(format!("@{name}"), hl));
-            rest = &after[name.len()..];
-        } else {
-            spans.push(Span::styled("@".to_string(), base));
-            rest = after;
+) -> Vec<Vec<Span<'static>>> {
+    let mut flat: Vec<(char, Style)> = Vec::new();
+    for r in runs {
+        let st = run_style(r, t);
+        for ch in r.text.chars() {
+            flat.push((ch, st));
         }
     }
-    if !rest.is_empty() {
-        spans.push(Span::styled(rest.to_string(), base));
-    }
-    spans
-}
-
-fn is_mention(name: &str, mentions: &[String]) -> bool {
-    matches!(name, "here" | "channel" | "everyone")
-        || mentions.iter().any(|m| m.eq_ignore_ascii_case(name))
-}
-
-/// Word-wraps `line` to `width` columns (char-based; long words are
-/// hard-split). Returns at least one piece.
-fn wrap_line(line: &str, width: usize) -> Vec<String> {
-    if width == 0 || line.chars().count() <= width {
-        return vec![line.to_string()];
-    }
-    let mut out: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    let mut cur_w = 0usize;
-    for word in line.split(' ') {
-        let ww = word.chars().count();
-        if cur_w > 0 && cur_w + 1 + ww > width {
-            out.push(std::mem::take(&mut cur));
-            cur_w = 0;
-        }
-        if cur_w == 0 {
-            if ww > width {
-                // Hard-split a word longer than the whole width.
-                let mut chunk = String::new();
-                let mut cw = 0usize;
-                for ch in word.chars() {
-                    if cw == width {
-                        out.push(std::mem::take(&mut chunk));
-                        cw = 0;
-                    }
-                    chunk.push(ch);
-                    cw += 1;
-                }
-                cur = chunk;
-                cur_w = cw;
-            } else {
-                cur = word.to_string();
-                cur_w = ww;
+    let mut out: Vec<Vec<(char, Style)>> = Vec::new();
+    let mut cur: Vec<(char, Style)> = Vec::new();
+    let mut word: Vec<(char, Style)> = Vec::new();
+    for (ch, st) in flat {
+        if ch == ' ' {
+            commit_word(&mut out, &mut cur, &mut word, width);
+            if cur.len() + 1 > width {
+                out.push(std::mem::take(&mut cur));
+            } else if !cur.is_empty() {
+                cur.push((' ', st));
             }
         } else {
-            cur.push(' ');
-            cur.push_str(word);
-            cur_w += 1 + ww;
+            word.push((ch, st));
         }
     }
-    out.push(cur);
-    out
+    commit_word(&mut out, &mut cur, &mut word, width);
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    if out.is_empty() {
+        out.push(Vec::new());
+    }
+    out.into_iter().map(coalesce_spans).collect()
+}
+
+/// Flushes the pending `word` onto `cur`, wrapping `cur` first if it wouldn't
+/// fit; a word longer than `width` is hard-split across lines.
+fn commit_word(
+    out: &mut Vec<Vec<(char, Style)>>,
+    cur: &mut Vec<(char, Style)>,
+    word: &mut Vec<(char, Style)>,
+    width: usize,
+) {
+    if word.is_empty() {
+        return;
+    }
+    if word.len() > width {
+        if !cur.is_empty() {
+            out.push(std::mem::take(cur));
+        }
+        let mut chunk: Vec<(char, Style)> = Vec::new();
+        for cs in word.drain(..) {
+            if chunk.len() == width {
+                out.push(std::mem::take(&mut chunk));
+            }
+            chunk.push(cs);
+        }
+        *cur = chunk;
+        return;
+    }
+    if !cur.is_empty() && cur.len() + word.len() > width {
+        out.push(std::mem::take(cur));
+    }
+    cur.append(word);
+}
+
+/// Coalesces a line of `(char, style)` into the fewest spans.
+fn coalesce_spans(line: Vec<(char, Style)>) -> Vec<Span<'static>> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut buf = String::new();
+    let mut cur: Option<Style> = None;
+    for (ch, st) in line {
+        if cur != Some(st) {
+            if let Some(s) = cur.take() {
+                spans.push(Span::styled(std::mem::take(&mut buf), s));
+            }
+            cur = Some(st);
+        }
+        buf.push(ch);
+    }
+    if let Some(s) = cur {
+        spans.push(Span::styled(buf, s));
+    }
+    spans
 }
 
 fn render_attachment(
@@ -1022,18 +1051,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mentions_only_highlight_resolved_names_and_specials() {
-        let m = vec!["alice".to_string()];
-        assert!(is_mention("alice", &m));
-        assert!(is_mention("Alice", &m)); // case-insensitive
-        assert!(is_mention("here", &m)); // special
-        assert!(is_mention("channel", &m));
-        assert!(!is_mention("bob", &m)); // not a real mention
-        // The body splits into 3 spans: "hey ", "@alice", " there".
+    fn styled_runs_wrap_and_carry_their_style() {
         let t = crate::tui::theme::Theme::default();
-        let spans = mention_spans("hey @alice there", Style::default(), &m, &t);
-        assert_eq!(spans.len(), 3);
-        assert_eq!(spans[1].content, "@alice");
+        let runs = crate::domain::parse_inline("a *bold* word", &[]);
+        // Wide → one line; the "bold" span is bold.
+        let wide = wrap_runs(&runs, 40, &t);
+        assert_eq!(wide.len(), 1);
+        let bold = wide[0].iter().find(|s| s.content == "bold").unwrap();
+        assert!(bold.style.add_modifier.contains(Modifier::BOLD));
+        // Narrow → wraps onto multiple lines without losing content.
+        let narrow = wrap_runs(&runs, 6, &t);
+        assert!(narrow.len() > 1);
     }
 
     #[test]

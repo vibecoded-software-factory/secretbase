@@ -660,7 +660,14 @@ fn load_fake_messages(app: &mut App) {
             &[("👀", &[m, "ana"])],
             ago(45 * 60),
         ),
-        fake_msg(9, "ana", "jajaja perfecto 😂😂", None, &[], ago(20 * 60)),
+        fake_msg(
+            9,
+            "ana",
+            "jajaja *perfecto* 😂 igual mirá el `config.rs`, _ojo_ con ~el viejo~",
+            None,
+            &[],
+            ago(20 * 60),
+        ),
         fake_msg(
             10,
             "beto",
