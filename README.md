@@ -132,7 +132,7 @@ copy detail only · `Esc` clear / leave.
 | Key | Action |
 |---|---|
 | `F1`                    | Toggle help |
-| `F9`                    | Open Settings (Identity · Theme · Chat · Clipboard · Network · Images) |
+| `F9`                    | Open Settings |
 | `Ctrl+C`                | Quit |
 
 ## Configuration

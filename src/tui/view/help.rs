@@ -170,24 +170,11 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             Screen::Settings => {
                 lines.push(section("Settings (F9)", t));
                 for (k, d) in [
-                    ("↑/↓ k/j", "section (sidebar) · row (panel)"),
-                    ("→ / Enter", "open section (from sidebar)"),
-                    ("Tab", "switch sidebar ↔ panel"),
-                    ("←/→ h/l", "change the focused setting"),
-                    ("Enter / Space", "toggle / next option"),
-                    ("Esc / F9", "close (changes save live)"),
-                ] {
-                    lines.push(help_line(k, d, t));
-                }
-                lines.push(Line::raw(""));
-                lines.push(section("Sections", t));
-                for (k, d) in [
-                    ("Identity", "your username + device (read-only)"),
-                    ("Theme", "live preset picker"),
-                    ("Chat", "mark-read-on-open · inbox resync"),
-                    ("Clipboard", "auto-clear delay"),
-                    ("Network", "inbox / download timeouts"),
-                    ("Images", "protocol · chafa symbol set"),
+                    ("↑/↓", "navigate"),
+                    ("Tab", "sidebar ↔ panel"),
+                    ("←/→", "change setting"),
+                    ("Enter / Space", "toggle · next option"),
+                    ("Esc / F9", "close"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
