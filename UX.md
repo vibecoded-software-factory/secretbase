@@ -149,13 +149,15 @@ on their own:
   (`domain::active_mention` detects the token, `chat::accept_mention` inserts).
   **Adding** a reaction (`+` in select mode) opens a searchable
   **reaction picker** (`Screen::React`): a `/`-style search over the emoji
-  catalogue — a bundled curated set of common standard emojis
-  (`domain::emoji::standard`, searchable by keyword so "thumb" finds 👍)
+  catalogue — the **full standard Unicode set** (`domain::emoji::standard`,
+  from the `emojis` crate; searchable by shortcode/name so "thumb" finds 👍)
   merged with the team's custom emojis from `emojilist` (fetched once,
   warmed at boot). Most-used first (per-session frecency). An arrow-navigable
   list of `glyph :alias:`, `Enter` to react, and a custom-`:shortcode:`
-  fallback when nothing matches. (Keybase's `emojilist` returns only the
-  custom emojis, hence the bundled standard set.) Stored reactions render
+  fallback when nothing matches. Stock emojis send their **raw glyph** (works
+  for the whole set without a shortcode lookup); custom ones send `:alias:`.
+  (Keybase's `emojilist` returns only the custom emojis, hence the bundled
+  standard set.) Stored reactions render
   as their **glyph** in the chat (the `:shortcode:` is resolved via the
   catalogue), collapsed under the message.
 - **Select mode** (`Alt+V`) shows a contextual **action bar** under the

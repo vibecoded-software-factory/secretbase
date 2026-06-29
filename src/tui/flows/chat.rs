@@ -1904,7 +1904,16 @@ pub fn request_send_reaction(app: &mut App) {
         .get(app.react_selected)
         .or_else(|| filtered.first())
     {
-        Some(&ei) => format!(":{}:", app.emojis[ei].alias),
+        Some(&ei) => {
+            let e = &app.emojis[ei];
+            // Stock emojis send their raw glyph (works for the whole Unicode
+            // set, no shortcode lookup); custom ones must send `:alias:`.
+            if e.display.starts_with(':') {
+                format!(":{}:", e.alias)
+            } else {
+                e.display.clone()
+            }
+        }
         None => app.react.text().trim().to_string(),
     };
     if body.is_empty() {

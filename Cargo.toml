@@ -15,6 +15,7 @@ zeroize = { version = "1", features = ["derive"] }
 # Local timezone-aware timestamps for the chat (clock only — no default
 # features, so no oldtime/serde bloat).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+emojis = "0.9.0"
 
 [dev-dependencies]
 tempfile = "3"

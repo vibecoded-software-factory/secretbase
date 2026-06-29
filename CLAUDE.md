@@ -127,7 +127,8 @@ and the `view/help.rs` popup in sync when shortcuts change.
 - **color-eyre** for error reports, **figlet-rs** for the splash wordmark
   (bundled `src/tui/assets/slant.flf`, no system `figlet` needed),
   **zeroize** to wipe chat/credential-bearing buffers, **chrono**
-  (`clock`, no default features) for local-timezone chat timestamps.
+  (`clock`, no default features) for local-timezone chat timestamps,
+  **emojis** for the full standard Unicode emoji set (reaction picker).
 - `tempfile` is a dev-dependency only (test fixtures).
 - Release profile is size-optimized (`opt-level = "s"`, `lto`, `strip`).
 

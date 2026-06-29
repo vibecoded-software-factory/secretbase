@@ -901,12 +901,19 @@ fn react_with_empty_query_sends_the_highlighted_emoji() {
     rig.app.selected_msg_idx = Some(0);
     rig.app.react.clear();
     rig.app.react_selected = 0;
+    // The picker always has a highlighted emoji (top of the seeded standard
+    // set); stock emojis send their raw glyph, so Enter on an empty query
+    // reacts with that glyph (Discord-style) rather than erroring.
+    let expected = rig
+        .app
+        .emojis
+        .first()
+        .expect("seeded emojis")
+        .display
+        .clone();
     request_send_reaction(&mut rig.app);
     pump_one(&mut rig.app);
-    // The picker always has a highlighted emoji (top of the seeded standard
-    // set, `+1`), so Enter on an empty query reacts with it (Discord-style)
-    // rather than erroring.
-    assert_eq!(rig.mock.st().reactions, vec![(5, ":+1:".to_string())]);
+    assert_eq!(rig.mock.st().reactions, vec![(5, expected)]);
 }
 
 #[test]
