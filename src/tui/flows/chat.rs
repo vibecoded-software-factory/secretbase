@@ -89,32 +89,11 @@ pub fn handle_load_inbox_response(
 ) {
     match result {
         Ok(load) => {
-            // Remember which conversation the cursor was on so we can
-            // restore it by id (the list re-sorts by recency, so the
-            // positional index would point at a different conversation
-            // after a refresh).
-            let prev_selected_id = app.selected_conversation().map(|c| c.id.clone());
             let n = load.conversations.len();
             let skipped_count = load.skipped.len();
             app.conversations = load.conversations;
             app.rebuild_lowered();
             app.rebuild_filter();
-            // Restore selection by id; fall back to clamping to a valid
-            // row if that conversation is gone or there was none.
-            let restored = prev_selected_id.as_deref().and_then(|id| {
-                app.filtered_cache
-                    .iter()
-                    .position(|&i| app.conversations[i].id == id)
-            });
-            match restored {
-                Some(pos) => app.list_selected = pos,
-                None => {
-                    if app.list_selected >= app.filtered_cache.len() {
-                        app.list_selected = 0;
-                        app.list_scroll = 0;
-                    }
-                }
-            }
             app.last_inbox_load = std::time::Instant::now();
             let summary = if skipped_count == 0 {
                 format!("{n} conversations")
@@ -162,11 +141,9 @@ pub fn request_mark_read(app: &mut App) {
     let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
         return;
     };
-    // Carry the conversation *id* (not a `filtered_cache` index): the row
-    // being marked is the tree-selected one, which `list_selected` no
-    // longer tracks, and a background inbox refresh can reorder/replace
-    // `conversations` before the response lands — an index would then flip
-    // `unread` on the wrong row (or be out of bounds).
+    // Carry the conversation *id*, not an index: a background inbox refresh
+    // can reorder/replace `conversations` before the response lands, so an
+    // index would then flip `unread` on the wrong row (or be out of bounds).
     if !app.begin(InFlight::MarkRead {
         conv_id: this_conv_id,
     }) {
@@ -378,29 +355,6 @@ pub fn tree_back(app: &mut App) {
             close_conversation(app);
         }
         _ => {}
-    }
-}
-
-pub fn search_push(app: &mut App, c: char) {
-    app.search.insert(c);
-    app.list_selected = 0;
-    app.list_scroll = 0;
-    app.rebuild_filter();
-}
-
-pub fn search_pop(app: &mut App) {
-    app.search.backspace();
-    app.list_selected = 0;
-    app.list_scroll = 0;
-    app.rebuild_filter();
-}
-
-pub fn search_clear(app: &mut App) {
-    if !app.search.is_empty() {
-        app.search.clear();
-        app.list_selected = 0;
-        app.list_scroll = 0;
-        app.rebuild_filter();
     }
 }
 

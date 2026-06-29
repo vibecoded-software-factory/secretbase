@@ -196,10 +196,7 @@ pub struct App {
     pub conversations_lowered: Vec<LoweredConversation>,
     /// Indices into `conversations` after filter + search are applied.
     pub filtered_cache: Vec<usize>,
-    /// Selected row inside `filtered_cache`. Reset on filter/search
-    /// changes.
-    pub list_selected: usize,
-    /// First visible row in the list — driven by scrolling.
+    /// First visible row in the conversation tree — driven by scrolling.
     pub list_scroll: usize,
 
     /// Team memberships (from `keybase team api {"method":"list-self-memberships"}`).
@@ -544,7 +541,6 @@ impl App {
             conversations: Vec::new(),
             conversations_lowered: Vec::new(),
             filtered_cache: Vec::new(),
-            list_selected: 0,
             list_scroll: 0,
             teams: Vec::new(),
             teams_selected: 0,
@@ -1041,27 +1037,6 @@ impl App {
         }
     }
 
-    /// Clamps [`Self::list_selected`] into the bounds of
-    /// [`Self::filtered_cache`]. Idempotent — when state is already
-    /// synced (the common case post-[`rebuild_filter`]) this is a
-    /// no-op.
-    ///
-    /// Called defensively from the inbox renderer so a code path
-    /// that mutates `conversations` *without* refreshing the filter
-    /// (e.g. an isolated `unread = false` flip from
-    /// `handle_mark_read_response`) cannot leave the cursor pointing
-    /// past the end of the filtered list. The render used to clamp
-    /// inline but discarded the result, which meant the indicator
-    /// strip ("N of M") could show `81 of 5` until something else
-    /// triggered a rebuild. Now both stay consistent.
-    pub fn clamp_list_selected(&mut self) {
-        if self.filtered_cache.is_empty() {
-            self.list_selected = 0;
-        } else if self.list_selected >= self.filtered_cache.len() {
-            self.list_selected = self.filtered_cache.len() - 1;
-        }
-    }
-
     /// Rebuilds [`Self::filtered_cache`] from the current filter +
     /// search query.
     pub fn rebuild_filter(&mut self) {
@@ -1320,40 +1295,6 @@ mod tests {
         assert_eq!(app.compose.cursor(), 0);
         app.compose.end();
         assert_eq!(app.compose.cursor(), 5);
-    }
-
-    #[test]
-    fn clamp_list_selected_persists_clamp_when_stale() {
-        let mut app = fresh_app();
-        // Simulate: filter just shrank from 100 entries to 3, but
-        // list_selected was pointing to row 80 before the shrink.
-        // Without persistence the indicator would have read
-        // "81 of 3" and the next move-up would have misbehaved.
-        app.filtered_cache = vec![0, 1, 2];
-        app.list_selected = 80;
-        app.clamp_list_selected();
-        assert_eq!(
-            app.list_selected, 2,
-            "clamp must persist to last valid index"
-        );
-    }
-
-    #[test]
-    fn clamp_list_selected_zeroes_when_filter_is_empty() {
-        let mut app = fresh_app();
-        app.filtered_cache.clear();
-        app.list_selected = 42;
-        app.clamp_list_selected();
-        assert_eq!(app.list_selected, 0, "empty filter → cursor parks at 0");
-    }
-
-    #[test]
-    fn clamp_list_selected_is_a_noop_when_in_range() {
-        let mut app = fresh_app();
-        app.filtered_cache = vec![0, 1, 2, 3, 4];
-        app.list_selected = 2;
-        app.clamp_list_selected();
-        assert_eq!(app.list_selected, 2, "in-range index untouched");
     }
 
     #[test]

@@ -10,7 +10,6 @@ pub mod conversation;
 pub mod inbox;
 pub mod login;
 pub mod mouse;
-pub mod nav;
 pub mod popups;
 pub mod settings;
 pub mod teams;

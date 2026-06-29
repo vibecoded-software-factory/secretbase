@@ -18,7 +18,6 @@ use crate::tui::view::widgets::{
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    app.clamp_list_selected();
     let area = frame.area();
     // No identity bar on the Home — the user knows who they're logged in as;
     // the rows go to the chat instead.
