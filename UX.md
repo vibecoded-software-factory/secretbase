@@ -302,7 +302,9 @@ Rules:
 - Map mouse clicks with `widgets::table_row_at(rect, y, scroll, len)` (called
   from `input::mouse`).
 - Truncate an overflowing primary column with `widgets::middle_ellipsis`
-  (head-biased, UTF-8 safe).
+  (head-biased, UTF-8 safe). For a one-line preview where only the start
+  matters (reply quotes, search-result snippets) use
+  `widgets::trim_end_ellipsis` (trailing `…`) instead.
 
 Screens using `list_table`: inbox (filters + conversation list), teams. The
 **conversation** message viewer and the **global-search** results are the
@@ -329,7 +331,7 @@ doesn't yank the cursor. `tree_selected` only ever indexes `tree_rows()` via
   focused = accent + bold, else `inactive`. Used for every panel.
 - `view::mod::split_main(area, identity_rows)` — the standard vertical stack.
 - `widgets::list_table` / `list_title` / `col_width` / `middle_ellipsis` /
-  `table_row_at` — the list renderer + sizing helpers.
+  `trim_end_ellipsis` / `table_row_at` — the list renderer + sizing helpers.
 - `widgets::draw_identity_bar` / `identity_content_rows` — the top identity
   bar.
 - `widgets::draw_search_box(frame, app, area, title, placeholder, editor,

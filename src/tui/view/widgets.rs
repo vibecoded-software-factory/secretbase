@@ -281,6 +281,21 @@ pub fn middle_ellipsis(s: &str, max: usize) -> String {
     format!("{head_str}…{tail_str}")
 }
 
+/// Trims `s` to at most `max` characters, appending a trailing `…` when it
+/// overflows (UTF-8 safe). For one-line previews where the **start** carries
+/// the meaning — reply quotes, search-result snippets — as opposed to
+/// [`middle_ellipsis`], which preserves the tail (a file extension, a `#id`).
+pub fn trim_end_ellipsis(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    if max <= 1 {
+        return "…".to_string();
+    }
+    let head: String = s.chars().take(max - 1).collect();
+    format!("{head}…")
+}
+
 /// Maps a click row `y` to a filtered-row index for a [`list_table`] in
 /// `rect` scrolled by `scroll`. Accounts for the block border (+1) and
 /// the header row (+1). `None` on the border/header or past the last row.
@@ -801,6 +816,14 @@ mod tests {
         let out = middle_ellipsis("team.subteam.channel.very.long.name", 20);
         assert_eq!(out.chars().count(), 20);
         assert!(out.contains('…'));
+    }
+
+    #[test]
+    fn trim_end_ellipsis_appends_and_is_utf8_safe() {
+        assert_eq!(trim_end_ellipsis("hello", 10), "hello"); // fits, untouched
+        assert_eq!(trim_end_ellipsis("hello world", 5), "hell…"); // 4 chars + …
+        assert_eq!(trim_end_ellipsis("áéíóú", 3), "áé…"); // multibyte boundary safe
+        assert_eq!(trim_end_ellipsis("toolong", 1), "…"); // degenerate width
     }
 
     #[test]
