@@ -331,6 +331,9 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // border; capped on wide panels). Symbol images are pre-rendered to lines
     // here so each reserves exactly its real height.
     let img_w = body_width.saturating_sub(6).clamp(10, 72) as u16;
+    // Recomputed each frame; `symbol_image_lines` / `image_render_path` set it
+    // true when an animated GIF is on screen.
+    app.gif_animating = false;
     let symbol_imgs = symbol_image_lines(app, img_w);
     for (idx, m) in app.messages.iter().enumerate() {
         let start = lines.len();
@@ -418,7 +421,9 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 width: img_w,
                 height: rows,
             };
-            app.image_areas.push((rect, path));
+            // Animated GIF → paint the current frame; still image → the file.
+            let render_path = image_render_path(app, &path);
+            app.image_areas.push((rect, render_path));
         }
     }
 
@@ -571,6 +576,37 @@ fn line_is_blank(l: &Line<'static>) -> bool {
     l.spans.iter().all(|s| s.content.trim().is_empty())
 }
 
+/// Per-GIF frame directory under the image cache.
+fn gif_frame_dir(gif_path: &str) -> std::path::PathBuf {
+    let stem = std::path::Path::new(gif_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("gif");
+    crate::tui::flows::chat::image_cache_dir()
+        .join("frames")
+        .join(stem)
+}
+
+/// The path to actually render for an image: the current animation frame for an
+/// animated GIF (extracted lazily on first sight, then cached), or the file
+/// itself for a still image. Sets `gif_animating` when a GIF is animating.
+fn image_render_path(app: &mut App, path: &str) -> String {
+    if !path.to_ascii_lowercase().ends_with(".gif") {
+        return path.to_string();
+    }
+    if !app.gif_anims.contains_key(path) {
+        let frames = crate::tui::image::extract_gif_frames(path, &gif_frame_dir(path));
+        app.gif_anims.insert(path.to_string(), frames);
+    }
+    match app.gif_anims.get(path) {
+        Some(Some(g)) => {
+            app.gif_animating = true;
+            g.frame_at(app.anim_ms).to_string()
+        }
+        _ => path.to_string(),
+    }
+}
+
 /// Pre-renders every **ready** image attachment in the open conversation to
 /// chafa symbol lines (cached), keyed by message id, trimmed to the image's
 /// real height. Only for the `symbols` protocol — those render in-buffer, so we
@@ -601,9 +637,10 @@ fn symbol_image_lines(
         })
         .collect();
     for (id, path) in items {
+        let render_path = image_render_path(app, &path);
         if let Ok(bytes) = app
             .image_render_cache
-            .bytes(proto, &path, img_w, IMAGE_ROWS)
+            .bytes(proto, &render_path, img_w, IMAGE_ROWS)
         {
             let mut lines = crate::tui::image::symbols_to_lines(&bytes, 4, IMAGE_ROWS);
             while lines.last().is_some_and(line_is_blank) {

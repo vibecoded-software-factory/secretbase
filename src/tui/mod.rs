@@ -132,8 +132,11 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
     // their positions change (scroll, download, resize) so the graphics don't
     // flicker on every idle redraw.
     let mut last_img: Vec<(ratatui::layout::Rect, String)> = Vec::new();
+    // Monotonic clock driving GIF frame selection (stamped into `anim_ms`).
+    let anim_clock = std::time::Instant::now();
 
     loop {
+        app.anim_ms = anim_clock.elapsed().as_millis() as u64;
         let size = terminal.size()?;
         if size != last_size {
             last_size = size;
@@ -216,7 +219,11 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
             done_ticks = 0;
         }
 
-        if event::poll(poll_timeout(&app.action_state, app.is_busy()))? {
+        if event::poll(poll_timeout(
+            &app.action_state,
+            app.is_busy(),
+            app.gif_animating,
+        ))? {
             // Drain ALL buffered events before redrawing. Holding a key
             // floods key-repeat events; processing one per frame lets
             // them pile up faster than we draw, so a change of direction
@@ -252,7 +259,12 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
 
 /// Returns the next event-poll timeout — fast during animation or
 /// while a worker call is in flight, longer when idle.
-fn poll_timeout(state: &ActionState, busy: bool) -> Duration {
+fn poll_timeout(state: &ActionState, busy: bool, gif_animating: bool) -> Duration {
+    // An animated GIF on screen drives the redraw cadence (~12.5 fps) so frames
+    // advance even while otherwise idle.
+    if gif_animating {
+        return Duration::from_millis(80);
+    }
     if busy {
         return Duration::from_millis(POLL_BUSY_MS);
     }

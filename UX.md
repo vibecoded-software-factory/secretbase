@@ -93,7 +93,11 @@ conversation on normal terminals.
     ANSI → `image::symbols_to_lines`, spliced over the reserved rows) so scroll,
     overlay occlusion and clearing all work via the frame diff — no
     direct-to-stdout ghosting; only the true-graphics protocols paint over the
-    rows from the run loop. In select
+    rows from the run loop. **Animated GIFs play inline**: ImageMagick
+    (`convert -coalesce`) splits the frames to a disk cache once
+    (`image::extract_gif_frames`, `App::gif_anims`), each frame is chafa-cached,
+    and the run loop advances them by wall-clock (`anim_ms`, `GifFrames::frame_at`),
+    polling at ~12 fps while a GIF is on screen (`gif_animating`). In select
     mode `c` **copies the image** to the clipboard (`wl-copy`/`xclip`/`pbcopy`,
     `image::copy_to_clipboard`) when an image is selected, and `s` downloads it.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log

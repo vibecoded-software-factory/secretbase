@@ -231,6 +231,94 @@ fn apply_sgr(mut style: Style, seq: &str) -> Style {
     style
 }
 
+/// The decoded frames of an animated GIF: per-frame PNG paths on disk (from
+/// ImageMagick `-coalesce`) and their durations in milliseconds.
+#[derive(Debug, Clone)]
+pub struct GifFrames {
+    pub frames: Vec<String>,
+    pub delays_ms: Vec<u32>,
+    pub total_ms: u32,
+}
+
+impl GifFrames {
+    /// The frame path showing at `ms` (looping over `total_ms`).
+    pub fn frame_at(&self, ms: u64) -> &str {
+        if self.frames.is_empty() {
+            return "";
+        }
+        let mut t = (ms % self.total_ms.max(1) as u64) as u32;
+        for (i, d) in self.delays_ms.iter().enumerate() {
+            if t < *d {
+                return &self.frames[i];
+            }
+            t = t.saturating_sub(*d);
+        }
+        self.frames.last().map(String::as_str).unwrap_or("")
+    }
+}
+
+fn sorted_frame_pngs(dir: &std::path::Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut v: Vec<String> = rd
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "png"))
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    v.sort();
+    v
+}
+
+/// Extracts an animated GIF's frames into `dir` via ImageMagick `-coalesce`
+/// (reusing already-extracted frames), returning `None` for a still image, a
+/// single-frame GIF, or when ImageMagick isn't available.
+pub fn extract_gif_frames(gif: &str, dir: &std::path::Path) -> Option<GifFrames> {
+    std::fs::create_dir_all(dir).ok()?;
+    let mut frames = sorted_frame_pngs(dir);
+    if frames.len() <= 1 {
+        let pattern = dir.join("f-%04d.png");
+        let ok = Command::new("convert")
+            .arg(gif)
+            .arg("-coalesce")
+            .arg(&pattern)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !ok {
+            return None;
+        }
+        frames = sorted_frame_pngs(dir);
+    }
+    if frames.len() <= 1 {
+        return None; // still / single-frame — render as a static image
+    }
+    // Per-frame delay in centiseconds (`%T`), → milliseconds (min 20ms so a
+    // 0-delay GIF doesn't spin at the redraw rate).
+    let delays_cs: Vec<u32> = Command::new("convert")
+        .arg(gif)
+        .args(["-format", "%T,", "info:"])
+        .output()
+        .ok()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .split(',')
+                .filter_map(|s| s.trim().parse::<u32>().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    let delays_ms: Vec<u32> = (0..frames.len())
+        .map(|i| delays_cs.get(i).copied().unwrap_or(10).max(2) * 10)
+        .collect();
+    let total_ms = delays_ms.iter().sum::<u32>().max(1);
+    Some(GifFrames {
+        frames,
+        delays_ms,
+        total_ms,
+    })
+}
+
 fn run_chafa(
     proto: ImgProto,
     path: &str,
@@ -399,6 +487,20 @@ mod tests {
         assert_eq!(ab.style.fg, Some(Color::Rgb(255, 0, 0)));
         let cd = spans.iter().find(|s| s.content.as_ref() == "CD").unwrap();
         assert_eq!(cd.style.fg, None);
+    }
+
+    #[test]
+    fn gif_frame_at_loops_over_delays() {
+        let g = GifFrames {
+            frames: vec!["a".into(), "b".into(), "c".into()],
+            delays_ms: vec![100, 100, 100],
+            total_ms: 300,
+        };
+        assert_eq!(g.frame_at(0), "a");
+        assert_eq!(g.frame_at(150), "b");
+        assert_eq!(g.frame_at(250), "c");
+        assert_eq!(g.frame_at(300), "a"); // wraps
+        assert_eq!(g.frame_at(450), "b");
     }
 
     #[test]

@@ -491,6 +491,15 @@ pub struct App {
     pub image_dirty: bool,
     /// Cache of chafa output bytes per `(path, cols, rows)`.
     pub image_render_cache: crate::tui::image::RenderCache,
+    /// Animated-GIF frames by cache path: `Some` once extracted (animated),
+    /// `None` when checked and found to be a still image (don't re-extract).
+    pub gif_anims: HashMap<String, Option<crate::tui::image::GifFrames>>,
+    /// Wall-clock milliseconds since the run loop started — drives GIF frame
+    /// selection. Stamped each iteration by the loop.
+    pub anim_ms: u64,
+    /// Set by the view when an animated GIF is on screen, so the run loop polls
+    /// at the animation cadence instead of idling.
+    pub gif_animating: bool,
 
     // ── Injected ports (synchronous, stay on the render thread) ───────────
     pub clipboard: Box<dyn ClipboardPort>,
@@ -607,6 +616,9 @@ impl App {
             image_to_fetch: Vec::new(),
             image_dirty: false,
             image_render_cache: crate::tui::image::RenderCache::new(image_symbols),
+            gif_anims: HashMap::new(),
+            anim_ms: 0,
+            gif_animating: false,
             theme: theme.clone(),
             settings_focus: SettingsFocus::Sidebar,
             settings_section: 0,

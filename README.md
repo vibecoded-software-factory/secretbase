@@ -153,6 +153,9 @@ selected_bg  = "#313244"
 Inline image thumbnails require the **`chafa`** binary on `PATH` (it emits the
 kitty/sixel/iterm graphics or ANSI symbols); without it, image attachments fall
 back to their filename/size text. Set `image_protocol = "off"` to disable.
+**Animated GIFs** play inline when **ImageMagick** (`convert`) is installed (it
+splits the frames, which are cached on disk); otherwise a GIF shows its first
+frame.
 
 Pick a bundled palette with `name`, then override individual keys if you want.
 Omitting `name` keeps the default (Nord with terminal-inherited text). You can
