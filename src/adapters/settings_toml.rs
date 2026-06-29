@@ -164,6 +164,7 @@ impl SettingsPort for TomlSettingsAdapter {
             auto_mark_read: true,
             inbox_refresh_secs: DEFAULT_INBOX_REFRESH_SECS,
             image_protocol: "auto".to_string(),
+            image_symbols: "sextant+block+space".to_string(),
         };
         let Ok(text) = fs::read_to_string(self.file()) else {
             return cfg;
@@ -227,6 +228,9 @@ impl SettingsPort for TomlSettingsAdapter {
                 }
                 "image_protocol" if !value.is_empty() => {
                     cfg.image_protocol = value.to_ascii_lowercase();
+                }
+                "image_symbols" if !value.is_empty() => {
+                    cfg.image_symbols = value.to_ascii_lowercase();
                 }
                 _ => {}
             }
@@ -311,6 +315,7 @@ impl UpdateBuffer {
         "auto_mark_read",
         "inbox_refresh_secs",
         "image_protocol",
+        "image_symbols",
     ];
 
     fn parse(text: &str) -> Self {

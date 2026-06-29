@@ -137,6 +137,9 @@ download_timeout_secs = 300        # wall-clock budget for attachment downloads
 auto_mark_read = true              # mark conversations as read when opened
 image_protocol = "auto"            # inline image attachments: auto | kitty | sixel
                                     # | iterm | symbols | off  (all via `chafa`)
+image_symbols = "sextant+block+space"  # chafa --symbols set (symbol path only):
+                                    # sextant (default), add `octant+` for denser
+                                    # output on Unicode-16 fonts, or `half` anywhere
 
 [theme]
 name         = "nord"              # bundled preset: nord (default),

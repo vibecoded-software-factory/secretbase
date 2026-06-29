@@ -517,6 +517,7 @@ impl App {
     ) -> Self {
         let settings_cache = settings.read();
         let image_proto = crate::tui::image::resolve(&settings_cache.image_protocol);
+        let image_symbols = settings_cache.image_symbols.clone();
         let theme = theme::load(&settings.config_dir());
         // Preselect the picker on the configured preset, else the shared
         // default (Nord).
@@ -605,7 +606,7 @@ impl App {
             image_areas: Vec::new(),
             image_to_fetch: Vec::new(),
             image_dirty: false,
-            image_render_cache: crate::tui::image::RenderCache::default(),
+            image_render_cache: crate::tui::image::RenderCache::new(image_symbols),
             theme: theme.clone(),
             settings_focus: SettingsFocus::Sidebar,
             settings_section: 0,

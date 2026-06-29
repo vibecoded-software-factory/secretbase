@@ -95,20 +95,40 @@ pub fn detect() -> ImgProto {
     ImgProto::Symbols
 }
 
+/// The default chafa symbol set: sextants (2×3 sub-cell) with block/space
+/// fallback — widely supported in modern monospace / Nerd fonts.
+pub const DEFAULT_SYMBOLS: &str = "sextant+block+space";
+
 /// Caches chafa output bytes per `(path, cols, rows)` so re-scroll repaints
 /// don't re-run chafa. Keyed by the rendered size since that's what changes.
-#[derive(Default)]
 pub struct RenderCache {
     map: HashMap<(String, u16, u16), Vec<u8>>,
+    /// chafa `--symbols` spec for the symbol path (font-dependent).
+    symbols: String,
+}
+
+impl Default for RenderCache {
+    fn default() -> Self {
+        Self::new(DEFAULT_SYMBOLS.to_string())
+    }
 }
 
 impl RenderCache {
+    /// Builds a cache that renders symbol output with the given chafa
+    /// `--symbols` spec (empty → chafa's default set).
+    pub fn new(symbols: String) -> Self {
+        Self {
+            map: HashMap::new(),
+            symbols,
+        }
+    }
+
     /// Returns the chafa output for `path` at `cols`×`rows`, running chafa on a
     /// miss and caching the result.
     fn get(&mut self, proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<&[u8]> {
         let key = (path.to_string(), cols, rows);
         if !self.map.contains_key(&key) {
-            let bytes = run_chafa(proto, path, cols, rows)?;
+            let bytes = run_chafa(proto, path, cols, rows, &self.symbols)?;
             self.map.insert(key.clone(), bytes);
         }
         Ok(self.map.get(&key).map(Vec::as_slice).unwrap_or_default())
@@ -211,7 +231,13 @@ fn apply_sgr(mut style: Style, seq: &str) -> Style {
     style
 }
 
-fn run_chafa(proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<Vec<u8>> {
+fn run_chafa(
+    proto: ImgProto,
+    path: &str,
+    cols: u16,
+    rows: u16,
+    symbols: &str,
+) -> io::Result<Vec<u8>> {
     let size = format!("{cols}x{rows}");
     let mut args: Vec<&str> = vec![
         "-f",
@@ -225,12 +251,12 @@ fn run_chafa(proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<Ve
         "--dither=ordered",
         "--color-space=din99d",
     ];
-    if proto == ImgProto::Symbols {
-        // Octants pack 2×4 sub-cell pixels (33% denser than sextants' 2×3),
-        // with sextant/block/space as fallback for less-detailed areas. Octants
-        // are Unicode 16 (2024) "Legacy Computing Supplement" — newer than
-        // sextants, so they need an up-to-date font (boxes otherwise).
-        args.push("--symbols=octant+sextant+block+space");
+    // The symbol set is configurable (`image_symbols`) because the best choice
+    // is font-dependent — sextants are the safe default; octants are denser but
+    // need a Unicode-16 font. Empty → chafa's own default.
+    let symbols_arg = format!("--symbols={symbols}");
+    if proto == ImgProto::Symbols && !symbols.is_empty() {
+        args.push(&symbols_arg);
     }
     args.extend(["--animate", "off", "--polite", "on", path]);
     let output = Command::new("chafa")

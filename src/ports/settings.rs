@@ -36,6 +36,10 @@ pub struct UserSettings {
     /// `auto` (detect), `kitty`, `sixel`, `iterm`, `symbols` (chafa ANSI), or
     /// `off` to disable. Every path shells out to `chafa`.
     pub image_protocol: String,
+    /// chafa `--symbols` set for the symbol render path (font-dependent). E.g.
+    /// `sextant+block+space` (default, widely supported), `octant+sextant+…`
+    /// (denser, needs a Unicode-16 font), or `half` (works anywhere).
+    pub image_symbols: String,
 }
 
 impl Default for UserSettings {
@@ -47,6 +51,7 @@ impl Default for UserSettings {
             auto_mark_read: true,
             inbox_refresh_secs: 180,
             image_protocol: "auto".to_string(),
+            image_symbols: "sextant+block+space".to_string(),
         }
     }
 }
