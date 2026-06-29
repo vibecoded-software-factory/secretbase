@@ -36,7 +36,7 @@ pub use conversation::{
 };
 pub use duration::format_duration;
 pub use emoji::Emoji;
-pub use filter::{InboxSource, STATUS_FILTERS, StatusFilter};
+pub use filter::{STATUS_FILTERS, StatusFilter};
 pub use identity::IdentityInfo;
 pub use inbox_hit::InboxHit;
 pub use line_editor::LineEditor;
@@ -46,7 +46,7 @@ pub use message::{
     AttachmentInfo, Message, MessageContent, Reaction, SystemInfo, SystemKind, fold_edits,
     team_role_name,
 };
-pub use search::{LoweredConversation, fuzzy_score, fuzzy_score_lowered};
+pub use search::{LoweredConversation, fuzzy_score_lowered};
 pub use team::{TeamMembership, TeamRole};
 pub use timefmt::{message_time, relative_short};
 pub use url::extract_urls;
