@@ -28,7 +28,7 @@ use crate::tui::action::ActionState;
 use crate::tui::app::App;
 use crate::tui::flows::{apply_response, chat::*};
 use crate::tui::screens::Screen;
-use crate::tui::worker::{InFlight, WorkerHandle};
+use crate::tui::worker::{InFlight, WorkerHandle, WorkerResponse};
 
 // ── Mocks ─────────────────────────────────────────────────────────────
 
@@ -1861,6 +1861,197 @@ fn mark_read_falls_back_to_zero_when_no_messages_loaded() {
     pump_until_idle(&mut rig.app);
     let st = rig.mock.st();
     assert_eq!(st.mark_reads, vec![0]);
+}
+
+// ── Incoming push messages (api-listen → handle_incoming_message) ─────
+
+#[test]
+fn incoming_text_appends_to_the_open_conversation() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(1, "alice", "hi")];
+    handle_incoming_message(&mut rig.app, "c1".into(), text_msg(2, "alice", "there"));
+    assert_eq!(rig.app.messages.len(), 2);
+    assert_eq!(rig.app.messages.last().unwrap().id, 2);
+}
+
+#[test]
+fn incoming_message_deduplicates_by_id() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(5, "alice", "once")];
+    handle_incoming_message(&mut rig.app, "c1".into(), text_msg(5, "alice", "again"));
+    assert_eq!(
+        rig.app.messages.len(),
+        1,
+        "a message already in the stream must not be re-appended"
+    );
+}
+
+#[test]
+fn incoming_edit_triggers_a_reread_of_the_open_conversation() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let mut edit = text_msg(9, "alice", "");
+    edit.content = MessageContent::Edit {
+        target_id: 1,
+        body: "fixed".into(),
+    };
+    handle_incoming_message(&mut rig.app, "c1".into(), edit);
+    // Edits modify an existing message → re-read for correct projection,
+    // rather than appending the edit envelope as a new line.
+    assert!(
+        matches!(rig.app.in_flight, Some(InFlight::LoadMessages)),
+        "an edit push should queue a re-read, not append"
+    );
+}
+
+#[test]
+fn incoming_from_another_user_marks_unread_when_not_viewing() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.open_conv_id = None; // not viewing it
+    handle_incoming_message(&mut rig.app, "c1".into(), text_msg(2, "alice", "ping"));
+    assert!(
+        rig.app
+            .conversations
+            .iter()
+            .find(|c| c.id == "c1")
+            .unwrap()
+            .unread
+    );
+}
+
+#[test]
+fn incoming_from_me_does_not_mark_unread() {
+    let mut rig = build_rig();
+    rig.app.identity.username = "me".into();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.open_conv_id = None;
+    handle_incoming_message(&mut rig.app, "c1".into(), text_msg(2, "me", "self"));
+    assert!(
+        !rig.app
+            .conversations
+            .iter()
+            .find(|c| c.id == "c1")
+            .unwrap()
+            .unread,
+        "an echo of our own message must not mark the conversation unread"
+    );
+}
+
+#[test]
+fn incoming_while_viewing_does_not_mark_unread() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    // open_conv_id == c1 (set by preload) → we're viewing it.
+    handle_incoming_message(&mut rig.app, "c1".into(), text_msg(2, "alice", "seen"));
+    assert!(
+        !rig.app
+            .conversations
+            .iter()
+            .find(|c| c.id == "c1")
+            .unwrap()
+            .unread,
+        "a message in the open conversation is already read"
+    );
+}
+
+#[test]
+fn incoming_message_bumps_conversation_recency() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.open_conv_id = None;
+    let mut m = text_msg(2, "alice", "newer");
+    m.sent_at = 1_700;
+    m.sent_at_ms = 1_700_000;
+    handle_incoming_message(&mut rig.app, "c1".into(), m);
+    let c = rig.app.conversations.iter().find(|c| c.id == "c1").unwrap();
+    assert_eq!(c.active_at_ms, 1_700_000);
+    assert_eq!(c.active_at, 1_700);
+}
+
+#[test]
+fn incoming_for_unknown_conversation_triggers_silent_refresh() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    handle_incoming_message(
+        &mut rig.app,
+        "zzz-unknown".into(),
+        text_msg(2, "alice", "first"),
+    );
+    assert!(
+        rig.app.bg_inflight,
+        "a message for a conversation not yet in the inbox must queue a silent resync"
+    );
+}
+
+#[test]
+fn background_silent_refresh_does_not_consume_the_user_in_flight_slot() {
+    // The idle auto-refresh ships on the same response channel as the user
+    // lane; apply_response must route it by variant *before* the in_flight
+    // match so it can't steal the slot a user request is occupying.
+    let mut rig = build_rig();
+    rig.app.in_flight = Some(InFlight::LoadMessages);
+    rig.app.bg_inflight = true;
+    apply_response(
+        &mut rig.app,
+        WorkerResponse::ListConversationsSilent(Ok(ListConversationsOk {
+            conversations: vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+            skipped: Vec::new(),
+        })),
+    );
+    // The background lane clears its own flag and applies the inbox…
+    assert!(
+        !rig.app.bg_inflight,
+        "silent refresh must clear bg_inflight"
+    );
+    assert_eq!(rig.app.conversations.len(), 1);
+    // …without touching the user's in-flight slot.
+    assert!(
+        matches!(rig.app.in_flight, Some(InFlight::LoadMessages)),
+        "a background response must not consume the user's in-flight slot"
+    );
 }
 
 #[test]
