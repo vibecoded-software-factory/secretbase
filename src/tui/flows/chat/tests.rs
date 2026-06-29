@@ -1864,6 +1864,33 @@ fn mark_read_falls_back_to_zero_when_no_messages_loaded() {
 }
 
 #[test]
+fn inbox_refresh_preserves_the_tree_cursor_by_id() {
+    // A safety-net resync must not yank the tree cursor to the top.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("c1", "alice", MembersType::ImpTeamNative),
+            conv("c2", "bob", MembersType::ImpTeamNative),
+        ],
+        "c2",
+    );
+    // Cursor starts on the *second* conversation.
+    let id_of = |app: &App| app.selected_conversation().map(|c| c.id.clone());
+    assert_eq!(id_of(&rig.app).as_deref(), Some("c2"));
+    // Refresh the inbox (same data, as the 180s resync would).
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // The cursor must still be on c2, not jumped back to the first row.
+    assert_eq!(
+        id_of(&rig.app).as_deref(),
+        Some("c2"),
+        "refresh should keep the cursor on the same conversation"
+    );
+}
+
+#[test]
 fn mark_read_clears_the_tree_selected_conversation() {
     // Regression: mark-read used to flip `unread` on
     // `filtered_cache[list_selected]`, but the tree cursor
