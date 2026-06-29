@@ -126,6 +126,7 @@ fn drain_pending_events() {
 fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()> {
     let mut done_ticks: u8 = 0;
     let mut last_size = terminal.size()?;
+    let mut prev_overlay = false;
 
     loop {
         let size = terminal.size()?;
@@ -133,6 +134,13 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
             last_size = size;
             terminal.clear()?;
         }
+        // Closing a modal overlay forces a full repaint: wide glyphs (emoji in
+        // the reaction picker) can leave residual cells the diff misses.
+        let overlay = app.has_overlay();
+        if prev_overlay && !overlay {
+            terminal.clear()?;
+        }
+        prev_overlay = overlay;
         // Record live terminal size so the mouse layer can detect
         // stale rects (mouse_areas computed for a frame size that
         // no longer matches the terminal).

@@ -823,6 +823,25 @@ impl App {
         self.cmd_log_scroll = 0;
     }
 
+    /// Whether a modal overlay (a popup screen or the file picker) is on top.
+    /// Used by the run loop to force a full repaint when one closes — wide
+    /// glyphs (emoji in the reaction picker) otherwise leave residual cells.
+    pub fn has_overlay(&self) -> bool {
+        self.file_picker.is_some()
+            || matches!(
+                self.screen,
+                Screen::Help
+                    | Screen::Settings
+                    | Screen::ConfirmLogout
+                    | Screen::ConfirmConvAction
+                    | Screen::NewConversation
+                    | Screen::SearchGlobal
+                    | Screen::ConfirmDeleteMessage
+                    | Screen::React
+                    | Screen::QuickSwitcher
+            )
+    }
+
     /// Enters the command-log panel: seat the cursor on the newest entry and
     /// clear any prior selection.
     pub fn enter_cmdlog(&mut self) {
