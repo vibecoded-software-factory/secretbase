@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Clear, Paragraph},
 };
@@ -1051,15 +1051,21 @@ fn render_text_body(
     // handled at the line level around the inline pass.
     let wrap_w = width.saturating_sub(4).max(8);
     let mut lines = Vec::new();
-    let mut in_fence = false;
+    // Accumulates a fenced block between ``` markers as `(language, lines)` so
+    // the whole block can be syntax-highlighted at once (the language token is
+    // captured from the opening fence).
+    let mut fence: Option<(String, Vec<String>)> = None;
     for l in body.lines() {
-        // Fenced code block: a ``` line toggles it (the fence line is hidden).
-        if l.trim_start().starts_with("```") {
-            in_fence = !in_fence;
+        // A ``` line opens or closes a fenced code block (the marker is hidden).
+        if let Some(info) = l.trim_start().strip_prefix("```") {
+            match fence.take() {
+                Some((lang, code)) => push_code_block(&mut lines, &code, &lang, wrap_w, t),
+                None => fence = Some((info.trim().to_string(), Vec::new())),
+            }
             continue;
         }
-        if in_fence {
-            push_code_block_line(&mut lines, l, wrap_w, t);
+        if let Some((_, code)) = fence.as_mut() {
+            code.push(l.to_string());
             continue;
         }
         // Blockquote: `>` (with an optional space) → a dim `▏` bar + content.
@@ -1083,7 +1089,90 @@ fn render_text_body(
             lines.push(Line::from(row));
         }
     }
+    // An unterminated fence (no closing ```) still renders its accumulated code.
+    if let Some((lang, code)) = fence.take() {
+        push_code_block(&mut lines, &code, &lang, wrap_w, t);
+    }
     lines
+}
+
+/// Renders a whole fenced code block. When the fence named a language
+/// `syntect` recognises, each line is syntax-highlighted; otherwise it falls
+/// back to the flat single-colour renderer so the code is never dropped.
+fn push_code_block(
+    lines: &mut Vec<Line<'static>>,
+    code_lines: &[String],
+    lang: &str,
+    width: usize,
+    t: &crate::tui::theme::Theme,
+) {
+    let code = code_lines.join("\n");
+    match crate::tui::syntax::highlight(&code, lang, code_theme_is_dark(t)) {
+        Some(per_line) => {
+            let inner = width.saturating_sub(2).max(4);
+            for segs in &per_line {
+                push_colored_code_line(lines, segs, inner, t);
+            }
+        }
+        None => {
+            for l in code_lines {
+                push_code_block_line(lines, l, width, t);
+            }
+        }
+    }
+}
+
+/// Renders one highlighted source line: a dim `▏` bar plus the coloured token
+/// segments, hard-wrapped (no word-wrap) to `inner` so alignment is preserved.
+fn push_colored_code_line(
+    lines: &mut Vec<Line<'static>>,
+    segs: &[(Color, String)],
+    inner: usize,
+    t: &crate::tui::theme::Theme,
+) {
+    let bar = Style::default().fg(t.dim);
+    let prefix = || vec![Span::raw("   "), Span::styled("▏ ", bar)];
+    let flat: Vec<(Color, char)> = segs
+        .iter()
+        .flat_map(|(c, s)| s.chars().map(move |ch| (*c, ch)))
+        .collect();
+    if flat.is_empty() {
+        lines.push(Line::from(prefix()));
+        return;
+    }
+    for chunk in flat.chunks(inner) {
+        let mut row = prefix();
+        let mut color = chunk[0].0;
+        let mut buf = String::new();
+        for &(c, ch) in chunk {
+            // Coalesce consecutive same-colour chars into one span.
+            if c != color && !buf.is_empty() {
+                row.push(Span::styled(
+                    std::mem::take(&mut buf),
+                    Style::default().fg(color),
+                ));
+            }
+            color = c;
+            buf.push(ch);
+        }
+        if !buf.is_empty() {
+            row.push(Span::styled(buf, Style::default().fg(color)));
+        }
+        lines.push(Line::from(row));
+    }
+}
+
+/// Whether to highlight code with a dark or light `syntect` theme, inferred
+/// from the active theme's body-text brightness (bright text ⇒ dark terminal).
+/// `Color::Reset`/indexed foregrounds default to dark, the common terminal.
+fn code_theme_is_dark(t: &crate::tui::theme::Theme) -> bool {
+    match t.foreground {
+        Color::Rgb(r, g, b) => {
+            let lum = 0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b);
+            lum > 128.0
+        }
+        _ => true,
+    }
 }
 
 /// Renders one verbatim line of a fenced code block: a dim `▏` bar plus the
@@ -1343,6 +1432,44 @@ mod tests {
         // The code line and the quoted line (with its ▏ bar) survive.
         assert!(rows.iter().any(|r| r.contains("code line")));
         assert!(rows.iter().any(|r| r.contains("▏") && r.contains("quoted")));
+    }
+
+    #[test]
+    fn fenced_block_with_language_is_syntax_highlighted() {
+        let t = crate::tui::theme::Theme::default();
+        let body = "```rust\nfn main() { let x = 1; }\n```";
+        let lines = render_text_body(body, &t, 60, &[]);
+        let rows: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // Fence hidden, code text preserved.
+        assert!(rows.iter().all(|r: &String| !r.contains("```")));
+        assert!(rows.iter().any(|r| r.contains("fn main")));
+        // Highlighting splits the line into several distinctly-coloured spans;
+        // the flat fallback would yield only {indent, bar, one code colour}.
+        let colors: std::collections::HashSet<String> = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| format!("{:?}", s.style.fg))
+            .collect();
+        assert!(
+            colors.len() > 3,
+            "expected multiple token colours from syntect, got {colors:?}"
+        );
+    }
+
+    #[test]
+    fn fenced_block_without_language_falls_back_to_flat() {
+        // No language → no syntect call; the code still renders (single colour),
+        // never dropped.
+        let t = crate::tui::theme::Theme::default();
+        let lines = render_text_body("```\nplain code\n```", &t, 60, &[]);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.spans.iter().any(|s| s.content.contains("plain code")))
+        );
     }
 
     #[test]
