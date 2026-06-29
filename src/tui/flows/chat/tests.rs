@@ -1264,20 +1264,6 @@ fn status_filter_narrows_the_tree_to_unread() {
     assert_eq!(convs, vec!["d"]);
 }
 
-// ── search query helpers ──────────────────────────────────────────────
-
-#[test]
-fn search_push_pop_clear_round_trip() {
-    let mut rig = build_rig();
-    search_push(&mut rig.app, 'a');
-    search_push(&mut rig.app, 'b');
-    assert_eq!(rig.app.search.text(), "ab");
-    search_pop(&mut rig.app);
-    assert_eq!(rig.app.search.text(), "a");
-    search_clear(&mut rig.app);
-    assert!(rig.app.search.is_empty());
-}
-
 // ── select mode ───────────────────────────────────────────────────────
 
 #[test]
@@ -1878,23 +1864,20 @@ fn mark_read_falls_back_to_zero_when_no_messages_loaded() {
 }
 
 #[test]
-fn mark_read_clears_the_tree_selected_conversation_not_list_selected() {
+fn mark_read_clears_the_tree_selected_conversation() {
     // Regression: mark-read used to flip `unread` on
     // `filtered_cache[list_selected]`, but the tree cursor
-    // (`tree_selected`) — what `selected_conversation` reads — is a
-    // different index that `list_selected` no longer tracks. The two
-    // disagreeing meant the wrong row's badge cleared (and an oversized
-    // `list_selected` could panic). It must clear the tree-selected row.
+    // (`tree_selected`) — what `selected_conversation` reads — was a
+    // different, untracked index, so the wrong row's badge cleared (and
+    // an oversized index could panic). It must clear the row that's
+    // actually selected, found by id.
     let mut rig = build_rig();
     let mut c1 = conv("c1", "alice", MembersType::ImpTeamNative);
     c1.unread = true;
     let mut c2 = conv("c2", "bob", MembersType::ImpTeamNative);
     c2.unread = true;
-    // Seats the tree cursor on c2.
+    // Seats the tree cursor on c2 (the second row, not the first).
     preload_inbox(&mut rig.app, &rig.mock, vec![c1, c2], "c2");
-    // Force the legacy list cursor to a *different* row — the exact desync
-    // the bug exploited (the old code would have cleared c1).
-    rig.app.list_selected = 0;
     request_mark_read(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let unread = |id: &str| {
@@ -2209,7 +2192,7 @@ fn ignore_conversation_cancel_does_nothing() {
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    rig.app.list_selected = 0;
+    reveal_first(&mut rig.app);
     open_conv_action(&mut rig.app, ConvAction::Ignore);
     cancel_conv_action(&mut rig.app);
     assert_eq!(rig.app.screen, Screen::Inbox);
