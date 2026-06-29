@@ -1764,6 +1764,51 @@ pub fn ensure_visible_images(app: &mut App) {
     }
 }
 
+/// Whether the single selected message is an image whose file is on disk —
+/// returns its `(cache path, mime)` so `c` can copy the image itself.
+fn selected_ready_image(app: &App) -> Option<(String, String)> {
+    if !app.msg_marks.is_empty() {
+        return None; // multi-select copies text, not a single image
+    }
+    let m = app.messages.get(app.selected_msg_idx?)?;
+    let crate::domain::MessageContent::Attachment(att) = &m.content else {
+        return None;
+    };
+    if !crate::tui::image::is_image(&att.mime_type, &att.filename) {
+        return None;
+    }
+    let conv_id = app.open_conv_id.as_deref()?;
+    let path = image_path_for(conv_id, m.id, &att.filename);
+    if app.image_ready.contains(&path) || std::path::Path::new(&path).exists() {
+        let mime = if att.mime_type.is_empty() {
+            "image/png".to_string()
+        } else {
+            att.mime_type.clone()
+        };
+        Some((path, mime))
+    } else {
+        None
+    }
+}
+
+/// `c` in select mode: copy the **image** to the clipboard when a downloaded
+/// image is selected, otherwise copy the message body text.
+pub fn do_copy_content(app: &mut App) {
+    let Some((path, mime)) = selected_ready_image(app) else {
+        do_copy_messages(app, false);
+        return;
+    };
+    match crate::tui::image::copy_to_clipboard(&path, &mime) {
+        Ok(()) => {
+            app.push_cmd("copy image", true, &path);
+            app.set_action(ActionState::Done("Image copied to clipboard".into()));
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(format!("Copy failed: {e}")));
+        }
+    }
+}
+
 /// Applies a finished background image download: mark the cache path ready (or
 /// failed) and flag a repaint.
 pub fn handle_preview_image_response(

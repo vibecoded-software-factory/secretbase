@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crossterm::cursor::MoveTo;
 use crossterm::queue;
@@ -181,6 +181,54 @@ pub fn clear() -> io::Result<()> {
     out.write_all(b"\x1b_Ga=d\x1b\\")?;
     out.flush()?;
     Ok(())
+}
+
+/// Copies the image file at `path` into the system clipboard as `mime`,
+/// shelling out to the first available tool: `wl-copy` (Wayland), `xclip`
+/// (X11), or `pbcopy` (macOS, type-agnostic).
+pub fn copy_to_clipboard(path: &str, mime: &str) -> io::Result<()> {
+    let data = std::fs::read(path)?;
+    if std::env::var_os("WAYLAND_DISPLAY").is_some()
+        && pipe_to("wl-copy", &["--type", mime], &data).is_ok()
+    {
+        return Ok(());
+    }
+    if pipe_to(
+        "xclip",
+        &["-selection", "clipboard", "-t", mime, "-i"],
+        &data,
+    )
+    .is_ok()
+    {
+        return Ok(());
+    }
+    if pipe_to("pbcopy", &[], &data).is_ok() {
+        return Ok(());
+    }
+    Err(io::Error::other(
+        "no image clipboard tool (install wl-clipboard or xclip)",
+    ))
+}
+
+fn pipe_to(cmd: &str, args: &[&str], data: &[u8]) -> io::Result<()> {
+    let mut child = Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("no stdin"))?;
+        stdin.write_all(data)?;
+    } // drop closes stdin so the tool proceeds
+    if child.wait()?.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("{cmd} failed")))
+    }
 }
 
 /// Whether a MIME type / filename looks like a raster image chafa can render.

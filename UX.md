@@ -88,7 +88,9 @@ conversation on normal terminals.
     (`{conv}-{msg}.ext`, background via the worker), a `⏳ loading…` placeholder
     holds the row meanwhile, and the run loop paints the cached graphic over the
     reserved rows — repainting only when the visible set/positions change, with
-    a per-`(path,size)` chafa-output cache so scrolling is cheap.
+    a per-`(path,size)` chafa-output cache so scrolling is cheap. In select
+    mode `c` **copies the image** to the clipboard (`wl-copy`/`xclip`/`pbcopy`,
+    `image::copy_to_clipboard`) when an image is selected, and `s` downloads it.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom). When focused
   (`Focus::CmdLog`) it is a **visual multi-select**: a `▶` cursor walks the

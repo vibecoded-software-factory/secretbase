@@ -189,7 +189,7 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         // Multi-select + copy (reduced action set).
         KeyCode::Char(' ') => chat::msg_toggle_mark(app),
         KeyCode::Char('y') => chat::do_copy_messages(app, true), // author + time + body
-        KeyCode::Char('c') => chat::do_copy_messages(app, false), // content only
+        KeyCode::Char('c') => chat::do_copy_content(app),        // image, or body text
         KeyCode::Char('o') => chat::do_open_url(app),            // open first link
         KeyCode::Char('l') => chat::do_copy_url(app),            // copy first link
         KeyCode::Char('+') => chat::open_react_for_selected(app), // react (emoji)

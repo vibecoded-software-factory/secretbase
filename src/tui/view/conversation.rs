@@ -780,10 +780,18 @@ fn select_actions_lines(
     } else {
         let is_me = !app.identity.username.is_empty() && m.sender == app.identity.username;
         let is_attachment = matches!(m.content, MessageContent::Attachment(_));
+        let is_image_att = matches!(&m.content, MessageContent::Attachment(a)
+            if crate::tui::image::is_image(&a.mime_type, &a.filename));
+        // For an image, `c` copies the picture itself, not the caption text.
+        let copy_label = if is_image_att {
+            "copy image"
+        } else {
+            "content"
+        };
         let mut actions: Vec<(&str, &str)> = vec![
             ("Space", "select"),
             ("y", "copy"),
-            ("c", "content"),
+            ("c", copy_label),
             ("+", "react"),
             ("r", "reply"),
         ];

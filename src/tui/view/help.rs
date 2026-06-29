@@ -138,7 +138,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
             ("y", "copy selection (author + time + body)"),
-            ("c", "copy selection (message body only)"),
+            (
+                "c",
+                "copy body — or the image itself, for an image attachment",
+            ),
             ("o / l", "open / copy the first link in the message"),
             ("e / d / + / p", "edit / del / react / pin"),
             ("r / s", "reply / download"),
