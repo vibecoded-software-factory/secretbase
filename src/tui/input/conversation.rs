@@ -54,11 +54,12 @@ fn handle_conv_search(app: &mut App, key: KeyEvent) {
         }
         KeyCode::F(5) => chat::request_conv_search(app),
         KeyCode::Up => {
-            app.conv_search_selected = app.conv_search_selected.saturating_sub(1);
+            let len = app.conv_search_results.len();
+            app.conv_search_selected = common::clamp_move(app.conv_search_selected, -1, len);
         }
         KeyCode::Down => {
-            let max = app.conv_search_results.len().saturating_sub(1);
-            app.conv_search_selected = (app.conv_search_selected + 1).min(max);
+            let len = app.conv_search_results.len();
+            app.conv_search_selected = common::clamp_move(app.conv_search_selected, 1, len);
         }
         _ => {
             let before = app.conv_search.text().to_string();
