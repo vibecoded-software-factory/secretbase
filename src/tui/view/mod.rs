@@ -204,9 +204,10 @@ fn draw_too_small(frame: &mut Frame, area: Rect, theme: &crate::tui::theme::Them
 }
 
 /// Splits a vertical area into the standard signed-in stack:
-/// `identity` · `header` (3) · `body` (fills) · `cmdlog` (6) ·
-/// `status` (1). `identity_content_rows` comes from
-/// [`widgets::identity_content_rows`]; +2 for the block borders.
+/// `identity` · `header` (3) · `body` (fills) · `cmdlog`
+/// ([`widgets::cmdlog_height`], responsive) · `status` (1).
+/// `identity_content_rows` comes from [`widgets::identity_content_rows`];
+/// +2 for the block borders.
 pub fn split_main(area: Rect, identity_content_rows: u16) -> [Rect; 5] {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -214,7 +215,7 @@ pub fn split_main(area: Rect, identity_content_rows: u16) -> [Rect; 5] {
             Constraint::Length(identity_content_rows + 2),
             Constraint::Length(3),
             Constraint::Min(5),
-            Constraint::Length(6),
+            Constraint::Length(widgets::cmdlog_height(area.height)),
             Constraint::Length(1),
         ])
         .split(area);

@@ -12,8 +12,8 @@ use ratatui::{
 use crate::domain::TeamRole;
 use crate::tui::app::App;
 use crate::tui::view::widgets::{
-    draw_cmd_log, draw_identity_bar, draw_status_strip, identity_content_rows, list_table,
-    list_title,
+    cmdlog_height, draw_cmd_log, draw_identity_bar, draw_status_strip, identity_content_rows,
+    list_table, list_title,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -24,7 +24,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(id_rows + 2),
             Constraint::Min(5),
-            Constraint::Length(6),
+            Constraint::Length(cmdlog_height(area.height)), // responsive command log
             Constraint::Length(1),
         ])
         .split(area);
