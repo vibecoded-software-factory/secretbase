@@ -60,6 +60,32 @@ pub fn center_rect(width_pct: u16, height: u16, area: Rect) -> Rect {
     .split(v[1])[1]
 }
 
+/// Width of the conversation-tree pane, responsive to the terminal width
+/// instead of a magic fixed `28`: ~28% of the width, clamped to `[22, 40]`.
+/// It **shrinks** toward the floor on a narrow terminal (so the chat keeps
+/// room) and **grows** on a wide one (so long DM/team names aren't always
+/// truncated). The Home's header filter and body tree must pass the same
+/// `total` so their columns line up.
+pub fn tree_pane_width(total: u16) -> u16 {
+    ((total as u32 * 28 / 100) as u16).clamp(22, 40)
+}
+
+/// Height of the command-log panel, responsive to the terminal height so the
+/// body (chat / list) never starves on a short terminal. Full 6 rows when
+/// there's room; it yields rows to the body as height gets tight, monotonically
+/// (a taller terminal never shrinks the body). Used by every signed-in stack.
+pub fn cmdlog_height(total: u16) -> u16 {
+    if total >= 28 {
+        6
+    } else if total >= 22 {
+        5
+    } else if total >= 19 {
+        4
+    } else {
+        3
+    }
+}
+
 /// One row of the help popup (key + description).
 pub fn help_line<'a>(key: &'a str, desc: &'a str, t: &Theme) -> Line<'a> {
     Line::from(vec![
@@ -340,26 +366,56 @@ pub fn draw_identity_bar(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let mut spans = vec![
-        Span::styled("user ", Style::default().fg(t.dim)),
-        Span::styled(
-            app.identity.username.clone(),
-            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-        ),
-    ];
-    if !app.identity.device_name.is_empty() {
+    // Fit to width like the footer hint does (never a hard clip mid-word):
+    // the username is mandatory, then add `unread` (it outranks `device` when
+    // space is tight — a count you must notice beats a device label), then
+    // `device`. The username truncates only as a last resort on a very narrow
+    // terminal. Widths are char-based (each includes its leading separator).
+    let avail = inner.width as usize;
+    let uname = app.identity.username.clone();
+    let dev = app.identity.device_name.clone();
+    let unread = app.unread_total();
+    let unread_txt = if unread > 0 {
+        format!("{unread} unread")
+    } else {
+        String::new()
+    };
+    let user_w = "user ".len() + uname.chars().count();
+    let dev_w = if dev.is_empty() {
+        0
+    } else {
+        "  ·  device ".chars().count() + dev.chars().count()
+    };
+    let unread_w = if unread > 0 {
+        "  ·  ".chars().count() + unread_txt.chars().count()
+    } else {
+        0
+    };
+    let mut show_dev = dev_w > 0;
+    let mut show_unread = unread_w > 0;
+    if user_w + dev_w + unread_w > avail {
+        show_dev = false;
+    }
+    if user_w + if show_dev { dev_w } else { 0 } + unread_w > avail {
+        show_unread = false;
+    }
+
+    let mut spans = vec![Span::styled("user ", Style::default().fg(t.dim))];
+    let fixed = if show_dev { dev_w } else { 0 } + if show_unread { unread_w } else { 0 };
+    let uname_budget = avail.saturating_sub("user ".len() + fixed).max(1);
+    spans.push(Span::styled(
+        trim_end_ellipsis(&uname, uname_budget),
+        Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+    ));
+    if show_dev {
         spans.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
         spans.push(Span::styled("device ", Style::default().fg(t.dim)));
-        spans.push(Span::styled(
-            app.identity.device_name.clone(),
-            Style::default().fg(t.foreground),
-        ));
+        spans.push(Span::styled(dev, Style::default().fg(t.foreground)));
     }
-    let unread = app.unread_total();
-    if unread > 0 {
+    if show_unread {
         spans.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
         spans.push(Span::styled(
-            format!("{unread} unread"),
+            unread_txt,
             Style::default()
                 .fg(t.conv_unread)
                 .add_modifier(Modifier::BOLD),
@@ -716,6 +772,35 @@ mod tests {
         assert_eq!(trim_end_ellipsis("hello world", 5), "hell…"); // 4 chars + …
         assert_eq!(trim_end_ellipsis("áéíóú", 3), "áé…"); // multibyte boundary safe
         assert_eq!(trim_end_ellipsis("toolong", 1), "…"); // degenerate width
+    }
+
+    #[test]
+    fn tree_pane_width_shrinks_and_grows_clamped() {
+        assert_eq!(tree_pane_width(70), 22); // narrow → floor
+        assert_eq!(tree_pane_width(100), 28); // typical → the familiar 28
+        assert_eq!(tree_pane_width(300), 40); // very wide → cap
+        // Monotonic non-decreasing in width.
+        let mut prev = 0;
+        for w in (70..=300).step_by(7) {
+            let v = tree_pane_width(w);
+            assert!(v >= prev, "tree width must not shrink as width grows");
+            prev = v;
+        }
+    }
+
+    #[test]
+    fn cmdlog_height_yields_to_body_without_starving_it() {
+        assert_eq!(cmdlog_height(18), 3); // floor → smallest log
+        assert_eq!(cmdlog_height(40), 6); // roomy → full log
+        // The body (height − 4 fixed chrome − cmdlog) must never shrink as the
+        // terminal grows — the regression a naive two-tier split would cause.
+        let body = |h: u16| h.saturating_sub(4).saturating_sub(cmdlog_height(h));
+        let mut prev = 0;
+        for h in 18..=60 {
+            let b = body(h);
+            assert!(b >= prev, "body shrank at height {h}: {b} < {prev}");
+            prev = b;
+        }
     }
 
     #[test]

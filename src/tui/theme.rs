@@ -7,13 +7,15 @@
 //! ```toml
 //! [theme]
 //! accent       = "#cba6f7"   # active borders, cursor, highlights
-//! inactive     = "#6c7086"   # inactive panel borders
+//! inactive     = "#848c9d"   # inactive panel borders — a *visible* gray,
+//!                            #   not near-black (focus = the active border)
 //! selected_bg  = "#313244"   # selected row background
 //! success      = "#a6e3a1"   # success messages
 //! error        = "#f38ba8"   # error messages
-//! dim          = "#585b70"   # secondary text, hints, counters
+//! dim          = "#9aa0b8"   # readable secondary text / counters / hints
+//!                            #   (a subtext — kept legible, NOT a border tint)
 //! foreground   = "#cdd6f4"   # main text (omit to inherit terminal fg)
-//! placeholder  = "#505578"   # empty-input "type here…" hints
+//! placeholder  = "#505578"   # empty-input "type here…" hints (recessive)
 //! muted        = "#3c3e50"   # decorative separators / barely-visible borders
 //! star_dim     = "#262248"   # dimmest decorative star (splash/login)
 //! star_mid     = "#5a5494"   # mid-brightness star
@@ -35,6 +37,10 @@ pub struct Theme {
     pub selected_bg: Color,
     pub success: Color,
     pub error: Color,
+    /// Readable **secondary** text (a subtext): counters, hints, timestamps,
+    /// command-log detail. Kept legible — de-emphasis is hierarchy, not a
+    /// near-invisible tint. For genuinely-recessive chrome use `inactive`
+    /// (borders), `placeholder` (empty inputs) or `muted` (separators).
     pub dim: Color,
     /// Main body-text color. Defaults to [`Color::Reset`] so the TUI
     /// inherits the terminal's foreground — the most portable choice.
@@ -220,13 +226,28 @@ impl Theme {
     pub fn from_palette(p: &Palette) -> Theme {
         Theme {
             accent: p.accent,
-            inactive: p.overlay,
+            // Unfocused panel borders. A **visible** gray (lazygit-style: the
+            // inactive border still reads clearly; what marks focus is the
+            // *active* border going accent + bold, not the inactive one fading
+            // to near-black). Derived overlay→text so it lifts off the
+            // background on every preset, while staying a notch below `dim`.
+            inactive: mix(p.overlay, p.text, 0.4),
             selected_bg: p.surface,
             success: p.green,
             error: p.red,
-            dim: p.overlay,
+            // `dim` is the **readable secondary** tier (a subtext), NOT the
+            // near-border tint. Secondary text / counters / hints must stay
+            // legible — de-emphasis comes from the *hierarchy* (a brighter
+            // primary, the active-border accent, the selection bg), lazygit-
+            // style, never from painting text almost the colour of the border.
+            // The genuinely-recessive roles stay dark: `inactive` (borders),
+            // `placeholder` (empty inputs), `muted` (separators). Derived as a
+            // blend overlay→text so every preset gets a coherent subtext free.
+            dim: mix(p.overlay, p.text, 0.5),
             foreground: p.text,
-            placeholder: p.overlay,
+            // Empty-input "type here…" hints: recessive, but lifted slightly off
+            // the background so the hint is still readable (not the raw overlay).
+            placeholder: mix(p.overlay, p.text, 0.25),
             muted: p.muted,
             // Starfield: a fade from the background up toward the accent.
             star_dim: mix(p.accent, p.base, 0.78),
@@ -537,6 +558,39 @@ mod tests {
             assert_eq!(Preset::from_name(p.name()), Some(p));
             let t = Theme::from_palette(&p.palette());
             assert_ne!(t.accent, Color::Reset);
+        }
+    }
+
+    /// `dim` is the readable-secondary tier and must stay distinct from the
+    /// recessive border tint (`inactive`) — and brighter than it — so secondary
+    /// text never collapses into the "barely legible" band. Guards the
+    /// regression back to `dim = overlay`.
+    fn luma(c: Color) -> u32 {
+        let (r, g, b) = rgb(c);
+        // Rough perceptual weighting (no need for gamma here).
+        2 * r as u32 + 3 * g as u32 + b as u32
+    }
+
+    #[test]
+    fn dim_is_a_readable_subtext_not_the_border_tint() {
+        for p in Preset::ALL {
+            let t = Theme::from_palette(&p.palette());
+            assert_ne!(
+                t.dim,
+                t.inactive,
+                "{} dim must differ from border",
+                p.name()
+            );
+            // Light themes invert luminance, so compare distance from the text
+            // tier: dim must sit closer to the readable text than the border does.
+            let text = p.palette().text;
+            let d_dim = luma(t.dim).abs_diff(luma(text));
+            let d_border = luma(t.inactive).abs_diff(luma(text));
+            assert!(
+                d_dim < d_border,
+                "{}: dim should be closer to text than the border is",
+                p.name()
+            );
         }
     }
 

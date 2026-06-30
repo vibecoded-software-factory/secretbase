@@ -13,7 +13,8 @@ use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    draw_cmd_log, draw_search_box, draw_status_strip, list_table, list_title, middle_ellipsis,
+    cmdlog_height, draw_cmd_log, draw_search_box, draw_status_strip, list_table, list_title,
+    middle_ellipsis, tree_pane_width,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -23,7 +24,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let main = Layout::vertical([
         Constraint::Length(3), // shared header row (filter / name / search)
         Constraint::Min(5),    // body (tree | chat)
-        Constraint::Length(6), // command log
+        Constraint::Length(cmdlog_height(area.height)), // command log (responsive)
         Constraint::Length(1), // status strip
     ])
     .split(area);
@@ -31,14 +32,16 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // One shared header row: the tree filter (above the tree) + the in-chat
     // search (above the chat). The conversation name lives on the Messages
-    // panel title, so it doesn't need its own slot here.
-    let head = Layout::horizontal([Constraint::Length(28), Constraint::Min(20)]).split(header);
+    // panel title, so it doesn't need its own slot here. The tree column is
+    // width-responsive (`tree_pane_width`) — the header + body must match.
+    let tree_w = tree_pane_width(area.width);
+    let head = Layout::horizontal([Constraint::Length(tree_w), Constraint::Min(20)]).split(header);
     let search_area = head[0];
     let chat_search_area = head[1];
 
     // Body: the conversation tree (DMs + teams) on the left, the open chat
     // on the right — the unified two-pane "Home".
-    let cols = Layout::horizontal([Constraint::Length(28), Constraint::Min(24)]).split(body);
+    let cols = Layout::horizontal([Constraint::Length(tree_w), Constraint::Min(24)]).split(body);
     let tree_area = cols[0];
     let chat_area = cols[1];
 
