@@ -7,8 +7,8 @@
 //! ```toml
 //! [theme]
 //! accent       = "#cba6f7"   # active borders, cursor, highlights
-//! inactive     = "#848c9d"   # inactive panel borders — a *visible* gray,
-//!                            #   not near-black (focus = the active border)
+//! inactive     = "#a6adc8"   # inactive panel borders — a *bright*, near-text
+//!                            #   gray (focus = the active border, accent+bold)
 //! selected_bg  = "#313244"   # selected row background
 //! success      = "#a6e3a1"   # success messages
 //! error        = "#f38ba8"   # error messages
@@ -226,12 +226,13 @@ impl Theme {
     pub fn from_palette(p: &Palette) -> Theme {
         Theme {
             accent: p.accent,
-            // Unfocused panel borders. A **visible** gray (lazygit-style: the
-            // inactive border still reads clearly; what marks focus is the
-            // *active* border going accent + bold, not the inactive one fading
-            // to near-black). Derived overlay→text so it lifts off the
-            // background on every preset, while staying a notch below `dim`.
-            inactive: mix(p.overlay, p.text, 0.4),
+            // Unfocused panel borders. A **bright, near-text** gray (lazygit
+            // renders inactive borders in the terminal's default foreground, so
+            // they read clearly white-ish); what marks focus is the *active*
+            // border going accent + bold, not the inactive one fading out.
+            // Derived overlay→text 0.6 so it lifts well off the background on
+            // every preset.
+            inactive: mix(p.overlay, p.text, 0.6),
             selected_bg: p.surface,
             success: p.green,
             error: p.red,
@@ -561,36 +562,38 @@ mod tests {
         }
     }
 
-    /// `dim` is the readable-secondary tier and must stay distinct from the
-    /// recessive border tint (`inactive`) — and brighter than it — so secondary
-    /// text never collapses into the "barely legible" band. Guards the
-    /// regression back to `dim = overlay`.
     fn luma(c: Color) -> u32 {
         let (r, g, b) = rgb(c);
         // Rough perceptual weighting (no need for gamma here).
         2 * r as u32 + 3 * g as u32 + b as u32
     }
 
+    /// Both the secondary-text tier (`dim`) and the unfocused-border tier
+    /// (`inactive`) must be **lifted out of the dark `overlay` band** — each
+    /// sits closer to the readable `text` than the raw `overlay` does. This is
+    /// the legibility invariant (the regression to guard is mapping either role
+    /// back to `overlay`, which made text/borders barely legible); their
+    /// relative order doesn't matter (borders may be brighter than subtext).
     #[test]
-    fn dim_is_a_readable_subtext_not_the_border_tint() {
+    fn dim_and_borders_are_lifted_out_of_the_dark_band() {
         for p in Preset::ALL {
             let t = Theme::from_palette(&p.palette());
-            assert_ne!(
-                t.dim,
-                t.inactive,
-                "{} dim must differ from border",
-                p.name()
-            );
-            // Light themes invert luminance, so compare distance from the text
-            // tier: dim must sit closer to the readable text than the border does.
-            let text = p.palette().text;
-            let d_dim = luma(t.dim).abs_diff(luma(text));
-            let d_border = luma(t.inactive).abs_diff(luma(text));
-            assert!(
-                d_dim < d_border,
-                "{}: dim should be closer to text than the border is",
-                p.name()
-            );
+            let pal = p.palette();
+            let to_text = |c: Color| luma(c).abs_diff(luma(pal.text));
+            let overlay_gap = to_text(pal.overlay);
+            for (role, c) in [("dim", t.dim), ("inactive", t.inactive)] {
+                assert_ne!(
+                    c,
+                    pal.overlay,
+                    "{}: {role} must not be raw overlay",
+                    p.name()
+                );
+                assert!(
+                    to_text(c) < overlay_gap,
+                    "{}: {role} should sit closer to text than overlay does",
+                    p.name()
+                );
+            }
         }
     }
 

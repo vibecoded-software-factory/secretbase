@@ -140,6 +140,7 @@ pub fn list_table(
     };
     let mut block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(Span::styled(top_title.to_string(), border_style))
         .border_style(border_style);
     if !count.is_empty() {

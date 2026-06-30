@@ -51,6 +51,14 @@ pub fn draw_popup(frame: &mut Frame, app: &App) {
         .border_style(Style::default().fg(t.accent));
     let inner = outer.inner(popup);
     frame.render_widget(outer, popup);
+    // A column of breathing room each side so the Sections / panel blocks don't
+    // glue to the outer frame. (`popup_dims` reserves the extra width.)
+    let inner = Rect {
+        x: inner.x + 1,
+        y: inner.y,
+        width: inner.width.saturating_sub(2),
+        height: inner.height,
+    };
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -142,8 +150,8 @@ fn popup_dims(app: &App, area: Rect) -> (u16, u16, u16) {
     let footer_w = HINT_SIDEBAR.chars().count().max(HINT_PANEL.chars().count());
     let inner_w = (sidebar_w + panel_w).max(footer_w);
 
-    // + outer double border (2).
-    let want_w = (inner_w + 2) as u16;
+    // + outer double border (2) + a column of horizontal padding each side (2).
+    let want_w = (inner_w + 4) as u16;
     let w = want_w.clamp(40, area.width.saturating_sub(2));
     let h = MODAL_HEIGHT.min(area.height.saturating_sub(2));
     (w, h, sidebar_w as u16)
@@ -172,6 +180,7 @@ fn focus_block(app: &App, title: &str, focused: bool) -> Block<'static> {
     Block::default()
         .title(Span::styled(format!(" {title} "), title_style))
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(color))
 }
 

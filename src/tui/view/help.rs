@@ -44,20 +44,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     app.help_scroll = app.help_scroll.min(max_y);
     let scroll_y = app.help_scroll;
 
-    let title = if max_y > 0 {
-        format!(
-            " Help — {}  ({}/{})  F1/Esc close ",
-            screen_label(from, chat),
-            scroll_y + 1,
-            max_y + 1,
-        )
-    } else {
-        format!(" Help — {}  ·  F1/Esc close ", screen_label(from, chat))
-    };
-
     let block = Block::default()
         .title(Span::styled(
-            title,
+            " Help ",
             Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
@@ -67,19 +56,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Paragraph::new(lines).scroll((scroll_y, 0)), inner);
 
     draw_scroll_indicators(frame, popup, scroll_y, max_y, &t);
-}
-
-fn screen_label(screen: Screen, chat: bool) -> &'static str {
-    if chat {
-        return "Conversation";
-    }
-    match screen {
-        Screen::Inbox => "Inbox",
-        Screen::Teams => "Teams",
-        Screen::Login => "Login",
-        Screen::Settings => "Settings",
-        _ => "Global",
-    }
 }
 
 fn section(title: &str, t: &Theme) -> Line<'static> {

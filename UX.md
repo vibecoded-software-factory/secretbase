@@ -357,7 +357,17 @@ doesn't yank the cursor. `tree_selected` only ever indexes `tree_rows()` via
 
 ## Chrome & widgets (`view::widgets` + `view::mod`)
 
-- `view::mod::titled_block(title, focused, app)` — the bordered block:
+**Rounded borders everywhere (hard rule).** Every section panel uses
+`BorderType::Rounded` — set once in `titled_block`, `list_table`, the Settings
+`focus_block`, and the file picker, plus the existing `rounded_block` pickers
+(global search, react, quick switcher). A new bordered panel **must** be
+rounded too (reuse `titled_block` / `list_table` and it is, for free). The only
+non-rounded borders are the deliberate `BorderType::Double` modal frames — the
+destructive `draw_confirm_popup`, the Settings outer frame, and the help popup —
+where Double signals "modal overlay"; don't round those without a deliberate
+decision.
+
+- `view::mod::titled_block(title, focused, app)` — the bordered block (rounded):
   focused = accent + bold, else `inactive`. Used for every panel.
 - `view::mod::split_main(area, identity_rows)` — the standard vertical stack.
 - `widgets::list_table` / `list_title` / `col_width` / `middle_ellipsis` /
@@ -491,10 +501,10 @@ not by reflex:
    row. `dim` is a **subtext that stays legible**, derived per-preset as a blend
    `overlay→text` (0.5) in `Theme::from_palette` — **not** the border tint. Do
    not map it back to `overlay`.
-4. **`inactive`** — unfocused panel **borders**. A *visible* gray
-   (`overlay→text` 0.4), **not** near-black: an unfocused pane stays readable;
-   what marks focus is the *active* border going `accent` + bold, never the
-   inactive one fading out (lazygit-style — the border recedes, the words don't).
+4. **`inactive`** — unfocused panel **borders**. A *bright*, near-text gray
+   (`overlay→text` 0.6) — lazygit renders inactive borders in the terminal's
+   default foreground, so they read clearly; what marks focus is the *active*
+   border going `accent` + bold, never the inactive one fading out.
 5. **Recessive band** — genuinely faint, chrome only: `placeholder`
    (empty-input "type here…", `overlay→text` 0.25), `muted` (` · ` separators,
    the popup `(←/→ · Enter · Esc)` legend, disabled chips). Never put content a
