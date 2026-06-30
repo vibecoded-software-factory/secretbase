@@ -156,6 +156,13 @@ pub enum WorkerRequest {
         filename: String,
         title: String,
     },
+    /// Decode an animated GIF's frames off the render thread (ImageMagick
+    /// `convert`) so the UI never blocks while a large GIF is "generated".
+    /// Not a keybase call — pure image work; carries the downloaded GIF's
+    /// cache path, from which the worker derives the frame dir.
+    DecodeGif {
+        path: String,
+    },
     ListEmojis,
     ListSelfMemberships,
     /// Terminates the worker. Sent automatically on drop of
@@ -192,6 +199,10 @@ pub enum WorkerResponse {
     /// error so the failure can be pinned to the right attachment).
     PreviewImage(String, Result<(), KeybaseError>),
     UploadAttachment(Result<(), KeybaseError>),
+    /// Decoded GIF frames (or `None` for a still / single-frame GIF, or when
+    /// ImageMagick isn't available). Carries the source cache path to key it
+    /// back into `App::gif_anims`.
+    DecodeGif(String, Option<crate::tui::image::GifFrames>),
     Emojis(Result<Vec<Emoji>, KeybaseError>),
     ListSelfMemberships(Result<ListTeamsOk, KeybaseError>),
 }
@@ -205,10 +216,10 @@ pub enum WorkerResponse {
 /// [`WorkerResponse`] arrives.
 #[derive(Debug, Clone)]
 pub enum InFlight {
-    CheckStatus,
-    /// Initial post-login load — chains LoadInbox on success and
-    /// transitions Splash → Inbox/Login.
-    BootStatus,
+    /// `keybase status` check. On success: logged in → keep the splash as a
+    /// loading screen and load the inbox before entering it; logged out →
+    /// Login. Fired once at boot and from the Login screen's retry.
+    Status,
     Logout,
     LoadInbox,
     LoadMessages,
@@ -558,6 +569,7 @@ mod tests {
                 Self::DownloadAttachment(r) => write!(f, "DownloadAttachment({r:?})"),
                 Self::PreviewImage(p, r) => write!(f, "PreviewImage({p}, {r:?})"),
                 Self::UploadAttachment(r) => write!(f, "UploadAttachment({r:?})"),
+                Self::DecodeGif(p, _) => write!(f, "DecodeGif({p}, ..)"),
                 Self::Emojis(_) => f.write_str("Emojis(..)"),
                 Self::ListSelfMemberships(_) => f.write_str("ListSelfMemberships(..)"),
             }
@@ -669,6 +681,18 @@ fn run_worker(
             } => WorkerResponse::UploadAttachment(run_caught(|| {
                 keybase.upload_attachment(&channel, &filename, &title)
             })),
+            WorkerRequest::DecodeGif { path } => {
+                // Pure image work (not a keybase call). Wrap in catch_unwind for
+                // the same panic isolation as the port calls.
+                let frames = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    crate::tui::image::extract_gif_frames(
+                        &path,
+                        &crate::tui::image::gif_frame_dir(&path),
+                    )
+                }))
+                .unwrap_or(None);
+                WorkerResponse::DecodeGif(path, frames)
+            }
             WorkerRequest::ListEmojis => {
                 WorkerResponse::Emojis(run_caught(|| keybase.list_emojis()))
             }

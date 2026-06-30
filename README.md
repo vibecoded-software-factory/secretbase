@@ -38,8 +38,10 @@ A working terminal client for everyday Keybase chat. Highlights:
 * **Search**: local fuzzy filter, server-side inbox search (`Ctrl+G`),
   in-conversation regexp search (`Ctrl+F`), and a quick switcher (`Ctrl+K`).
 * **Teams**: list your memberships with role and member count (`Alt+T`).
-* New conversation (`Alt+N`), mark read, mute / unmute, ignore, copy label.
-* Full **Settings** screen (`F9`): your identity, a live theme picker, and
+* New conversation (`Alt+N`), mark read, ignore / block / report, unhide
+  (restore blocked/reported by name), copy label, plus **local-only** ★ favorite
+  (`Alt+S`) and mute (`Alt+U`).
+* Full **Settings** screen (`F10`): your identity, a live theme picker, and
   every preference below — edited in place and saved immediately.
 
 ## Requirements
@@ -87,8 +89,12 @@ tables.
 | `Alt+Y`                 | Yank (copy) label to clipboard |
 | `Alt+E`                 | Mark as sEEn (read) |
 | `Alt+R` / `F5`          | Refresh inbox |
-| `Alt+U` / `Alt+O`       | Mute / unmute |
-| `Alt+I`                 | Ignore conversation (hide from inbox) |
+| `Alt+U`                 | Toggle mute (local only — hides the unread badge; not synced) |
+| `Alt+S`                 | Toggle ★ favorite (local only — not synced to Keybase) |
+| `Alt+I`                 | Ignore conversation (hidden until next message) |
+| `Alt+B`                 | Block conversation (hide for good) |
+| `Alt+G`                 | Report conversation (flag to Keybase + hide) |
+| `Alt+H`                 | Unhide — restore a blocked/reported chat by name |
 | `Alt+T`                 | Teams |
 | `Ctrl+G`                | Global search |
 | `Ctrl+K`                | Quick switcher — jump to a conversation |
@@ -132,13 +138,37 @@ copy detail only · `Esc` clear / leave.
 | Key | Action |
 |---|---|
 | `F1`                    | Toggle help |
-| `F9`                    | Open Settings |
+| `F10`                   | Open Settings |
 | `Ctrl+C`                | Quit |
+
+## Not supported (CLI limitations)
+
+secretbase is a wrapper over the `keybase` binary, so it can only do what the
+CLI exposes. The principle for anything the CLI **can't drive transparently**:
+either keep it fully local (so we own the state and the undo), or leave it out —
+never a half-synced state that silently drifts.
+
+* **Favorite and mute — handled fully locally.** Keybase's server-side
+  conversation `status` (`favorite`, `muted`) **can't be read back**: the
+  `keybase chat api {"method":"list"}` JSON (`ConvSummary`) omits it (the data
+  exists at the service-RPC level — e.g. `IsMuted` — but the CLI doesn't project
+  it). So secretbase **doesn't touch the server status at all** and keeps its
+  own **local-only** state instead, persisted in `config.toml`
+  (`favorites` / `muted`), never synced:
+    * `Alt+S` toggles a local ★.
+    * `Alt+U` toggles a local mute, which only suppresses secretbase's own
+      unread indicators (the `●` dot, bold, the unread count + filter) — the TUI
+      has no notifications to silence, so that *is* what "mute" means here.
+      ⚠️ It does **not** silence Keybase notifications on your phone / desktop
+      GUI (that's the server-side mute, which we don't use).
+* **Typing indicators, read receipts, edit/delete deltas** over the push
+  stream — the `keybase chat api-listen` callbacks return `nil` for these, so
+  they're not available to any wrapper.
 
 ## Configuration
 
 Everything below can be edited live from the in-app **Settings** screen
-(`F9`) — changes save to `config.toml` immediately — or by hand in
+(`F10`) — changes save to `config.toml` immediately — or by hand in
 `~/.config/secretbase/config.toml`:
 
 ```toml
@@ -153,6 +183,9 @@ image_protocol = "auto"            # inline image attachments: auto | kitty | si
 image_symbols = "sextant+block+space"  # chafa --symbols set (symbol path only):
                                     # sextant (default), add `octant+` for denser
                                     # output on Unicode-16 fonts, or `half` anywhere
+emoji_style = "glyph"              # reaction display: glyph (default) | shortcode
+                                    # (`:alias:` text — legible when the terminal
+                                    # renders emoji as tofu; a TUI can't set fonts)
 
 [theme]
 name         = "nord"              # bundled preset: nord (default),
@@ -172,7 +205,7 @@ frame.
 
 Pick a bundled palette with `name`, then override individual keys if you want.
 Omitting `name` keeps the default (Nord with terminal-inherited text). You can
-also switch presets live in-app from the **Settings** screen (`F9`).
+also switch presets live in-app from the **Settings** screen (`F10`).
 
 ## Architecture
 

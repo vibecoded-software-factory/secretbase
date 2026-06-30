@@ -40,37 +40,57 @@ pub const PAGE_STEP: usize = 10;
 pub enum ConvAction {
     /// Hide from the inbox until a new message arrives (`ignored`).
     Ignore,
+    /// Block and remove from the inbox (`blocked`). Reversible via the
+    /// by-name **Unhide** popup (`unfiled`) since blocked convs leave `list`.
+    Block,
+    /// Report to Keybase and remove from the inbox (`reported`). Reversible
+    /// via the by-name **Unhide** popup.
+    Report,
 }
 
 impl ConvAction {
-    /// The keybase `setstatus` value.
+    /// The keybase `setstatus` value (a `chat1.ConversationStatus`).
     pub fn status(self) -> &'static str {
         match self {
             ConvAction::Ignore => "ignored",
+            ConvAction::Block => "blocked",
+            ConvAction::Report => "reported",
         }
     }
     /// Spinner label while the call runs.
     pub fn running(self) -> &'static str {
         match self {
             ConvAction::Ignore => "Ignoring…",
+            ConvAction::Block => "Blocking…",
+            ConvAction::Report => "Reporting…",
         }
     }
     /// Feedback label on success.
     pub fn done(self) -> &'static str {
         match self {
             ConvAction::Ignore => "Ignored",
+            ConvAction::Block => "Blocked",
+            ConvAction::Report => "Reported",
         }
     }
     /// Confirm-popup title.
     pub fn title(self) -> &'static str {
         match self {
             ConvAction::Ignore => " Ignore conversation? ",
+            ConvAction::Block => " Block conversation? ",
+            ConvAction::Report => " Report conversation? ",
         }
     }
     /// One-line description of the effect, shown in the confirm popup.
     pub fn note(self) -> &'static str {
         match self {
             ConvAction::Ignore => "Hides it from the inbox until a new message arrives.",
+            ConvAction::Block => {
+                "Blocks it and removes it from your inbox. Restore later with Alt+H (by name)."
+            }
+            ConvAction::Report => {
+                "Reports it to Keybase and removes it from your inbox. Restore with Alt+H."
+            }
         }
     }
 }
@@ -93,6 +113,8 @@ pub enum SettingsSection {
     Theme,
     /// Chat behaviour: auto-mark-read, safety-net refresh cadence.
     Chat,
+    /// Emoji display (glyph vs `:shortcode:`).
+    Emoji,
     /// Clipboard auto-clear delay.
     Clipboard,
     /// `keybase` call timeouts (inbox list, attachment download).
@@ -103,10 +125,11 @@ pub enum SettingsSection {
 
 impl SettingsSection {
     /// Every section, in sidebar order.
-    pub const ALL: [SettingsSection; 6] = [
+    pub const ALL: [SettingsSection; 7] = [
         SettingsSection::Identity,
         SettingsSection::Theme,
         SettingsSection::Chat,
+        SettingsSection::Emoji,
         SettingsSection::Clipboard,
         SettingsSection::Network,
         SettingsSection::Images,
@@ -118,6 +141,7 @@ impl SettingsSection {
             SettingsSection::Identity => "Identity",
             SettingsSection::Theme => "Theme",
             SettingsSection::Chat => "Chat",
+            SettingsSection::Emoji => "Emoji",
             SettingsSection::Clipboard => "Clipboard",
             SettingsSection::Network => "Network",
             SettingsSection::Images => "Images",
@@ -132,6 +156,7 @@ impl SettingsSection {
             SettingsSection::Identity => &[Username, Device, DeviceType],
             SettingsSection::Theme => &[],
             SettingsSection::Chat => &[AutoMarkRead, InboxRefresh],
+            SettingsSection::Emoji => &[EmojiStyle],
             SettingsSection::Clipboard => &[ClipboardClear],
             SettingsSection::Network => &[ListTimeout, DownloadTimeout],
             SettingsSection::Images => &[ImageProtocol, ImageSymbols],
@@ -154,6 +179,7 @@ pub enum SettingId {
     DownloadTimeout,
     ImageProtocol,
     ImageSymbols,
+    EmojiStyle,
 }
 
 /// The chafa symbol sets offered in the Images section (the meaningful presets
@@ -164,6 +190,10 @@ pub const IMAGE_SYMBOL_SETS: [&str; 3] =
 
 /// The inline-image protocols offered in the Images section.
 pub const IMAGE_PROTOCOLS: [&str; 6] = ["auto", "kitty", "sixel", "iterm", "symbols", "off"];
+
+/// Emoji display modes offered in the Emoji section: the Unicode `glyph`, or the
+/// `:shortcode:` text (legible even when the terminal renders emoji as tofu).
+pub const EMOJI_STYLES: [&str; 2] = ["glyph", "shortcode"];
 
 /// How a [`SettingId`] is displayed and adjusted.
 pub enum SettingKind {
@@ -192,6 +222,7 @@ impl SettingId {
             SettingId::DownloadTimeout => "Download timeout",
             SettingId::ImageProtocol => "Image protocol",
             SettingId::ImageSymbols => "Symbol set",
+            SettingId::EmojiStyle => "Display",
         }
     }
 
@@ -222,6 +253,7 @@ impl SettingId {
             },
             SettingId::ImageProtocol => SettingKind::Choice(&IMAGE_PROTOCOLS),
             SettingId::ImageSymbols => SettingKind::Choice(&IMAGE_SYMBOL_SETS),
+            SettingId::EmojiStyle => SettingKind::Choice(&EMOJI_STYLES),
         }
     }
 
@@ -486,6 +518,12 @@ pub struct App {
     /// Comma-separated usernames typed by the user in the Alt+N popup.
     pub new_conv: LineEditor,
 
+    // ── Unhide popup (restore a blocked/reported conv by name) ──────────
+    /// Username(s) typed in the Alt+H **Unhide** popup. Blocked/reported convs
+    /// leave the inbox `list`, so they're restored (`setstatus unfiled`) by
+    /// name instead of by tree selection.
+    pub unhide_input: LineEditor,
+
     // ── Server-side search popup ────────────────────────────────────────
     /// Query box in the Ctrl+G popup.
     pub search_global_input: LineEditor,
@@ -525,10 +563,6 @@ pub struct App {
     // ── Action queue / feedback strip ─────────────────────────────────────
     pub action_state: ActionState,
     pub action_tick: u8,
-    /// Free-running animation counter (wraps at 256), advanced every
-    /// `tick_action`. Drives smooth animations like the skeleton shimmer —
-    /// unlike `action_tick` it isn't reset by `set_action` or capped at 4.
-    pub anim_tick: u8,
     /// Caller-side context for the request the worker is currently
     /// processing. `None` when idle. Set by `flows::*::request_*` and
     /// cleared by [`crate::tui::flows::apply_response`] once the
@@ -556,8 +590,18 @@ pub struct App {
     // ── Settings / theme ──────────────────────────────────────────────────
     pub settings_cache: UserSettings,
     pub theme: Theme,
+    /// **Local-only** favourited conversation ids (fast lookup), synced from
+    /// `settings_cache.favorites`. Our own star — never touches Keybase's
+    /// `favorite` status (which the CLI can't read back). Fully owned and
+    /// persisted by us. See [`Self::toggle_favorite`].
+    pub favorites: HashSet<String>,
+    /// **Local-only** muted conversation ids. Like [`Self::favorites`], purely
+    /// ours: muting suppresses the unread indicators secretbase renders (no `●`,
+    /// no bold, excluded from the unread count + filter), since the TUI has no
+    /// notifications to silence. See [`Self::toggle_muted`] / [`Self::conv_is_unread`].
+    pub muted: HashSet<String>,
 
-    // ── Settings overlay (F9) ──────────────────────────────────────────────
+    // ── Settings overlay (F10) ─────────────────────────────────────────────
     /// Which pane of the Settings overlay holds focus.
     pub settings_focus: SettingsFocus,
     /// Highlighted section in the sidebar (index into
@@ -645,7 +689,15 @@ pub struct App {
     pub image_render_cache: crate::tui::image::RenderCache,
     /// Animated-GIF frames by cache path: `Some` once extracted (animated),
     /// `None` when checked and found to be a still image (don't re-extract).
+    /// Populated **off-thread** by the worker ([`crate::tui::worker::WorkerRequest::DecodeGif`])
+    /// so a large GIF never blocks the render thread while it's decoded.
     pub gif_anims: HashMap<String, Option<crate::tui::image::GifFrames>>,
+    /// GIF cache paths whose off-thread decode is in flight (de-dupes the
+    /// request and drives the "decoding" skeleton).
+    pub gif_pending: HashSet<String>,
+    /// Visible GIFs that are downloaded but not yet decoded — drained by the
+    /// run loop, which enqueues the background decode (mirrors `image_to_fetch`).
+    pub gif_to_decode: Vec<String>,
     /// Wall-clock milliseconds since the run loop started — drives GIF frame
     /// selection. Stamped each iteration by the loop.
     pub anim_ms: u64,
@@ -679,6 +731,8 @@ impl App {
         let settings_cache = settings.read();
         let image_proto = crate::tui::image::resolve(&settings_cache.image_protocol);
         let image_symbols = settings_cache.image_symbols.clone();
+        let favorites: HashSet<String> = settings_cache.favorites.iter().cloned().collect();
+        let muted: HashSet<String> = settings_cache.muted.iter().cloned().collect();
         let theme = theme::load(&settings.config_dir());
         // Preselect the picker on the configured preset, else the shared
         // default (Nord).
@@ -737,6 +791,7 @@ impl App {
             conv_search_results: Vec::new(),
             conv_search_selected: 0,
             new_conv: LineEditor::default(),
+            unhide_input: LineEditor::default(),
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
             search_global_selected: 0,
@@ -750,7 +805,6 @@ impl App {
             conv_action_yes: false,
             action_state: ActionState::Idle,
             action_tick: 0,
-            anim_tick: 0,
             in_flight: None,
             cmd_log: Vec::new(),
             cmd_log_scroll: 0,
@@ -759,6 +813,8 @@ impl App {
             cmdlog_anchor: None,
             pending_pane_nav: false,
             settings_cache,
+            favorites,
+            muted,
             image_proto,
             image_ready: HashSet::new(),
             image_pending: HashSet::new(),
@@ -768,6 +824,8 @@ impl App {
             image_dirty: false,
             image_render_cache: crate::tui::image::RenderCache::new(image_symbols),
             gif_anims: HashMap::new(),
+            gif_pending: HashSet::new(),
+            gif_to_decode: Vec::new(),
             anim_ms: 0,
             gif_animating: false,
             theme,
@@ -870,7 +928,7 @@ impl App {
             .collect();
         by_recency(&mut drafts);
         let mut unread: Vec<usize> = (0..self.conversations.len())
-            .filter(|&i| self.conversations[i].unread && !drafts.contains(&i))
+            .filter(|&i| self.conv_is_unread(&self.conversations[i]) && !drafts.contains(&i))
             .collect();
         by_recency(&mut unread);
         let shown: HashSet<usize> = drafts.iter().chain(unread.iter()).copied().collect();
@@ -955,6 +1013,7 @@ impl App {
             SettingId::DownloadTimeout => format!("{}s", s.download_timeout_secs),
             SettingId::ImageProtocol => s.image_protocol.clone(),
             SettingId::ImageSymbols => s.image_symbols.clone(),
+            SettingId::EmojiStyle => s.emoji_style.clone(),
         }
     }
 
@@ -1023,6 +1082,11 @@ impl App {
                 self.image_dirty = true;
                 ("image_symbols", format!("\"{next}\""))
             }
+            SettingId::EmojiStyle => {
+                let next = cycle(&EMOJI_STYLES, &self.settings_cache.emoji_style, delta);
+                self.settings_cache.emoji_style = next.clone();
+                ("emoji_style", format!("\"{next}\""))
+            }
         };
         self.settings.write_setting(key, &value);
     }
@@ -1031,6 +1095,59 @@ impl App {
     /// request. Equivalent to `self.in_flight.is_some()`.
     pub fn is_busy(&self) -> bool {
         self.in_flight.is_some()
+    }
+
+    /// Whether a conversation id is starred (our **local-only** favourite).
+    pub fn is_favorite(&self, conv_id: &str) -> bool {
+        self.favorites.contains(conv_id)
+    }
+
+    /// Toggles the local star on a conversation id and **persists** it to
+    /// `config.toml`. Purely local — no Keybase call. Returns the new state.
+    pub fn toggle_favorite(&mut self, conv_id: String) -> bool {
+        let now_on = !self.favorites.contains(&conv_id);
+        if now_on {
+            self.favorites.insert(conv_id);
+        } else {
+            self.favorites.remove(&conv_id);
+        }
+        // Stable order keeps the config diff minimal.
+        let mut ids: Vec<String> = self.favorites.iter().cloned().collect();
+        ids.sort();
+        self.settings_cache.favorites = ids.clone();
+        self.settings
+            .write_setting("favorites", &format!("\"{}\"", ids.join(",")));
+        now_on
+    }
+
+    /// Whether a conversation id is locally muted.
+    pub fn is_muted(&self, conv_id: &str) -> bool {
+        self.muted.contains(conv_id)
+    }
+
+    /// Toggles the local mute on a conversation id and **persists** it. Purely
+    /// local — no Keybase call. Returns the new state.
+    pub fn toggle_muted(&mut self, conv_id: String) -> bool {
+        let now_on = !self.muted.contains(&conv_id);
+        if now_on {
+            self.muted.insert(conv_id);
+        } else {
+            self.muted.remove(&conv_id);
+        }
+        let mut ids: Vec<String> = self.muted.iter().cloned().collect();
+        ids.sort();
+        self.settings_cache.muted = ids.clone();
+        self.settings
+            .write_setting("muted", &format!("\"{}\"", ids.join(",")));
+        now_on
+    }
+
+    /// **Effective** unread for display: the conversation is unread **and** not
+    /// locally muted. Every unread surface (the `●` dot, the bold, the unread
+    /// count, the Unread filter, the switcher's Unread section) uses this so a
+    /// muted conversation stops demanding attention without leaving the inbox.
+    pub fn conv_is_unread(&self, conv: &Conversation) -> bool {
+        conv.unread && !self.muted.contains(&conv.id)
     }
 
     /// Starts a worker request: stamps `in_flight` with `slot` and
@@ -1064,11 +1181,9 @@ impl App {
 
     /// Increments the spinner animation tick. Wraps modulo 4 so the
     /// renderer can index a 4-frame braille spinner without doing the
-    /// modulo itself. Also advances `anim_tick`, a free-running counter for
-    /// smoother animations (the loading skeleton's shimmer sweep).
+    /// modulo itself.
     pub fn tick_action(&mut self) {
         self.action_tick = (self.action_tick + 1) % 4;
-        self.anim_tick = self.anim_tick.wrapping_add(1);
     }
 
     /// Pushes a new entry to the command log, trimming to
@@ -1121,6 +1236,7 @@ impl App {
                     | Screen::ConfirmLogout
                     | Screen::ConfirmConvAction
                     | Screen::NewConversation
+                    | Screen::UnhideConversation
                     | Screen::SearchGlobal
                     | Screen::ConfirmDeleteMessage
                     | Screen::React
@@ -1286,7 +1402,13 @@ impl App {
         let query_lc = self.search.text().to_lowercase();
         let mut indices: Vec<usize> = Vec::new();
         for (idx, conv) in self.conversations.iter().enumerate() {
-            if conv.member_status != MemberStatus::Active || !self.status_filter.includes(conv) {
+            // The Unread filter honours local mute: a muted conv isn't "unread"
+            // for display, so it drops out of the Unread view (but stays in All).
+            let passes_status = match self.status_filter {
+                StatusFilter::All => true,
+                StatusFilter::Unread => conv.unread && !self.muted.contains(&conv.id),
+            };
+            if conv.member_status != MemberStatus::Active || !passes_status {
                 continue;
             }
             if !query_lc.is_empty() {
@@ -1355,7 +1477,7 @@ impl App {
             }
             let unread = members
                 .iter()
-                .filter(|&&i| self.conversations[i].unread)
+                .filter(|&&i| self.conv_is_unread(&self.conversations[i]))
                 .count();
             let collapsed = !force_expand && !self.expanded.contains(&key);
             rows.push(TreeRow::Group {
@@ -1393,7 +1515,10 @@ impl App {
     /// the status panel of every screen so the user always knows if
     /// there is something to attend to.
     pub fn unread_total(&self) -> usize {
-        self.conversations.iter().filter(|c| c.unread).count()
+        self.conversations
+            .iter()
+            .filter(|c| self.conv_is_unread(c))
+            .count()
     }
 
     /// Clears the compose buffer and resets the cursor. Called after
@@ -1508,6 +1633,10 @@ mod tests {
         app.settings_cache.image_protocol = "auto".into();
         app.settings_adjust(SettingId::ImageProtocol, 1);
         assert_eq!(app.settings_cache.image_protocol, "kitty");
+        // Emoji style choice cycles glyph ↔ shortcode.
+        app.settings_cache.emoji_style = "glyph".into();
+        app.settings_adjust(SettingId::EmojiStyle, 1);
+        assert_eq!(app.settings_cache.emoji_style, "shortcode");
         // Read-only identity row is a no-op.
         app.settings_adjust(SettingId::Username, 1);
     }
@@ -1583,6 +1712,52 @@ mod tests {
         assert_eq!(app.compose.text(), "");
         assert_eq!(app.compose.cursor(), 0);
         assert_eq!(app.reply_to_id, None);
+    }
+
+    #[test]
+    fn toggle_favorite_is_local_and_persists() {
+        let mut app = fresh_app();
+        assert!(!app.is_favorite("abc"));
+        // Toggle on → starred + mirrored into the persisted cache.
+        assert!(app.toggle_favorite("abc".into()));
+        assert!(app.is_favorite("abc"));
+        assert_eq!(app.settings_cache.favorites, vec!["abc".to_string()]);
+        // Toggle off → cleared.
+        assert!(!app.toggle_favorite("abc".into()));
+        assert!(!app.is_favorite("abc"));
+        assert!(app.settings_cache.favorites.is_empty());
+    }
+
+    #[test]
+    fn toggle_muted_is_local_and_affects_effective_unread() {
+        use crate::domain::{Channel, Conversation, MemberStatus, MembersType, TopicType};
+        let mut app = fresh_app();
+        let c = Conversation {
+            id: "abc".into(),
+            channel: Channel {
+                name: "alice".into(),
+                members_type: MembersType::ImpTeamNative,
+                topic_type: TopicType::Chat,
+                topic_name: None,
+                public: false,
+            },
+            is_default_conv: true,
+            unread: true,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: MemberStatus::Active,
+            creator_info: None,
+        };
+        assert!(app.conv_is_unread(&c)); // unread + not muted
+        // Toggle mute (local + persisted).
+        assert!(app.toggle_muted("abc".into()));
+        assert!(app.is_muted("abc"));
+        assert_eq!(app.settings_cache.muted, vec!["abc".to_string()]);
+        assert!(!app.conv_is_unread(&c)); // muted → not "unread" for display
+        // Toggle off.
+        assert!(!app.toggle_muted("abc".into()));
+        assert!(!app.is_muted("abc"));
+        assert!(app.conv_is_unread(&c));
     }
 
     #[test]

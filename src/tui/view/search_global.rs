@@ -12,11 +12,11 @@ use ratatui::{
 };
 
 use crate::tui::app::App;
-use crate::tui::view::widgets::{center_rect, editor_spans};
+use crate::tui::view::widgets::{MODAL_HEIGHT, MODAL_WIDTH_PCT, center_rect, editor_spans};
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
-    let area = center_rect(80, 22, frame.area());
+    let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
 
     let layout = Layout::vertical([

@@ -46,10 +46,24 @@ fn without_reaction_events(msgs: Vec<Message>) -> Vec<Message> {
 
 /// Queues a refresh of the inbox list (`keybase chat api list`).
 pub fn request_load_inbox(app: &mut App) {
+    send_list_inbox(app, "Refreshing inbox…");
+}
+
+/// Boot-time inbox load: the same `list` call, but labelled "Loading chats…"
+/// (shown on the splash, which doubles as the loading screen). On success
+/// [`handle_load_inbox_response`] transitions Splash → Inbox, so the inbox is
+/// only entered once its conversations are already loaded.
+pub fn request_boot_load_inbox(app: &mut App) {
+    send_list_inbox(app, "Loading chats…");
+}
+
+/// Shared body of the foreground inbox `list` request, parameterised by the
+/// spinner label.
+fn send_list_inbox(app: &mut App, label: &str) {
     if !app.begin(InFlight::LoadInbox) {
         return;
     }
-    app.set_action(ActionState::Running("Refreshing inbox…".into()));
+    app.set_action(ActionState::Running(label.to_string()));
     let _ = app.worker_tx.send(WorkerRequest::ListConversations);
 }
 
@@ -133,6 +147,13 @@ pub fn handle_load_inbox_response(
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api list", false, e.to_string());
         }
+    }
+    // Boot path: the splash doubles as the loading screen — enter the inbox
+    // only now that the conversations are loaded (or surface the error there,
+    // so a failed boot load isn't stranded on the splash forever). A normal
+    // refresh is already on the inbox, so this is a no-op then.
+    if app.screen == crate::tui::screens::Screen::Splash {
+        app.screen = crate::tui::screens::Screen::Inbox;
     }
 }
 
@@ -740,6 +761,72 @@ pub fn open_new_conversation(app: &mut App) {
 
 pub fn close_new_conversation(app: &mut App) {
     app.new_conv.clear();
+    app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+// ── Unhide popup (restore a blocked/reported conversation by name) ───
+
+/// Opens the **Unhide** popup. Blocked/reported conversations are excluded from
+/// the inbox `list` (verified: the chat `list` JSON has no status filter), so
+/// they can't be reached from the tree — this restores one by name.
+pub fn open_unhide(app: &mut App) {
+    app.unhide_input.clear();
+    app.screen = crate::tui::screens::Screen::UnhideConversation;
+}
+
+pub fn close_unhide(app: &mut App) {
+    app.unhide_input.clear();
+    app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+/// Restores a blocked/reported/ignored DM by name: builds the implicit-team
+/// channel from the typed username(s) and issues `setstatus unfiled` directly
+/// (no inbox row needed). The response handler refreshes, so it reappears.
+pub fn request_unhide_conversation(app: &mut App) {
+    use crate::domain::is_valid_keybase_identity;
+
+    let raw = app.unhide_input.text().trim().to_string();
+    if raw.is_empty() {
+        app.set_action(ActionState::Error("Username is empty".into()));
+        return;
+    }
+    let mut names: Vec<String> = raw
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let invalid: Vec<&str> = names
+        .iter()
+        .filter(|n| !is_valid_keybase_identity(n))
+        .map(String::as_str)
+        .collect();
+    if !invalid.is_empty() {
+        let bad = invalid.join(", ");
+        app.set_action(ActionState::Error(format!("Invalid username(s): {bad}")));
+        app.push_cmd("unhide", false, format!("invalid: {bad}"));
+        return;
+    }
+    // Implicit-team DMs are keyed by the full participant set (us included).
+    if !app.identity.username.is_empty() && !names.contains(&app.identity.username) {
+        names.insert(0, app.identity.username.clone());
+    }
+    let channel = ReadChannel {
+        name: names.join(","),
+        members_type: "impteamnative".into(),
+        topic_name: None,
+    };
+    if !app.begin(InFlight::SetConvStatus {
+        done_label: "Restored".to_string(),
+    }) {
+        return;
+    }
+    app.set_action(ActionState::Running("Restoring…".into()));
+    let _ = app.worker_tx.send(WorkerRequest::SetConvStatus {
+        channel,
+        status: "unfiled".to_string(),
+    });
+    // Close the popup now; `handle_set_conv_status_response` refreshes the inbox.
+    app.unhide_input.clear();
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
@@ -1518,6 +1605,38 @@ pub fn handle_preview_image_response(
     app.image_dirty = true;
 }
 
+/// Enqueues background GIF decodes for every visible GIF that's downloaded but
+/// not yet decoded (and not already in flight). Called from the run loop after
+/// each draw; the view fills `gif_to_decode` with cache paths. Runs on the
+/// background lane so a multi-second decode never stalls the user's keybase
+/// calls on the main worker.
+pub fn ensure_pending_gif_decodes(app: &mut App) {
+    if app.gif_to_decode.is_empty() {
+        return;
+    }
+    let to_decode = std::mem::take(&mut app.gif_to_decode);
+    for path in to_decode {
+        if app.gif_pending.contains(&path) || app.gif_anims.contains_key(&path) {
+            continue;
+        }
+        app.gif_pending.insert(path.clone());
+        let _ = app.bg_worker_tx.send(WorkerRequest::DecodeGif { path });
+    }
+}
+
+/// Stores a finished off-thread GIF decode: `Some(frames)` for an animated GIF,
+/// `None` for a still / single-frame GIF (then rendered as a static image).
+/// Clears the pending flag and flags a repaint so the skeleton gives way.
+pub fn handle_decode_gif_response(
+    app: &mut App,
+    path: String,
+    frames: Option<crate::tui::image::GifFrames>,
+) {
+    app.gif_pending.remove(&path);
+    app.gif_anims.insert(path, frames);
+    app.image_dirty = true;
+}
+
 pub fn handle_download_attachment_response(
     app: &mut App,
     result: Result<(), KeybaseError>,
@@ -2031,14 +2150,49 @@ pub fn handle_upload_response(app: &mut App, result: Result<(), KeybaseError>, f
     }
 }
 
-// ── Mute / unmute ────────────────────────────────────────────────────
+// ── Local mute / favorite (no Keybase call) ──────────────────────────
 
-pub fn request_mute_conversation(app: &mut App) {
-    set_conv_status_request(app, "muted", "Muting…", "Muted");
+/// Toggles the **local-only** mute on the selected conversation. Synchronous,
+/// instant, no Keybase call — see [`App::toggle_muted`]. Keybase's own `muted`
+/// status is intentionally untouched (the CLI can't read it back, so a synced
+/// state would drift). Muting suppresses secretbase's unread indicators for the
+/// conv; it does **not** silence Keybase notifications on your other devices.
+pub fn toggle_muted_conversation(app: &mut App) {
+    let Some(id) = app.selected_conversation().map(|c| c.id.clone()) else {
+        app.set_action(ActionState::Error("No conversation selected".into()));
+        return;
+    };
+    let on = app.toggle_muted(id);
+    app.set_action(ActionState::Done(
+        if on {
+            "Muted (local)"
+        } else {
+            "Unmuted (local)"
+        }
+        .into(),
+    ));
+    // The unread count / filter membership changed — reproject the tree.
+    app.rebuild_filter();
 }
 
-pub fn request_unmute_conversation(app: &mut App) {
-    set_conv_status_request(app, "unfiled", "Unmuting…", "Unmuted");
+/// Toggles the **local-only** star on the selected conversation. Synchronous,
+/// instant, no Keybase call — see [`App::toggle_favorite`]. (Keybase's own
+/// `favorite` status is intentionally untouched: the CLI can't read it back, so
+/// a synced star would drift; this one is fully ours.)
+pub fn toggle_favorite_conversation(app: &mut App) {
+    let Some(id) = app.selected_conversation().map(|c| c.id.clone()) else {
+        app.set_action(ActionState::Error("No conversation selected".into()));
+        return;
+    };
+    let on = app.toggle_favorite(id);
+    app.set_action(ActionState::Done(
+        if on {
+            "Favorited (local)"
+        } else {
+            "Unfavorited (local)"
+        }
+        .into(),
+    ));
 }
 
 // ── Conversation actions (confirm popup → setstatus) ─────────────────

@@ -102,8 +102,8 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    if matches!(key.code, KeyCode::F(9)) {
-        // F9 toggles the Settings overlay. It opens only from the base
+    if matches!(key.code, KeyCode::F(10)) {
+        // F10 toggles the Settings overlay. It opens only from the base
         // screens (never stacked on another overlay) and closes when already
         // open (changes apply+persist live, so closing keeps them).
         if app.screen == Screen::Settings {
@@ -166,6 +166,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
             }
         }
         Screen::NewConversation => popups::new_conversation(app, key),
+        Screen::UnhideConversation => popups::unhide_conversation(app, key),
         Screen::SearchGlobal => popups::search_global(app, key),
         Screen::ConfirmDeleteMessage => popups::confirm_delete_message(app, key),
         Screen::React => popups::react(app, key),

@@ -13,8 +13,7 @@ use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    draw_cmd_log, draw_search_box, draw_skeleton, draw_status_strip, list_table, list_title,
-    middle_ellipsis,
+    draw_cmd_log, draw_search_box, draw_status_strip, list_table, list_title, middle_ellipsis,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -99,19 +98,6 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
 /// collapsible, each (unless folded) followed by its conversations.
 fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
-    // First (expensive) inbox load — show a skeleton instead of an empty tree.
-    if app.conversations.is_empty() && app.is_busy() {
-        draw_skeleton(
-            frame,
-            &t,
-            area,
-            "─[Alt+C]-Chats",
-            app.anim_tick,
-            &["Chats", "#"],
-            "Loading chats…",
-        );
-        return;
-    }
     let model = app.tree_rows();
     let budget = (area.width as usize).saturating_sub(7).max(6);
 
@@ -170,21 +156,38 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                         .map(|l| l.display_label.clone())
                 })
                 .unwrap_or_default();
-                // Unread conversations get a ● symbol AND bold so they're
-                // easy to pick out; read ones are plain.
-                let (prefix, style) = if conv.unread {
+                // Unread (and not locally muted) conversations get a ● symbol
+                // AND bold so they're easy to pick out. A locally-muted conv is
+                // dimmed and never shows the dot — that's its "quieted" marker.
+                let muted = app.is_muted(&conv.id);
+                let (prefix, style) = if app.conv_is_unread(conv) {
                     (
                         "● ",
                         Style::default()
                             .fg(t.conv_unread)
                             .add_modifier(Modifier::BOLD),
                     )
+                } else if muted {
+                    ("", Style::default().fg(t.dim))
                 } else {
                     ("", Style::default().fg(t.foreground))
                 };
-                let label = middle_ellipsis(&raw, budget.saturating_sub(4));
+                // Local-only favourites carry a golden ★ (our own star — see
+                // `App::favorites`; never synced to Keybase).
+                let fav = app.is_favorite(&conv.id);
+                let label = middle_ellipsis(&raw, budget.saturating_sub(if fav { 6 } else { 4 }));
+                let mut spans = vec![Span::raw("  ")];
+                if fav {
+                    spans.push(Span::styled(
+                        "★ ",
+                        Style::default()
+                            .fg(t.conv_unread)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+                spans.push(Span::styled(format!("{prefix}{label}"), style));
                 Row::new(vec![
-                    ratatui::widgets::Cell::from(Span::styled(format!("  {prefix}{label}"), style)),
+                    ratatui::widgets::Cell::from(Line::from(spans)),
                     ratatui::widgets::Cell::from(Span::raw("")),
                 ])
             }

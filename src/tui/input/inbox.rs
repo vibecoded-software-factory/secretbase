@@ -170,11 +170,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::Char('u') | KeyCode::Char('U') if alt => {
-            chat::request_mute_conversation(app);
-            return;
-        }
-        KeyCode::Char('o') | KeyCode::Char('O') if alt => {
-            chat::request_unmute_conversation(app);
+            // Local-only mute toggle (no Keybase call).
+            chat::toggle_muted_conversation(app);
             return;
         }
         KeyCode::Char('g') | KeyCode::Char('G') if ctrl => {
@@ -187,6 +184,23 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char('i') | KeyCode::Char('I') if alt => {
             chat::open_conv_action(app, crate::tui::app::ConvAction::Ignore);
+            return;
+        }
+        KeyCode::Char('b') | KeyCode::Char('B') if alt => {
+            chat::open_conv_action(app, crate::tui::app::ConvAction::Block);
+            return;
+        }
+        KeyCode::Char('g') | KeyCode::Char('G') if alt => {
+            chat::open_conv_action(app, crate::tui::app::ConvAction::Report);
+            return;
+        }
+        KeyCode::Char('s') | KeyCode::Char('S') if alt => {
+            // Local-only star toggle (no Keybase call).
+            chat::toggle_favorite_conversation(app);
+            return;
+        }
+        KeyCode::Char('h') | KeyCode::Char('H') if alt => {
+            chat::open_unhide(app);
             return;
         }
         // Tab cycles focus — unless the @-mention popup is open, where it

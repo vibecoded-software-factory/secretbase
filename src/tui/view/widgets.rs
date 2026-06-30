@@ -34,6 +34,15 @@ pub fn rounded_block(border_style: Style) -> Block<'static> {
         .border_style(border_style)
 }
 
+/// Standard centered-modal geometry — the shape every list / picker overlay
+/// imitates so they all line up: global search (Ctrl+G), the quick switcher
+/// (Ctrl+K), the reaction picker, the file picker and the settings overlay
+/// share it. `MODAL_WIDTH_PCT` is a percentage of the terminal width;
+/// `MODAL_HEIGHT` is a fixed row height (the settings box keeps its own
+/// content-sized width but adopts this height + centered position).
+pub const MODAL_WIDTH_PCT: u16 = 80;
+pub const MODAL_HEIGHT: u16 = 22;
+
 /// Returns a sub-rectangle centered horizontally and vertically inside
 /// `area`. `width_pct` is a percentage (0–100), `height` is in rows.
 pub fn center_rect(width_pct: u16, height: u16, area: Rect) -> Rect {
@@ -136,123 +145,6 @@ pub fn list_table(
         .with_selected(sel);
     frame.render_stateful_widget(table, area, &mut state);
     *scroll = state.offset();
-}
-
-/// Loading-state **skeleton**: a bordered panel filled with dim placeholder
-/// bars of varied widths, with a bright **shimmer band** that sweeps across
-/// each bar left-to-right (offset per row, so it reads as a diagonal wave) as
-/// `tick` advances — the classic web skeleton animation. Shown in place of a
-/// list while its first (expensive) fetch is in flight, so the user sees a
-/// loading affordance instead of an empty panel. Reusable across the TUIs.
-///
-/// The band sweeps **uniformly across all rows at once** (left-to-right),
-/// like a web skeleton, not as a diagonal wave.
-pub fn draw_skeleton(
-    frame: &mut Frame,
-    theme: &Theme,
-    area: Rect,
-    title: &str,
-    tick: u8,
-    headers: &[&str],
-    loading: &str,
-) {
-    let border = Style::default().fg(theme.inactive);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(Span::styled(title.to_string(), border))
-        .border_style(border);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    if inner.height == 0 || inner.width < 4 {
-        return;
-    }
-
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    let mut bar_rows = inner.height as usize;
-
-    // While loading, the legend **replaces** the column header row (e.g.
-    // "Loading chats…" instead of "Chats   #") — the real header only appears
-    // once the list has loaded. Fall back to the header row when no legend.
-    if !loading.is_empty() {
-        // Sits on the first row (exactly where the "Chats  #" header would be),
-        // then a blank row before the shimmer bars.
-        lines.push(Line::from(Span::styled(
-            format!("  {loading}"),
-            Style::default().fg(theme.dim),
-        )));
-        lines.push(Line::raw(""));
-        bar_rows = bar_rows.saturating_sub(2);
-    } else if !headers.is_empty() {
-        let header_style = Style::default().fg(theme.dim).add_modifier(Modifier::BOLD);
-        let left = format!("  {}", headers.first().copied().unwrap_or(""));
-        let right = if headers.len() > 1 {
-            headers[headers.len() - 1]
-        } else {
-            ""
-        };
-        let used = left.chars().count() + right.chars().count();
-        let pad = (inner.width as usize).saturating_sub(used);
-        lines.push(Line::from(Span::styled(
-            format!("{left}{}{right}", " ".repeat(pad)),
-            header_style,
-        )));
-        bar_rows = bar_rows.saturating_sub(1);
-    }
-
-    // Pseudo-varied bar widths so it reads as a list of names, not a wall.
-    const WIDTHS: [usize; 8] = [16, 10, 22, 13, 8, 19, 11, 14];
-    let bar_rows = bar_rows.min(16);
-    let max_w = inner.width.saturating_sub(2) as usize;
-    // The shimmer band sweeps a bit past the widest bar before wrapping, so
-    // there's a brief dark gap between sweeps (like a real skeleton).
-    let cycle = (max_w + 8) as isize;
-    // One band centre for the whole panel: every row sweeps together,
-    // left-to-right, advancing with the tick.
-    let center = ((tick as isize) * 2).rem_euclid(cycle);
-    for i in 0..bar_rows {
-        let w = WIDTHS[i % WIDTHS.len()].min(max_w);
-        lines.push(Line::from(shimmer_bar(w, center, theme)));
-    }
-    frame.render_widget(Paragraph::new(lines), inner);
-}
-
-/// One skeleton bar (`w` block chars) with a soft highlight centred at
-/// `center`: a 2-wide bright core, 1-wide dim shoulders, dark base —
-/// grouped into runs so it's a handful of spans, not one per char.
-fn shimmer_bar(w: usize, center: isize, theme: &Theme) -> Vec<Span<'static>> {
-    let tier = |x: usize| -> ratatui::style::Color {
-        match (x as isize - center).abs() {
-            0 | 1 => theme.foreground, // bright core
-            2 | 3 => theme.dim,        // soft shoulders
-            _ => theme.inactive,       // base
-        }
-    };
-    // Leading two-space gutter to match the list rows' `▶ ` indent.
-    let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
-    let mut run_color: Option<ratatui::style::Color> = None;
-    let mut run_len = 0usize;
-    for x in 0..w {
-        let c = tier(x);
-        if Some(c) == run_color {
-            run_len += 1;
-        } else {
-            if run_len > 0 {
-                spans.push(Span::styled(
-                    "█".repeat(run_len),
-                    Style::default().fg(run_color.unwrap()),
-                ));
-            }
-            run_color = Some(c);
-            run_len = 1;
-        }
-    }
-    if run_len > 0 {
-        spans.push(Span::styled(
-            "█".repeat(run_len),
-            Style::default().fg(run_color.unwrap()),
-        ));
-    }
-    spans
 }
 
 /// Width for a content column, sized to the *visible* rows (`indices`),
@@ -747,7 +639,7 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, area: Rect, footer_hint: 
         return;
     }
 
-    const HELP_ANCHOR: &str = "F1 help · F9 settings";
+    const HELP_ANCHOR: &str = "F1 help · F10 settings";
     let anchor_block = HELP_ANCHOR.chars().count() + 2;
     let avail = (area.width as usize).saturating_sub(anchor_block);
     // Show only the hint segments that fully fit — the rest lives in F1 (don't

@@ -12,14 +12,16 @@ use ratatui::{
 };
 
 use crate::tui::app::App;
-use crate::tui::view::widgets::{center_rect, editor_spans, rounded_block};
+use crate::tui::view::widgets::{
+    MODAL_HEIGHT, MODAL_WIDTH_PCT, center_rect, editor_spans, rounded_block,
+};
 
 /// Searchable reaction picker: a `/`-style search box over the cached emoji
 /// catalogue, an arrow-navigable list (unicode glyph + `:alias:`), and a
 /// custom-`:shortcode:` fallback when nothing matches.
 pub fn react_input(frame: &mut Frame, app: &App) {
     let t = &app.theme;
-    let area = center_rect(60, 18, frame.area());
+    let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
 
     let header = app
@@ -100,7 +102,7 @@ pub fn react_input(frame: &mut Frame, app: &App) {
 /// arrow-navigable, Enter jumps to the highlighted one.
 pub fn quick_switcher(frame: &mut Frame, app: &App) {
     let t = &app.theme;
-    let area = center_rect(60, 18, frame.area());
+    let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
 
     let block = rounded_block(Style::default().fg(t.accent)).title(Span::styled(

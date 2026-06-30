@@ -168,13 +168,14 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 }
             }
             Screen::Settings => {
-                lines.push(section("Settings (F9)", t));
+                lines.push(section("Settings (F10)", t));
                 for (k, d) in [
                     ("↑/↓", "navigate"),
                     ("Tab", "sidebar ↔ panel"),
                     ("←/→", "change setting"),
                     ("Enter / Space", "toggle · next option"),
-                    ("Esc / F9", "close"),
+                    ("Esc", "panel → sidebar → close"),
+                    ("F10", "close"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
@@ -199,8 +200,12 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     ("Alt+Y", "yank (copy) label"),
                     ("Alt+E", "mark as seen (read)"),
                     ("Alt+R / F5", "refresh inbox"),
-                    ("Alt+U / Alt+O", "mute / unmute"),
+                    ("Alt+U", "mute (local only — toggle; hides unread badge)"),
+                    ("Alt+S", "★ favorite (local only — toggle)"),
                     ("Alt+I", "ignore conversation"),
+                    ("Alt+B", "block conversation"),
+                    ("Alt+G", "report conversation"),
+                    ("Alt+H", "unhide — restore a blocked/reported chat by name"),
                     ("Alt+T", "teams"),
                     ("Ctrl+G", "global search"),
                     ("Ctrl+K", "quick switcher — jump to a conversation"),
@@ -225,10 +230,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 let note = Style::default().fg(t.dim);
                 for n in [
                     "",
-                    "  Ignore hides the conversation from the inbox.",
-                    "  Keybase brings it back automatically on the",
-                    "  next message in that chat. (Mute, Alt+U, keeps",
-                    "  it visible but silent — and is easy to undo.)",
+                    "  Ignore hides the chat until its next message.",
+                    "  Block / Report hide it for good — they leave the",
+                    "  inbox list, so restore them by name with Alt+H.",
+                    "  (Mute, Alt+U, keeps it visible but silent.)",
                 ] {
                     lines.push(Line::from(Span::styled(n.to_string(), note)));
                 }
@@ -240,7 +245,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
     lines.push(section("Global", t));
     for (k, d) in [
         ("F1", "toggle help"),
-        ("F9", "settings"),
+        ("F10", "settings"),
         ("↑/↓ j/k", "scroll help"),
         ("q / Esc", "close help"),
         ("Ctrl+C", "quit"),

@@ -76,6 +76,11 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
             chat::handle_preview_image_response(app, path, r);
             return;
         }
+        // Background GIF decode — routed by variant (no `in_flight` ticket).
+        WorkerResponse::DecodeGif(path, frames) => {
+            chat::handle_decode_gif_response(app, path, frames);
+            return;
+        }
         other => other,
     };
 
@@ -96,11 +101,8 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
 
     match (in_flight, response) {
         // ── Status ────────────────────────────────────────────────
-        (InFlight::BootStatus, WorkerResponse::Status(r)) => {
-            auth::handle_status_response(app, r, true);
-        }
-        (InFlight::CheckStatus, WorkerResponse::Status(r)) => {
-            auth::handle_status_response(app, r, false);
+        (InFlight::Status, WorkerResponse::Status(r)) => {
+            auth::handle_status_response(app, r);
         }
         // ── Logout ────────────────────────────────────────────────
         (InFlight::Logout, WorkerResponse::Logout(r)) => {

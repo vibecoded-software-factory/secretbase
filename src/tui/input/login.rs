@@ -13,7 +13,7 @@ use crate::tui::flows;
 pub fn handle(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Char('r') | KeyCode::Char('R') | KeyCode::F(5) => {
-            flows::auth::request_status_check(app);
+            flows::auth::request_status(app);
         }
         KeyCode::Char('q') | KeyCode::Esc => {
             app.should_quit = true;

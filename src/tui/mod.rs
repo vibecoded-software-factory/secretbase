@@ -93,7 +93,7 @@ pub fn run(
         // Kick off the boot status check. The run loop picks it up
         // immediately, draws a spinner, and applies the response when
         // the worker comes back.
-        flows::auth::request_boot_status(&mut app);
+        flows::auth::request_status(&mut app);
 
         let result = run_loop(terminal, &mut app);
         let _ = execute!(std::io::stdout(), DisableMouseCapture);
@@ -161,6 +161,7 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
         // by the view), so only the true-graphics protocols need the run loop
         // to paint over the reserved region; either way, enqueue downloads.
         flows::chat::ensure_visible_images(app);
+        flows::chat::ensure_pending_gif_decodes(app);
         let graphics = matches!(app.image_proto, Some(p) if p != image::ImgProto::Symbols);
         if let Some(proto) = app.image_proto.filter(|_| graphics) {
             // Don't paint while an overlay covers the chat (no bleed over popups).
@@ -220,10 +221,13 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
             done_ticks = 0;
         }
 
+        // Loading images / decoding GIFs → poll fast so the skeleton gives way
+        // to the picture promptly (the worker response is drained next tick).
+        let loading_images = !app.image_pending.is_empty() || !app.gif_pending.is_empty();
         if event::poll(poll_timeout(
             &app.action_state,
             app.is_busy(),
-            app.gif_animating,
+            app.gif_animating || loading_images,
         ))? {
             // Drain ALL buffered events before redrawing. Holding a key
             // floods key-repeat events; processing one per frame lets

@@ -3,8 +3,8 @@
 //! Two panes: a section sidebar (left) and the active section's panel
 //! (right). `Tab` moves between them; `↑/↓` navigate within them; `←/→`
 //! adjust the focused setting. Every change applies and persists immediately
-//! (apply-immediately — there is no separate confirm/cancel step). `Esc`/`F9`
-//! close the overlay.
+//! (apply-immediately — there is no separate confirm/cancel step). `Esc`
+//! steps back: Panel → Sidebar → close. `F10` closes from anywhere.
 
 use crossterm::event::{KeyCode, KeyEvent};
 
@@ -22,7 +22,7 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 fn handle_sidebar(app: &mut App, key: KeyEvent) {
     let len = SettingsSection::ALL.len();
     match key.code {
-        KeyCode::Esc | KeyCode::F(9) => app.close_settings(),
+        KeyCode::Esc | KeyCode::F(10) => app.close_settings(),
         KeyCode::Char('j') | KeyCode::Down if app.settings_section + 1 < len => {
             app.settings_section += 1;
         }
@@ -44,8 +44,11 @@ fn handle_panel(app: &mut App, key: KeyEvent) {
     let rows = app.settings_section_obj().rows();
     let n = rows.len();
     match key.code {
-        KeyCode::Esc | KeyCode::F(9) => app.close_settings(),
-        KeyCode::Tab | KeyCode::BackTab => app.settings_focus = SettingsFocus::Sidebar,
+        KeyCode::F(10) => app.close_settings(),
+        // Esc steps back to the section sidebar (a second Esc there closes).
+        KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => {
+            app.settings_focus = SettingsFocus::Sidebar;
+        }
         KeyCode::Char('j') | KeyCode::Down if n > 0 && app.settings_item + 1 < n => {
             app.settings_item += 1;
         }
@@ -69,8 +72,11 @@ fn adjust(app: &mut App, rows: &[SettingId], delta: isize) {
 fn handle_theme_panel(app: &mut App, key: KeyEvent) {
     let len = theme::Preset::ALL.len();
     match key.code {
-        KeyCode::Esc | KeyCode::F(9) => app.close_settings(),
-        KeyCode::Tab | KeyCode::BackTab => app.settings_focus = SettingsFocus::Sidebar,
+        KeyCode::F(10) => app.close_settings(),
+        // Esc steps back to the section sidebar (a second Esc there closes).
+        KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => {
+            app.settings_focus = SettingsFocus::Sidebar;
+        }
         KeyCode::Char('j') | KeyCode::Down | KeyCode::Char('l') | KeyCode::Right
             if app.settings_theme_idx + 1 < len =>
         {

@@ -17,6 +17,7 @@ pub mod settings;
 pub mod splash;
 pub mod starfield;
 pub mod teams;
+pub mod unhide;
 pub mod widgets;
 
 use ratatui::Frame;
@@ -51,6 +52,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::ConfirmLogout
         | Screen::ConfirmConvAction
         | Screen::NewConversation
+        | Screen::UnhideConversation
         | Screen::SearchGlobal
         | Screen::ConfirmDeleteMessage
         | Screen::React => Screen::Inbox,
@@ -131,6 +133,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             }
         }
         Screen::NewConversation => new_conversation::draw(frame, app),
+        Screen::UnhideConversation => unhide::draw(frame, app),
         Screen::SearchGlobal => search_global::draw(frame, app),
         Screen::React => popups::react_input(frame, app),
         Screen::QuickSwitcher => popups::quick_switcher(frame, app),
@@ -140,9 +143,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // The embedded file picker sits above everything else as a modal.
     if app.file_picker.is_some() {
         let t = app.theme.clone();
-        // Compact, scrollable modal — same size as the quick switcher / global
-        // search (60% wide, 18 rows; `center_rect` width is a percentage).
-        let area = widgets::center_rect(60, 18, frame.area());
+        // Scrollable modal — shares the standard modal geometry with the quick
+        // switcher / global search (`widgets::MODAL_*`).
+        let area = widgets::center_rect(
+            widgets::MODAL_WIDTH_PCT,
+            widgets::MODAL_HEIGHT,
+            frame.area(),
+        );
         if let Some(picker) = app.file_picker.as_mut() {
             picker.render(frame, area, &t);
         }
