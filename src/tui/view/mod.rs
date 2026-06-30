@@ -24,7 +24,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::tui::app::App;
 use crate::tui::screens::Screen;
@@ -234,6 +234,9 @@ pub fn titled_block<'a>(title: &'a str, focused: bool, app: &'a App) -> Block<'a
     };
     Block::default()
         .borders(Borders::ALL)
+        // Rounded corners on every section panel — the single place that decides
+        // it, so the whole app's chrome stays consistently rounded.
+        .border_type(BorderType::Rounded)
         .title(Span::styled(title.to_string(), style))
         .border_style(style)
 }

@@ -22,7 +22,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::domain::LineEditor;
 use crate::tui::theme::Theme;
@@ -329,6 +329,7 @@ impl FilePicker {
         };
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .title(Span::styled(
                 title_for(&self.cwd, self.mode, area.width),
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
