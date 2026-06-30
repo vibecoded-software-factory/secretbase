@@ -90,6 +90,21 @@ pub fn run(
 
         execute!(std::io::stdout(), EnableMouseCapture)?;
 
+        // Belt-and-suspenders terminal restore on a panic. `ratatui::run`
+        // already installed a hook that leaves the alternate screen + raw mode,
+        // but it doesn't know we enabled mouse capture — so chain a hook that
+        // disables that first (while still on the alt screen), then defers to
+        // the previous hook. The normal and `?`-error exits restore it below;
+        // this only covers an unwinding panic, which otherwise leaves the
+        // terminal spewing mouse escape sequences. (A hard SIGSEGV can't be
+        // intercepted here under `#![forbid(unsafe_code)]`; the answer to that
+        // is to not crash — run `reset` if one ever slips through.)
+        let prev_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = execute!(std::io::stdout(), DisableMouseCapture);
+            prev_hook(info);
+        }));
+
         // Kick off the boot status check. The run loop picks it up
         // immediately, draws a spinner, and applies the response when
         // the worker comes back.
