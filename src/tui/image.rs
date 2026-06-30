@@ -99,10 +99,71 @@ pub fn detect() -> ImgProto {
 /// fallback — widely supported in modern monospace / Nerd fonts.
 pub const DEFAULT_SYMBOLS: &str = "sextant+block+space";
 
-/// Caches chafa output bytes per `(path, cols, rows)` so re-scroll repaints
-/// don't re-run chafa. Keyed by the rendered size since that's what changes.
+/// Upper bound on entries kept in each render cache before the
+/// least-recently-used one is evicted. Bounds memory over a long session and,
+/// crucially, over a **many-frame animated GIF**: without it the per-frame
+/// renders would accumulate without limit.
+const RENDER_CACHE_CAP: usize = 256;
+
+/// A tiny capacity-bounded LRU map. On overflow it evicts the entry with the
+/// oldest access stamp (an internal monotonic clock bumped on every get/insert),
+/// so neither the chafa-byte cache nor the parsed-line cache can grow without
+/// bound — the fix for a long GIF spilling frame renders forever.
+struct Lru<K: std::hash::Hash + Eq + Clone, V> {
+    map: HashMap<K, (V, u64)>,
+    clock: u64,
+    cap: usize,
+}
+
+impl<K: std::hash::Hash + Eq + Clone, V> Lru<K, V> {
+    fn new(cap: usize) -> Self {
+        Self {
+            map: HashMap::new(),
+            clock: 0,
+            cap: cap.max(1),
+        }
+    }
+
+    fn get(&mut self, k: &K) -> Option<&V> {
+        let t = self.clock;
+        self.clock = self.clock.wrapping_add(1);
+        let e = self.map.get_mut(k)?;
+        e.1 = t;
+        Some(&e.0)
+    }
+
+    fn insert(&mut self, k: K, v: V) {
+        let t = self.clock;
+        self.clock = self.clock.wrapping_add(1);
+        self.map.insert(k, (v, t));
+        if self.map.len() > self.cap
+            && let Some(oldest) = self
+                .map
+                .iter()
+                .min_by_key(|(_, (_, stamp))| *stamp)
+                .map(|(key, _)| key.clone())
+        {
+            self.map.remove(&oldest);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.map.clear();
+    }
+}
+
+/// Caches rendered images so repaints (scroll, GIF animation) don't re-run
+/// chafa. Two layers, both LRU-bounded ([`RENDER_CACHE_CAP`]):
+///
+/// * `bytes` — raw chafa output per `(path, cols, rows)` for the native
+///   graphics protocols (kitty/sixel/iterm), written straight to the terminal.
+/// * `lines` — **parsed Ratatui lines** per `(indent\0path, cols, rows)` for the
+///   `symbols` path. This is the key win: a GIF frame is chafa-rendered **and**
+///   ANSI-parsed exactly once, then steady-state animation is a cache lookup —
+///   no `chafa` subprocess and no re-parse on the render thread every tick.
 pub struct RenderCache {
-    map: HashMap<(String, u16, u16), Vec<u8>>,
+    bytes: Lru<(String, u16, u16), Vec<u8>>,
+    lines: Lru<(String, u16, u16), Vec<Line<'static>>>,
     /// chafa `--symbols` spec for the symbol path (font-dependent).
     symbols: String,
 }
@@ -118,38 +179,69 @@ impl RenderCache {
     /// `--symbols` spec (empty → chafa's default set).
     pub fn new(symbols: String) -> Self {
         Self {
-            map: HashMap::new(),
+            bytes: Lru::new(RENDER_CACHE_CAP),
+            lines: Lru::new(RENDER_CACHE_CAP),
             symbols,
         }
     }
 
-    /// Returns the chafa output for `path` at `cols`×`rows`, running chafa on a
-    /// miss and caching the result.
-    fn get(&mut self, proto: ImgProto, path: &str, cols: u16, rows: u16) -> io::Result<&[u8]> {
-        let key = (path.to_string(), cols, rows);
-        if !self.map.contains_key(&key) {
-            let bytes = run_chafa(proto, path, cols, rows, &self.symbols)?;
-            self.map.insert(key.clone(), bytes);
-        }
-        Ok(self.map.get(&key).map(Vec::as_slice).unwrap_or_default())
-    }
-
-    /// Like [`Self::get`] but returns an owned copy — for the `symbols`
-    /// in-buffer path, which parses the bytes into Ratatui lines.
-    pub fn bytes(
+    /// Chafa output for `path` at `cols`×`rows` (owned), running chafa on a miss
+    /// and caching it. Used by the native-graphics paint path.
+    fn cached_bytes(
         &mut self,
         proto: ImgProto,
         path: &str,
         cols: u16,
         rows: u16,
     ) -> io::Result<Vec<u8>> {
-        self.get(proto, path, cols, rows).map(<[u8]>::to_vec)
+        let key = (path.to_string(), cols, rows);
+        if let Some(b) = self.bytes.get(&key) {
+            return Ok(b.clone());
+        }
+        let bytes = run_chafa(proto, path, cols, rows, &self.symbols)?;
+        self.bytes.insert(key, bytes.clone());
+        Ok(bytes)
     }
 
-    /// Drops every cached render (e.g. on protocol change). The downloaded
-    /// files are owned elsewhere; this only frees the rendered bytes.
+    /// Parsed symbol lines for `path` at `cols`×`rows`, left-padded by `indent`
+    /// and trailing-blank-trimmed — the in-buffer `symbols` render. Runs chafa +
+    /// ANSI-parse **once per (path,size)** and caches the result, so an animated
+    /// GIF's per-tick redraw is a pure cache hit (no subprocess, no re-parse).
+    /// Returns an empty vec when chafa is unavailable / fails (the caller then
+    /// keeps the skeleton).
+    pub fn symbol_lines(
+        &mut self,
+        proto: ImgProto,
+        path: &str,
+        cols: u16,
+        rows: u16,
+        indent: usize,
+    ) -> Vec<Line<'static>> {
+        let key = (format!("{indent}\u{0}{path}"), cols, rows);
+        if let Some(l) = self.lines.get(&key) {
+            return l.clone();
+        }
+        let Ok(bytes) = self.cached_bytes(proto, path, cols, rows) else {
+            return Vec::new();
+        };
+        let mut lines = symbols_to_lines(&bytes, indent, rows);
+        // Trim the trailing blank row chafa's output leaves so the reservation
+        // matches the real thumbnail height (no gap below).
+        while lines
+            .last()
+            .is_some_and(|l| l.spans.iter().all(|s| s.content.trim().is_empty()))
+        {
+            lines.pop();
+        }
+        self.lines.insert(key, lines.clone());
+        lines
+    }
+
+    /// Drops every cached render (e.g. on protocol / symbol-set change). The
+    /// downloaded files are owned elsewhere; this only frees the rendered data.
     pub fn clear(&mut self) {
-        self.map.clear();
+        self.bytes.clear();
+        self.lines.clear();
     }
 }
 
@@ -395,7 +487,7 @@ pub fn render_into(
     if area.width == 0 || area.height == 0 {
         return Ok(());
     }
-    let bytes = cache.get(proto, path, area.width, area.height)?.to_vec();
+    let bytes = cache.cached_bytes(proto, path, area.width, area.height)?;
     let mut out = io::stdout();
     if proto.is_graphics() {
         queue!(out, MoveTo(area.x, area.y))?;
@@ -525,6 +617,20 @@ mod tests {
         assert_eq!(g.frame_at(250), "c");
         assert_eq!(g.frame_at(300), "a"); // wraps
         assert_eq!(g.frame_at(450), "b");
+    }
+
+    #[test]
+    fn lru_evicts_least_recently_used() {
+        let mut c: Lru<u32, u32> = Lru::new(2);
+        c.insert(1, 10);
+        c.insert(2, 20);
+        // Touch 1 so 2 becomes the least-recently-used.
+        assert_eq!(c.get(&1).copied(), Some(10));
+        c.insert(3, 30); // over cap → evicts 2
+        assert_eq!(c.map.len(), 2);
+        assert_eq!(c.get(&2), None);
+        assert_eq!(c.get(&1).copied(), Some(10));
+        assert_eq!(c.get(&3).copied(), Some(30));
     }
 
     #[test]
