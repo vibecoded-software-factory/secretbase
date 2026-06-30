@@ -576,12 +576,6 @@ struct ImgReservation {
 /// the image's aspect (chafa doesn't pad), so wide images use fewer rows.
 const IMAGE_ROWS: u16 = 24;
 
-/// True when a rendered line carries no visible glyphs (only padding) — used to
-/// trim the trailing blank row chafa's output leaves.
-fn line_is_blank(l: &Line<'static>) -> bool {
-    l.spans.iter().all(|s| s.content.trim().is_empty())
-}
-
 /// Braille spinner frame for wall-clock `ms` (≈11 fps) — appended to the image
 /// loading / decoding skeleton label so it reads as live, not stuck.
 fn spinner_frame_ms(ms: u64) -> &'static str {
@@ -722,17 +716,13 @@ fn symbol_image_lines(
         .collect();
     for (id, path) in items {
         let render_path = image_render_path(app, &path);
-        if let Ok(bytes) = app
+        // The cache runs chafa + ANSI-parse once per (frame,size); steady-state
+        // GIF animation is then a pure cache hit — no per-tick subprocess.
+        let lines = app
             .image_render_cache
-            .bytes(proto, &render_path, img_w, IMAGE_ROWS)
-        {
-            let mut lines = crate::tui::image::symbols_to_lines(&bytes, 4, IMAGE_ROWS);
-            while lines.last().is_some_and(line_is_blank) {
-                lines.pop();
-            }
-            if !lines.is_empty() {
-                map.insert(id, lines);
-            }
+            .symbol_lines(proto, &render_path, img_w, IMAGE_ROWS, 4);
+        if !lines.is_empty() {
+            map.insert(id, lines);
         }
     }
     map
