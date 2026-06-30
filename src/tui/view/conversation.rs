@@ -400,23 +400,36 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // fits the viewport so it can't overflow the panel.
     app.image_areas.clear();
     app.image_to_fetch.clear();
+    app.gif_to_decode.clear();
     let graphics = matches!(app.image_proto, Some(p) if p != crate::tui::image::ImgProto::Symbols);
     let img_x = area.x + 1 + 4;
     for (abs, rows, msg_id, path) in img_reservations {
-        if !app.image_ready.contains(&path) {
-            if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
-                app.image_to_fetch.push((msg_id, path));
+        match img_state(app, &path) {
+            // Still downloading → queue the fetch (skeleton shown meanwhile).
+            ImgState::Loading => {
+                if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
+                    app.image_to_fetch.push((msg_id, path));
+                }
             }
-        } else if graphics && abs >= scroll_y && (abs - scroll_y) + rows as usize <= viewport {
-            let rect = Rect {
-                x: img_x,
-                y: area.y + 1 + (abs - scroll_y) as u16,
-                width: img_w,
-                height: rows,
-            };
-            // Animated GIF → paint the current frame; still image → the file.
-            let render_path = image_render_path(app, &path);
-            app.image_areas.push((rect, render_path));
+            // Downloaded GIF, not decoded yet → queue the off-thread decode.
+            ImgState::Decoding => {
+                if !app.gif_pending.contains(&path) {
+                    app.gif_to_decode.push(path);
+                }
+            }
+            // Ready → graphics protocols paint the current frame / the file.
+            ImgState::Ready => {
+                if graphics && abs >= scroll_y && (abs - scroll_y) + rows as usize <= viewport {
+                    let rect = Rect {
+                        x: img_x,
+                        y: area.y + 1 + (abs - scroll_y) as u16,
+                        width: img_w,
+                        height: rows,
+                    };
+                    let render_path = image_render_path(app, &path);
+                    app.image_areas.push((rect, render_path));
+                }
+            }
         }
     }
 
@@ -569,35 +582,111 @@ fn line_is_blank(l: &Line<'static>) -> bool {
     l.spans.iter().all(|s| s.content.trim().is_empty())
 }
 
-/// Per-GIF frame directory under the image cache.
-fn gif_frame_dir(gif_path: &str) -> std::path::PathBuf {
-    let stem = std::path::Path::new(gif_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("gif");
-    crate::tui::flows::chat::image_cache_dir()
-        .join("frames")
-        .join(stem)
+/// Braille spinner frame for wall-clock `ms` (≈11 fps) — appended to the image
+/// loading / decoding skeleton label so it reads as live, not stuck.
+fn spinner_frame_ms(ms: u64) -> &'static str {
+    const SPIN: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    SPIN[((ms / 90) as usize) % SPIN.len()]
 }
 
-/// The path to actually render for an image: the current animation frame for an
-/// animated GIF (extracted lazily on first sight, then cached), or the file
-/// itself for a still image. Sets `gif_animating` when a GIF is animating.
-fn image_render_path(app: &mut App, path: &str) -> String {
-    if !path.to_ascii_lowercase().ends_with(".gif") {
-        return path.to_string();
+/// Render state of an inline image — decides skeleton vs. paint.
+enum ImgState {
+    /// Still downloading.
+    Loading,
+    /// Downloaded, but its GIF frames are being decoded off-thread.
+    Decoding,
+    /// Ready to paint (a non-GIF, or a GIF already decoded).
+    Ready,
+}
+
+/// Classifies an image cache path. A `.gif` is `Decoding` until the worker has
+/// populated `gif_anims` for it (the decode runs off the render thread), so the
+/// view shows a skeleton instead of blocking on ImageMagick.
+fn img_state(app: &App, path: &str) -> ImgState {
+    if !app.image_ready.contains(path) {
+        return ImgState::Loading;
     }
-    if !app.gif_anims.contains_key(path) {
-        let frames = crate::tui::image::extract_gif_frames(path, &gif_frame_dir(path));
-        app.gif_anims.insert(path.to_string(), frames);
+    if path.to_ascii_lowercase().ends_with(".gif") && !app.gif_anims.contains_key(path) {
+        return ImgState::Decoding;
     }
-    match app.gif_anims.get(path) {
-        Some(Some(g)) => {
-            app.gif_animating = true;
-            g.frame_at(app.anim_ms).to_string()
+    ImgState::Ready
+}
+
+/// An **image placeholder** filling an image's reserved footprint while it
+/// loads / decodes: a dim picture *frame* (rounded box) with the thumbnail
+/// dimensions, a `⌖` corner mark, and a centered label — reads as "a picture
+/// goes here", not a chat-style bar skeleton. Produces exactly `rows` lines,
+/// aligned to the column the real thumbnail will paint into.
+fn image_skeleton_lines(
+    t: &crate::tui::theme::Theme,
+    label: &str,
+    width: u16,
+    rows: u16,
+) -> Vec<Line<'static>> {
+    let frame = Style::default().fg(t.inactive);
+    let text = Style::default().fg(t.dim);
+    // 4-space indent: the same column the painted thumbnail uses.
+    let pad = || Span::raw("    ");
+    let w = (width as usize).clamp(6, 72);
+    let inner = w - 2; // span between the two side borders
+    let rows = rows.max(2) as usize;
+
+    // A line of interior: side borders around `mid` content spans (centered).
+    let interior = |mid: Vec<Span<'static>>| -> Line<'static> {
+        let used: usize = mid.iter().map(|s| s.content.chars().count()).sum();
+        let slack = inner.saturating_sub(used);
+        let left = slack / 2;
+        let right = slack - left;
+        let mut spans = vec![pad(), Span::styled("│", frame), Span::raw(" ".repeat(left))];
+        spans.extend(mid);
+        spans.push(Span::raw(" ".repeat(right)));
+        spans.push(Span::styled("│", frame));
+        Line::from(spans)
+    };
+
+    let mut out: Vec<Line<'static>> = Vec::with_capacity(rows);
+    // Top border carries the thumbnail size, like a real frame's caption.
+    let dims = format!(" {}×{} ", width, rows);
+    let top = if dims.chars().count() + 2 <= inner {
+        let rest = inner - dims.chars().count();
+        format!("╭{}{}╮", dims, "─".repeat(rest))
+    } else {
+        format!("╭{}╮", "─".repeat(inner))
+    };
+    out.push(Line::from(vec![pad(), Span::styled(top, frame)]));
+
+    let body = rows - 2;
+    let mid_row = body / 2;
+    for i in 0..body {
+        if i == mid_row {
+            out.push(interior(vec![
+                Span::styled("⌖ ", frame),
+                Span::styled(label.to_string(), text),
+            ]));
+        } else {
+            out.push(interior(vec![]));
         }
-        _ => path.to_string(),
     }
+    out.push(Line::from(vec![
+        pad(),
+        Span::styled(format!("╰{}╯", "─".repeat(inner)), frame),
+    ]));
+    out
+}
+
+/// The path to actually paint for a **ready** image: the current animation
+/// frame for an animated GIF (decoded off-thread into `gif_anims`), or the file
+/// itself for a still image. Sets `gif_animating` when a GIF is animating.
+///
+/// Only called once the image is [`ImgState::Ready`] — the expensive GIF decode
+/// runs on the worker ([`crate::tui::flows::chat::handle_decode_gif_response`]),
+/// never here, so this never blocks the render thread.
+fn image_render_path(app: &mut App, path: &str) -> String {
+    if let Some(Some(g)) = app.gif_anims.get(path) {
+        app.gif_animating = true;
+        return g.frame_at(app.anim_ms).to_string();
+    }
+    path.to_string()
 }
 
 /// Pre-renders every **ready** image attachment in the open conversation to
@@ -624,7 +713,9 @@ fn symbol_image_lines(
                 if crate::tui::image::is_image(&a.mime_type, &a.filename) =>
             {
                 let path = crate::tui::flows::chat::image_path_for(&conv_id, m.id, &a.filename);
-                app.image_ready.contains(&path).then_some((m.id, path))
+                // Only render once Ready — a GIF still decoding shows a skeleton
+                // (and the reservation loop queues its decode).
+                matches!(img_state(app, &path), ImgState::Ready).then_some((m.id, path))
             }
             _ => None,
         })
@@ -745,19 +836,28 @@ fn message_lines(
                     path,
                 });
             } else {
-                // Graphics (run loop paints) or still downloading: reserve rows.
+                // Graphics protocols are painted by the run loop once Ready; a
+                // skeleton fills the reserved rows while it downloads / decodes.
                 let block_offset = lines.len();
-                if !app.image_ready.contains(&path) {
-                    lines.push(Line::from(Span::styled(
-                        "      ⏳ loading image…",
-                        Style::default().fg(t.dim),
-                    )));
-                    for _ in 1..IMAGE_ROWS {
-                        lines.push(Line::from(Span::raw("")));
-                    }
-                } else {
-                    for _ in 0..IMAGE_ROWS {
-                        lines.push(Line::from(Span::raw("")));
+                let thumb_w = (width.saturating_sub(6)).clamp(10, 72) as u16;
+                let spin = spinner_frame_ms(app.anim_ms);
+                match img_state(app, &path) {
+                    ImgState::Loading => lines.extend(image_skeleton_lines(
+                        t,
+                        &format!("loading image… {spin}"),
+                        thumb_w,
+                        IMAGE_ROWS,
+                    )),
+                    ImgState::Decoding => lines.extend(image_skeleton_lines(
+                        t,
+                        &format!("decoding GIF… {spin}"),
+                        thumb_w,
+                        IMAGE_ROWS,
+                    )),
+                    ImgState::Ready => {
+                        for _ in 0..IMAGE_ROWS {
+                            lines.push(Line::from(Span::raw("")));
+                        }
                     }
                 }
                 img_res.push(ImgReservation {
@@ -774,7 +874,7 @@ fn message_lines(
         lines.extend(body_lines(&m.content, t, width, &m.mentions));
     }
     if !m.reactions.is_empty() {
-        lines.push(reactions_line(&m.reactions, app, t, width));
+        lines.extend(reaction_lines(&m.reactions, app, t, width));
     }
     lines
 }
@@ -819,34 +919,48 @@ fn reply_quote_line(
     ))
 }
 
-fn reactions_line(
+/// Reaction chips (`{glyph} {count}`) collapsed under a message, **wrapping**
+/// Discord-style: fill a row left-to-right, then continue on a new row below —
+/// never truncated with a `…`. Returns one [`Line`] per row.
+fn reaction_lines(
     reactions: &[crate::domain::Reaction],
     app: &App,
     t: &crate::tui::theme::Theme,
     width: usize,
-) -> Line<'static> {
-    let mut spans: Vec<Span<'static>> = vec![Span::raw("    ")];
-    // Approximate column budget so a message with many reactions can't run
-    // off the panel — drop the overflow behind a trailing `…`.
-    let mut used = 4usize;
-    for (i, r) in reactions.iter().enumerate() {
-        let glyph = resolve_reaction_glyph(app, &r.emoji);
-        let count = r.usernames.len();
-        let piece = format!("{glyph} {count}");
-        let sep = if i > 0 { 2 } else { 0 };
-        // +2 emoji glyphs often render two columns wide.
-        let piece_w = piece.chars().count() + 1 + sep;
-        if i > 0 && used + piece_w + 1 > width {
-            spans.push(Span::styled("  …", Style::default().fg(t.dim)));
-            break;
+) -> Vec<Line<'static>> {
+    const INDENT: usize = 4;
+    const SEP: usize = 2; // spaces between chips
+    let style = Style::default().fg(t.conv_unread);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let mut spans: Vec<Span<'static>> = vec![Span::raw(" ".repeat(INDENT))];
+    let mut used = INDENT;
+    let mut on_row = 0usize;
+    for r in reactions {
+        let glyph = reaction_display(app, &r.emoji);
+        let piece = format!("{glyph} {}", r.usernames.len());
+        // +1: emoji glyphs often render two columns wide.
+        let piece_w = piece.chars().count() + 1;
+        let sep = if on_row == 0 { 0 } else { SEP };
+        // Wrap to a new row when this chip would overflow (but never wrap an
+        // empty row — a single over-wide chip just overflows).
+        if on_row > 0 && used + sep + piece_w > width {
+            lines.push(Line::from(std::mem::take(&mut spans)));
+            spans = vec![Span::raw(" ".repeat(INDENT))];
+            used = INDENT;
+            on_row = 0;
         }
-        if i > 0 {
-            spans.push(Span::raw("  "));
+        if on_row > 0 {
+            spans.push(Span::raw(" ".repeat(SEP)));
+            used += SEP;
         }
-        spans.push(Span::styled(piece, Style::default().fg(t.conv_unread)));
+        spans.push(Span::styled(piece, style));
         used += piece_w;
+        on_row += 1;
     }
-    Line::from(spans)
+    if on_row > 0 {
+        lines.push(Line::from(spans));
+    }
+    lines
 }
 
 /// Contextual action bar shown under the selected message in select mode:
@@ -947,13 +1061,28 @@ fn select_actions_lines(
 /// Maps a stored reaction key (a `:shortcode:`) to its glyph via the emoji
 /// catalogue, so the chat shows 🫡 rather than `:saluting_face:`. Falls back
 /// to the key as-is (already a glyph, or an unknown/custom shortcode).
-fn resolve_reaction_glyph(app: &App, key: &str) -> String {
+/// How a stored reaction (`:alias:` for custom, or a raw Unicode glyph for
+/// stock) is shown, honouring the `emoji_style` setting: the **glyph** (default)
+/// or the **`:shortcode:`** (legible even when the terminal renders emoji as
+/// tofu / monochrome — the only lever a TUI has, since it can't pick the font).
+fn reaction_display(app: &App, key: &str) -> String {
     let alias = key.trim_matches(':');
-    app.emojis
+    // Match by alias (shortcode key) or by display glyph (stock emoji sent raw).
+    let entry = app
+        .emojis
         .iter()
-        .find(|e| e.alias == alias)
-        .map(|e| e.display.clone())
-        .unwrap_or_else(|| key.to_string())
+        .find(|e| e.alias == alias || e.display == key);
+    if app.settings_cache.emoji_style == "shortcode" {
+        match entry {
+            Some(e) => format!(":{}:", e.alias),
+            None if key.starts_with(':') => key.to_string(),
+            None => format!(":{alias}:"),
+        }
+    } else {
+        entry
+            .map(|e| e.display.clone())
+            .unwrap_or_else(|| key.to_string())
+    }
 }
 
 fn content_icon(c: &MessageContent) -> &'static str {

@@ -40,6 +40,21 @@ pub struct UserSettings {
     /// `sextant+block+space` (default, widely supported), `octant+sextant+…`
     /// (denser, needs a Unicode-16 font), or `half` (works anywhere).
     pub image_symbols: String,
+    /// How emoji reactions are shown: `glyph` (the Unicode character, default)
+    /// or `shortcode` (the `:alias:` text — always legible even when the
+    /// terminal's font renders the emoji as tofu / monochrome).
+    pub emoji_style: String,
+    /// **Local-only** favourited conversation ids. secretbase deliberately does
+    /// *not* use Keybase's `favorite` status (the CLI can't read it back, so it
+    /// would drift). This is our own star, owned and persisted entirely
+    /// locally — fully under our control, never synced to Keybase.
+    pub favorites: Vec<String>,
+    /// **Local-only** muted conversation ids. Like `favorites`, this does *not*
+    /// use Keybase's `muted` status (unreadable via the CLI). It suppresses the
+    /// unread indicators secretbase itself controls (the `●` dot, the bold, the
+    /// unread count + filter) — our TUI has no push notifications to silence, so
+    /// muting *is* "stop nagging me in the inbox". Never synced to Keybase.
+    pub muted: Vec<String>,
 }
 
 impl Default for UserSettings {
@@ -52,6 +67,9 @@ impl Default for UserSettings {
             inbox_refresh_secs: 180,
             image_protocol: "auto".to_string(),
             image_symbols: "sextant+block+space".to_string(),
+            emoji_style: "glyph".to_string(),
+            favorites: Vec::new(),
+            muted: Vec::new(),
         }
     }
 }

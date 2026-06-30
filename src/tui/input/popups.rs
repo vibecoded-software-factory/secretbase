@@ -20,6 +20,18 @@ pub fn new_conversation(app: &mut App, key: KeyEvent) {
     }
 }
 
+// ── Unhide popup (restore a blocked/reported conv by name) ─────────────
+
+pub fn unhide_conversation(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => chat::close_unhide(app),
+        KeyCode::Enter => chat::request_unhide_conversation(app),
+        _ => {
+            common::route_line_editor(&mut app.unhide_input, key);
+        }
+    }
+}
+
 // ── Global search popup ───────────────────────────────────────────────
 
 pub fn search_global(app: &mut App, key: KeyEvent) {

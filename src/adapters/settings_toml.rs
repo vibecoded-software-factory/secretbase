@@ -165,6 +165,9 @@ impl SettingsPort for TomlSettingsAdapter {
             inbox_refresh_secs: DEFAULT_INBOX_REFRESH_SECS,
             image_protocol: "auto".to_string(),
             image_symbols: "sextant+block+space".to_string(),
+            emoji_style: "glyph".to_string(),
+            favorites: Vec::new(),
+            muted: Vec::new(),
         };
         let Ok(text) = fs::read_to_string(self.file()) else {
             return cfg;
@@ -231,6 +234,25 @@ impl SettingsPort for TomlSettingsAdapter {
                 }
                 "image_symbols" if !value.is_empty() => {
                     cfg.image_symbols = value.to_ascii_lowercase();
+                }
+                "emoji_style" if !value.is_empty() => {
+                    cfg.emoji_style = value.to_ascii_lowercase();
+                }
+                "favorites" => {
+                    cfg.favorites = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect();
+                }
+                "muted" => {
+                    cfg.muted = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect();
                 }
                 _ => {}
             }
@@ -312,6 +334,9 @@ impl UpdateBuffer {
         "inbox_refresh_secs",
         "image_protocol",
         "image_symbols",
+        "emoji_style",
+        "favorites",
+        "muted",
     ];
 
     fn parse(text: &str) -> Self {

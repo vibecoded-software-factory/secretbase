@@ -958,38 +958,36 @@ fn react_sends_with_correct_msg_id_and_body() {
     assert_eq!(st.reactions, vec![(5, ":+1:".to_string())]);
 }
 
-// ── mute / unmute ─────────────────────────────────────────────────────
+// ── local mute (no Keybase call) ──────────────────────────────────────
 
 #[test]
-fn mute_sends_status_muted() {
+fn local_mute_toggles_without_keybase_and_suppresses_unread() {
     let mut rig = build_rig();
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     reveal_first(&mut rig.app);
-    request_mute_conversation(&mut rig.app);
-    pump_until_idle(&mut rig.app);
-    let st = rig.mock.st();
-    assert_eq!(
-        st.statuses,
-        vec![("alice".to_string(), "muted".to_string())]
-    );
-}
+    // Mark it unread for the test.
+    rig.app.conversations[0].unread = true;
+    let id = rig.app.conversations[0].id.clone();
+    assert_eq!(rig.app.unread_total(), 1);
 
-#[test]
-fn unmute_sends_status_unfiled() {
-    let mut rig = build_rig();
-    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
-    request_load_inbox(&mut rig.app);
+    // Toggle mute — purely local, must NOT issue a Keybase setstatus.
+    toggle_muted_conversation(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    reveal_first(&mut rig.app);
-    request_unmute_conversation(&mut rig.app);
-    pump_until_idle(&mut rig.app);
-    let st = rig.mock.st();
-    assert_eq!(
-        st.statuses,
-        vec![("alice".to_string(), "unfiled".to_string())]
+    assert!(
+        rig.mock.st().statuses.is_empty(),
+        "local mute must not call setstatus: {:?}",
+        rig.mock.st().statuses
     );
+    assert!(rig.app.is_muted(&id));
+    // Muted → no longer counts as unread.
+    assert_eq!(rig.app.unread_total(), 0);
+
+    // Toggle off → unread again.
+    toggle_muted_conversation(&mut rig.app);
+    assert!(!rig.app.is_muted(&id));
+    assert_eq!(rig.app.unread_total(), 1);
 }
 
 // ── do_create_new_conversation → request_create_new_conversation ─────
@@ -2708,7 +2706,7 @@ fn input_login_r_retries_status_check() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
     press(&mut rig.app, KeyCode::Char('r'), KeyModifiers::NONE);
-    assert!(matches!(rig.app.in_flight, Some(InFlight::CheckStatus)));
+    assert!(matches!(rig.app.in_flight, Some(InFlight::Status)));
 }
 
 #[test]
@@ -2717,6 +2715,75 @@ fn input_login_q_quits() {
     rig.app.screen = Screen::Login;
     press(&mut rig.app, KeyCode::Char('q'), KeyModifiers::NONE);
     assert!(rig.app.should_quit);
+}
+
+#[test]
+fn unhide_by_name_sends_setstatus_unfiled_on_built_channel() {
+    let mut rig = build_rig();
+    rig.app.identity.username = "me".into();
+    open_unhide(&mut rig.app);
+    assert_eq!(rig.app.screen, Screen::UnhideConversation);
+    rig.app.unhide_input.set("alice");
+    request_unhide_conversation(&mut rig.app);
+    // Popup closes and a setstatus call is in flight.
+    assert_eq!(rig.app.screen, Screen::Inbox);
+    assert!(matches!(
+        rig.app.in_flight,
+        Some(InFlight::SetConvStatus { .. })
+    ));
+    pump_until_idle(&mut rig.app);
+    // The adapter saw `unfiled` on the rebuilt "me,alice" impteam channel.
+    let statuses = rig.mock.st().statuses.clone();
+    assert!(
+        statuses
+            .iter()
+            .any(|(name, st)| name == "me,alice" && st == "unfiled"),
+        "statuses: {statuses:?}"
+    );
+}
+
+#[test]
+fn conv_action_block_report_map_to_setstatus_values() {
+    use crate::tui::app::ConvAction;
+    assert_eq!(ConvAction::Block.status(), "blocked");
+    assert_eq!(ConvAction::Report.status(), "reported");
+    assert_eq!(ConvAction::Ignore.status(), "ignored");
+}
+
+#[test]
+fn handle_decode_gif_stores_frames_and_clears_pending() {
+    use crate::tui::image::GifFrames;
+    let mut rig = build_rig();
+    let path = "/cache/x-1.gif".to_string();
+    rig.app.gif_pending.insert(path.clone());
+    let frames = GifFrames {
+        frames: vec!["a.png".into(), "b.png".into()],
+        delays_ms: vec![80, 80],
+        total_ms: 160,
+    };
+    handle_decode_gif_response(&mut rig.app, path.clone(), Some(frames));
+    // Pending cleared, frames stored, a repaint flagged.
+    assert!(!rig.app.gif_pending.contains(&path));
+    assert!(matches!(rig.app.gif_anims.get(&path), Some(Some(_))));
+    assert!(rig.app.image_dirty);
+}
+
+#[test]
+fn settings_esc_steps_panel_to_sidebar_then_closes() {
+    use crate::tui::app::SettingsFocus;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    rig.app.open_settings(); // Settings overlay, focus on the section sidebar
+    // Enter a section's panel.
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(rig.app.settings_focus, SettingsFocus::Panel);
+    // First Esc steps back to the sidebar (does NOT close the overlay).
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert_eq!(rig.app.settings_focus, SettingsFocus::Sidebar);
+    assert_eq!(rig.app.screen, Screen::Settings);
+    // Second Esc (on the sidebar) closes, returning to where it was opened.
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Inbox);
 }
 
 #[test]
@@ -2843,12 +2910,12 @@ fn apply_response_drops_message_when_no_in_flight_slot() {
 
 #[test]
 fn apply_response_surfaces_dispatch_mismatch_to_user() {
-    // Slot says CheckStatus, response says Logout — disagreement
+    // Slot says Status, response says Logout — disagreement
     // that should never happen but we surface as a hard error
     // rather than silently dropping or hanging on the spinner
     // forever.
     let mut rig = build_rig();
-    rig.app.in_flight = Some(InFlight::CheckStatus);
+    rig.app.in_flight = Some(InFlight::Status);
     apply_response(
         &mut rig.app,
         crate::tui::worker::WorkerResponse::Logout(Ok(())),

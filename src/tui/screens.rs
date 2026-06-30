@@ -17,7 +17,7 @@ pub enum Screen {
     /// Help popup overlay.
     Help,
     /// Settings overlay — a sectioned preferences screen (Theme first),
-    /// opened with `F9` from any base screen.
+    /// opened with `F10` from any base screen.
     Settings,
     /// Confirm-logout popup overlay.
     ConfirmLogout,
@@ -26,6 +26,9 @@ pub enum Screen {
     /// New-conversation popup (Alt+N) — input for comma-separated
     /// usernames.
     NewConversation,
+    /// Unhide popup (Alt+H) — restore a blocked/reported conversation by
+    /// name (it's gone from the inbox `list`, so it can't be selected).
+    UnhideConversation,
     /// Server-side search popup (Ctrl+G) — input + results list.
     SearchGlobal,
     /// Confirm-delete popup for a message inside the open

@@ -277,9 +277,27 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   option to include ignored/blocked conversations** — the inbox `list`
   excludes them, so an ignored conv cannot be reached from `list` alone.
 - `setstatus` `{"channel":…,"status":…}` — status enum
-  `chat1.ConversationStatus`: `unfiled` · `favorite` · `ignored` ·
-  `blocked` · `muted` · `reported`. (We use `muted`/`unfiled` for
-  mute/unmute and `ignored`/`unfiled` for ignore/un-ignore.)
+  `chat1.ConversationStatus` (verified vs `go/protocol/chat1/common.go`):
+  `unfiled`=0 · `favorite`=1 · `ignored`=2 · `blocked`=3 · `muted`=4 ·
+  `reported`=5. secretbase wires only the **observable** ones: `ignored`
+  (ignore), `blocked` (block), `reported` (report) — their effect is the conv
+  leaving the inbox. **Undo is always `unfiled`** — confirmed by
+  `cmd_chat_hide.go` (`--block`→`BLOCKED`, `--unhide`→`UNFILED`).
+  **`favorite` and `muted` are intentionally NOT wired to Keybase**: the status
+  can't be read back (see below), so a synced state would drift. secretbase
+  keeps **local-only** ★ favourite (`Alt+S`) and mute (`Alt+U`) instead —
+  persisted config keys (`favorites`/`muted`), no `setstatus` call. (Local mute
+  only hides secretbase's unread indicators; it can't silence Keybase's push
+  notifications, which is what the server-side `muted` does.) ⚠️
+  `blocked`/`reported`/`ignored` conversations are
+  **excluded from `list`** (the chat `list` JSON has no status filter —
+  verified: `listOptionsV1` exposes only `topic_type`), so a blocked conv
+  can't be reached from the tree; secretbase restores it by **name** via the
+  Unhide popup (`setstatus unfiled` on the rebuilt channel). The list item
+  (`ConvSummary`) carries **no `status` field** (the service RPC
+  `ConversationInfoLocal.Status` / `IsMuted` has it, but the CLI's JSON
+  projection drops it), so favourite and mute can't be read back — hence both
+  are handled **locally** instead (see above).
 - **No bulk "delete conversation/history" method exists in the api** —
   `delete` is per-message. Bulk delete is a CLI subcommand (below).
 

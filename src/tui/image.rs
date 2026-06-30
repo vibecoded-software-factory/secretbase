@@ -257,6 +257,26 @@ impl GifFrames {
     }
 }
 
+/// Max pixel dimension of an extracted GIF frame. The frames are only ever
+/// downsampled by chafa to a tiny terminal thumbnail, so writing full-resolution
+/// PNGs (a 9.9 MB GIF can be 1000s of px) just burns decode + disk + chafa time.
+/// Capping with ImageMagick's `>` (shrink-only) keeps quality at thumbnail size
+/// while slashing extraction/render cost. Frames already ≤ this are untouched.
+const GIF_FRAME_MAX_PX: u32 = 480;
+
+/// Per-GIF frame directory under the image cache (`…/images/frames/<stem>`).
+/// Lives here (not the view) so the worker can compute it when decoding
+/// off-thread.
+pub fn gif_frame_dir(gif_path: &str) -> std::path::PathBuf {
+    let stem = std::path::Path::new(gif_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("gif");
+    crate::tui::flows::chat::image_cache_dir()
+        .join("frames")
+        .join(stem)
+}
+
 fn sorted_frame_pngs(dir: &std::path::Path) -> Vec<String> {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -279,9 +299,13 @@ pub fn extract_gif_frames(gif: &str, dir: &std::path::Path) -> Option<GifFrames>
     let mut frames = sorted_frame_pngs(dir);
     if frames.len() <= 1 {
         let pattern = dir.join("f-%04d.png");
+        // `-coalesce` reconstructs each full frame, then `-resize …>` shrinks it
+        // to the thumbnail cap (shrink-only) so we don't write/decode full-res.
         let ok = Command::new("convert")
             .arg(gif)
             .arg("-coalesce")
+            .arg("-resize")
+            .arg(format!("{GIF_FRAME_MAX_PX}x{GIF_FRAME_MAX_PX}>"))
             .arg(&pattern)
             .output()
             .map(|o| o.status.success())

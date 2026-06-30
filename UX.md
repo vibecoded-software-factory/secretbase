@@ -8,9 +8,10 @@ a one-off.
 
 **Responsiveness is a hard rule.** Every element must adapt to the panel
 width: show in full when it fits, otherwise **wrap** onto continuation lines
-(action bars, message bodies) or **trim to the width** with a trailing `…`
-(reply quotes, reaction rows, snippets) — never a fixed character cap that the
-terminal then clips. Size against the real content width, not a magic number.
+(action bars, message bodies, reaction rows) or **trim to the width** with a
+trailing `…` (reply quotes, snippets — one-line previews where only the start
+matters) — never a fixed character cap that the terminal then clips. Size
+against the real content width, not a magic number.
 
 The design system: the `split_main` vertical stack, the top identity bar, the
 single `widgets::list_table` list renderer, `draw_search_box`, `draw_cmd_log`,
@@ -66,9 +67,10 @@ conversation on normal terminals.
     `Chat`), and `←`/`h` collapse a group or **close the open chat**
     (`chat::tree_back`). Opening from the quick
     switcher / global search **reveals** the conversation in the tree
-    (`chat::reveal_in_tree` — expand its group + move the cursor). The first
-    (slow) load shows a `widgets::draw_skeleton` whose `Loading chats…` legend
-    **replaces** the `Chats   #` column header until the list arrives.
+    (`chat::reveal_in_tree` — expand its group + move the cursor). There is **no
+    loading skeleton** — the inbox is only ever entered with its conversations
+    already loaded (the splash doubles as the loading screen; see *Boot &
+    loading* below), so the tree never renders empty/half-loaded.
   - the right pane is `conversation::draw_chat` (messages + compose; the header
     name/search are on the shared top row) when a conversation is open, else a
     placeholder. `Focus::Chat` routes keys to `input::conversation::handle`
@@ -90,19 +92,27 @@ conversation on normal terminals.
     image protocol (kitty/sixel/iterm) or `chafa` symbols as a fallback
     (`tui::image`, `image_protocol` setting, `auto` by default; `off` disables).
     The file is downloaded once to `$XDG_CACHE_HOME/secretbase/images`
-    (`{conv}-{msg}.ext`, background via the worker), a `⏳ loading…` placeholder
-    holds the row meanwhile, and the run loop paints the cached graphic over the
-    reserved rows — repainting only when the visible set/positions change, with
-    a per-`(path,size)` chafa-output cache so scrolling is cheap. **`symbols`
+    (`{conv}-{msg}.ext`, background via the worker). While an image is
+    downloading **or** (for a GIF) decoding, a **skeleton** fills the reserved
+    rows (`conversation::image_skeleton_lines`, `conversation::ImgState`:
+    `Loading` / `Decoding` / `Ready`) — a dim label + muted block bars, never an
+    empty void; the run loop polls fast while images load so it gives way
+    promptly. Then the run loop paints the cached graphic over the reserved rows
+    — repainting only when the visible set/positions change, with a
+    per-`(path,size)` chafa-output cache so scrolling is cheap. **`symbols`
     output is parsed into Ratatui spans and rendered *in-buffer*** (the chafa
     ANSI → `image::symbols_to_lines`, spliced over the reserved rows) so scroll,
     overlay occlusion and clearing all work via the frame diff — no
     direct-to-stdout ghosting; only the true-graphics protocols paint over the
-    rows from the run loop. **Animated GIFs play inline**: ImageMagick
-    (`convert -coalesce`) splits the frames to a disk cache once
-    (`image::extract_gif_frames`, `App::gif_anims`), each frame is chafa-cached,
-    and the run loop advances them by wall-clock (`anim_ms`, `GifFrames::frame_at`),
-    polling at ~12 fps while a GIF is on screen (`gif_animating`). In select
+    rows from the run loop. **Animated GIFs play inline**, decoded **off the
+    render thread**: a `WorkerRequest::DecodeGif` runs ImageMagick
+    (`convert -coalesce -resize`, frames capped to `GIF_FRAME_MAX_PX` so a large
+    GIF doesn't burn decode/chafa time) on the background lane
+    (`image::extract_gif_frames`, `App::gif_anims`/`gif_pending`/`gif_to_decode`);
+    the UI shows the skeleton meanwhile and never freezes. Each frame is
+    chafa-cached, and the run loop advances them by wall-clock (`anim_ms`,
+    `GifFrames::frame_at`), polling at ~12 fps while a GIF is on screen
+    (`gif_animating`). In select
     mode `c` **copies the image** to the clipboard (`wl-copy`/`xclip`/`pbcopy`,
     `image::copy_to_clipboard`) when an image is selected, and `s` downloads it.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
@@ -150,6 +160,19 @@ paginating older if needed), `Esc` closes. The **login** screen is the signed-ou
 identity bar and shows the figlet/starfield backdrop with a "run `keybase
 login`, then R" hint.
 
+## Boot & loading
+
+The **splash doubles as the loading screen** — the app never enters the inbox
+half-loaded. The boot sequence (`flows::auth`): `request_status` shows the
+splash with **"Checking session…"**; on success the splash *stays up* and the
+legend flips to **"Loading chats…"** (`chat::request_boot_load_inbox`) while the
+inbox `list` runs; only when it lands does `chat::handle_load_inbox_response`
+transition **Splash → Inbox** with the conversations already in hand (a failed
+boot load still enters the inbox so its error/retry is reachable, never stranded
+on the splash). Logged out → Login. The same path serves the Login screen's `R`
+retry. There is **no loading skeleton** anywhere — the legend on the splash is
+the single loading affordance.
+
 ## Real-time updates
 
 The UI is push-driven, not poll-driven. A `keybase chat api-listen` stream
@@ -162,7 +185,9 @@ on their own:
 - **Open conversation** — incoming messages append live; edits / deletes /
   reactions trigger a quiet re-read so they reproject correctly. Reactions
   render **collapsed** beneath their target message (via the message's
-  `reactions` field); the standalone reaction events are dropped from the
+  `reactions` field), as `{glyph} {count}` chips that **wrap Discord-style** —
+  fill a row left-to-right, then continue on a new row below, never truncated
+  (`conversation::reaction_lines`); the standalone reaction events are dropped from the
   stream so they don't show as stray `reacted :emoji: on msg #N` lines.
   **Edits fold in place** (`domain::fold_edits`): the standalone `edit`
   envelope is dropped, the target's body is replaced with the latest edit, and
@@ -350,6 +375,14 @@ doesn't yank the cursor. `tree_selected` only ever indexes `tree_rows()` via
 - `widgets::draw_confirm_popup(frame, area, theme, title, body, confirmed)` —
   the shared navigable y/n overlay.
 - `widgets::center_rect` / `rounded_block` / `help_line` — popup chrome.
+- `widgets::MODAL_WIDTH_PCT` / `widgets::MODAL_HEIGHT` — **the standard
+  centered-modal geometry** (currently 80% wide × 22 rows). Every list / picker
+  overlay imitates it via `center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, …)` so
+  they all line up: **global search** (Ctrl+G), the **quick switcher** (Ctrl+K),
+  the **reaction picker**, the **file picker**, and the **Settings** overlay
+  (which keeps its own content-sized *width* but adopts this *height* +
+  centered position). A new full-screen-ish modal should use these constants,
+  not a one-off `center_rect(w, h, …)`.
 - `widgets::checkbox_spans` / `chip_span` — shared toggle / tab spans.
 
 ## Overlays & confirmations
@@ -366,11 +399,25 @@ under react/delete/download).
   (`logout_yes` / `delete_msg_yes` / `conv_action_yes` default `false`).
   Classified by `input::common::confirm_key`/`ConfirmInput`.
   `ConfirmConvAction` is the generic home for per-conversation status
-  actions (`App::ConvAction`: ignore/…) — each variant supplies its own
-  title/note and maps to a `setstatus` value, so adding one is a single
-  enum arm.
-- **Input popups** (`NewConversation`, `React`, `DownloadAttachment`,
-  `SearchGlobal`): a centered box with an `editor_spans` field and
+  actions (`App::ConvAction`: `Ignore` / `Block` / `Report`) — each variant
+  supplies its own title/note and maps to a `setstatus` value
+  (`ignored`/`blocked`/`reported`), so adding one is a single enum arm.
+  **Favourite (`Alt+S`) and mute (`Alt+U`) are local-only toggles** — neither
+  uses Keybase's conversation `status` (the chat `list` JSON has no `status`
+  field, verified on `ConvSummary`, so it can't be read back and a synced state
+  would drift). Both are synchronous, no worker call, fully owned by us
+  (`chat::toggle_favorite_conversation`/`toggle_muted_conversation` →
+  `App::toggle_favorite`/`toggle_muted`, persisted to the `favorites`/`muted`
+  config keys). Favourite renders a golden **★**; **mute suppresses the unread
+  indicators** secretbase controls — `App::conv_is_unread` (`unread && !muted`)
+  gates the `●` dot, the bold, the unread count, the Unread filter and the
+  switcher's Unread section, and a muted conv renders **dim**. (The TUI has no
+  notifications, so a local mute can't silence your phone — see README →
+  *Not supported*.) **Ignore / block / report** stay server-side (`setstatus`)
+  because their effect *is* observable (the conv leaves the inbox).
+- **Input popups** (`NewConversation`, `UnhideConversation`, `React`,
+  `DownloadAttachment`, `SearchGlobal`): a centered box with an `editor_spans`
+  field and
   self-contained `Enter: … | Esc: cancel` instructions. Keys route through
   `input::common::route_line_editor`. `SearchGlobal`'s `Enter` opens the
   hit's conversation **and jumps to the matched message**: it stamps
@@ -403,19 +450,21 @@ filter box, `input::common::search_key`/`SearchAction`. Rendering is always
 
 ## Keybindings (global conventions)
 
-- `/` focus search · `Esc`/`h` back · `F1` help · `F9` Settings ·
+- `/` focus search · `Esc`/`h` back · `F1` help · `F10` Settings ·
   `Tab`/`Shift+Tab` cycle
   focus · **only `Ctrl+C` quits** (everything else is free for navigation /
   type-to-search).
 - `j/k` + `↑/↓` navigate · `PgUp/PgDn` page · `g/G` top/bottom ·
   `Enter`/`l` open.
 - **Actions use the `Alt+<letter>` convention**: `Alt+N` new conversation,
-  `Alt+C` copy, `Alt+M` mark read, `Alt+U`/`Alt+O` mute/unmute, `Alt+I`
-  ignore, `Alt+T` teams, `Ctrl+G` global search, `Shift+L` logout. In the
-  conversation,
-  `Alt+V` select mode, `Alt+E`/`Alt+D` edit/delete own, `Alt+J`/`Alt+P`
-  react/pin. The footer shows only a few; the full per-screen list lives in
-  the help popup and the `README.md` tables — **keep both in sync**.
+  `Alt+Y` copy label, `Alt+E` mark read, `Alt+U` local mute (toggle),
+  `Alt+S` local ★ favorite (toggle), `Alt+I` ignore, `Alt+B` block, `Alt+G`
+  report, `Alt+H` unhide (restore a blocked/reported chat by name), `Alt+T` teams,
+  `Ctrl+G` global search, `Shift+L` logout. In the conversation's **select
+  mode** (`Alt+V`), the message actions are plain letters — `e`/`d` edit/delete
+  own, `r` reply, `+` react, `p` pin, `s` download. The footer shows only a few;
+  the full per-screen list lives in the help popup and the `README.md` tables —
+  **keep both in sync**.
 
 ## Theme (`tui::theme`)
 
@@ -435,16 +484,30 @@ conversation-marker colors. Four presets ship (`Preset::ALL`:
 hex entries override it. The Settings picker applies live. Adding a preset = one
 `Palette` arm in `Preset::palette`.
 
-## Settings overlay (`F9`)
+## Settings overlay (`F10`)
 
-`F9` opens a centered **Settings** overlay (`Screen::Settings`, drawn over
+`F10` opens a centered **Settings** overlay (`Screen::Settings`, drawn over
 `settings_from` like Help) — `view::settings::draw_popup`, input in
 `input::settings`. Layout: a left **section sidebar** + the active section's
 **panel**; `Tab` switches sidebar ↔ panel, `↑/↓` move within (section or row),
-`←/→` change the focused setting. The sections (`SettingsSection`): **Identity**
+`←/→` change the focused setting. **Height + position follow the standard
+modal geometry** (`MODAL_HEIGHT`, vertically centered — the same as global
+search / the quick switcher), so overlays line up. The **width is
+content-driven** (`settings::popup_dims` + `section_width`): sized once to the
+widest section so it is **compact** and **never resizes as you navigate**
+between sections, clamped to the terminal so it stays **responsive**. Inside a rows panel the
+**label column is per-section** (sized to that section's longest label, not a
+global fixed column — a tight label→value gap), the **value wraps** onto
+continuation lines when it doesn't fit (`settings::wrap_chars`) **never a `…`
+truncation** (matching the app's read-everything rule), and the focused row's
+**hint is pinned to the bottom row** (`settings::panel_split`) — as is the Theme
+panel's "Applies live…" note — so descriptions never float in the middle. The
+sections (`SettingsSection`): **Identity**
 (read-only — your username + device + device type, from `keybase status`),
 **Theme** (the live preset picker), **Chat** (`auto_mark_read`,
-`inbox_refresh_secs`), **Clipboard** (`clipboard_clear_secs`), **Network**
+`inbox_refresh_secs`), **Emoji** (`emoji_style`: `glyph` vs `:shortcode:` — the
+only emoji-appearance lever a TUI has, since it can't set the terminal's font;
+governs reaction display), **Clipboard** (`clipboard_clear_secs`), **Network**
 (`list_inbox_timeout_secs`, `download_timeout_secs`) and **Images**
 (`image_protocol`, `image_symbols`).
 
@@ -453,12 +516,14 @@ Each non-Identity row is one of three controls keyed off `SettingId::kind`: a
 or a **choice** (cycles a fixed list). **Apply-immediately**: every change is
 written to `settings_cache` *and* persisted to `config.toml` the instant you
 adjust it (`App::settings_adjust` → `SettingsPort::write_setting`; the theme
-picker uses `App::apply_theme_idx` → `write_theme_name`), so `Esc`/`F9` just
-closes — there is no separate confirm/cancel. A changed image protocol /
+picker uses `App::apply_theme_idx` → `write_theme_name`), so closing just
+leaves — there is no separate confirm/cancel. **`Esc` steps back** (Panel →
+Sidebar → close) so it doesn't dump you out of the overlay from inside a
+section; **`F10` closes from anywhere**. A changed image protocol /
 symbol set re-resolves `image_proto` / rebuilds the render cache live. Add a
 new section by extending `SettingsSection::ALL` + `rows`; a new setting by
-adding a `SettingId` arm. An over-long value is trimmed with
-`widgets::trim_end_ellipsis` so the panel never overflows.
+adding a `SettingId` arm — the box re-sizes itself to fit (and long values
+wrap), so nothing overflows.
 
 ## Golden rules
 
