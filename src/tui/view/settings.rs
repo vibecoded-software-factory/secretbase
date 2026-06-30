@@ -191,9 +191,14 @@ fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect) {
             let style = if selected && focused {
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
             } else if selected {
-                Style::default().fg(t.foreground)
+                Style::default()
+                    .fg(t.foreground)
+                    .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(t.dim)
+                // Unselected sections are navigable items, not secondary text —
+                // keep them readable (foreground), let the marker + accent mark
+                // the selection. (lazygit: list rows are normal text.)
+                Style::default().fg(t.foreground)
             };
             Line::from(Span::styled(format!("{marker}{}", s.label()), style))
         })
@@ -250,12 +255,18 @@ fn draw_rows_panel(frame: &mut Frame, app: &App, area: Rect, section: SettingsSe
         let label_style = if selected && focused {
             Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
         } else if selected {
-            Style::default().fg(t.foreground)
+            Style::default()
+                .fg(t.foreground)
+                .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(t.dim)
+            // Row labels are readable content, not secondary text.
+            Style::default().fg(t.foreground)
         };
         let value_style = match id.kind() {
-            SettingKind::Info => Style::default().fg(t.dim),
+            // Read-only identity values are still data you want to read — keep
+            // them at foreground; the bottom "read-only" hint signals they
+            // can't be edited.
+            SettingKind::Info => Style::default().fg(t.foreground),
             _ => Style::default().fg(if selected { t.accent } else { t.foreground }),
         };
         let label = id.label();

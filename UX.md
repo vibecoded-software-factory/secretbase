@@ -476,6 +476,43 @@ starfield colors `star_dim`/`star_mid`/`star_bright`, and the conversation
 marker colors `conv_dm` / `conv_team` / `conv_unread`. **Don't hardcode
 colors — use these.**
 
+**Legibility hierarchy (hard rule).** Text de-emphasis comes from *hierarchy*,
+never from painting content almost the colour of the border. There are three
+legibility tiers and a fourth recessive band — pick by what the text **is**,
+not by reflex:
+
+1. **`foreground`** — primary content (message bodies, conversation names, the
+   command being run, input text). The thing the user is reading.
+2. **`accent`** (often `+ BOLD`) — emphasis / interaction: the focused-panel
+   border + title, the `▶` cursor, keybind letters, the active tab, the
+   identity username.
+3. **`dim`** — *readable* secondary text: counters (`· X of Y`), timestamps,
+   command-log detail, footer hints, system-message bodies, the column-header
+   row. `dim` is a **subtext that stays legible**, derived per-preset as a blend
+   `overlay→text` (0.5) in `Theme::from_palette` — **not** the border tint. Do
+   not map it back to `overlay`.
+4. **`inactive`** — unfocused panel **borders**. A *visible* gray
+   (`overlay→text` 0.4), **not** near-black: an unfocused pane stays readable;
+   what marks focus is the *active* border going `accent` + bold, never the
+   inactive one fading out (lazygit-style — the border recedes, the words don't).
+5. **Recessive band** — genuinely faint, chrome only: `placeholder`
+   (empty-input "type here…", `overlay→text` 0.25), `muted` (` · ` separators,
+   the popup `(←/→ · Enter · Esc)` legend, disabled chips). Never put content a
+   user must read here.
+
+**Navigable list items are content, not chrome.** Sidebar sections, setting
+rows, switcher/picker rows render at **`foreground`** (the selected one `+ bold`,
+and `accent + bold` when its pane is focused) — the `▶` marker + accent carry the
+selection, so unselected rows must **not** be `dim`. Read-only values (the
+Identity panel's username/device) are data you read → `foreground` too; the
+"read-only" footer hint is what signals they can't be edited.
+
+The failure mode to avoid: reaching for `dim` (or worse, `muted`) on text that
+is actually *primary* or *secondary-but-needed*, so the screen reads as a wash
+of low-contrast grey. When in doubt, one tier brighter. Borders + the selection
+background already carry the focus signal — the text doesn't have to dim itself
+to prove it's secondary.
+
 **Presets.** Themes are built from a `Palette` (13 named roles) via
 `Theme::from_palette`, which maps the core roles and derives the starfield +
 conversation-marker colors. Four presets ship (`Preset::ALL`:
@@ -524,6 +561,93 @@ symbol set re-resolves `image_proto` / rebuilds the render cache live. Add a
 new section by extending `SettingsSection::ALL` + `rows`; a new setting by
 adding a `SettingId` arm — the box re-sizes itself to fit (and long values
 wrap), so nothing overflows.
+
+## Responsiveness — what adapts today (and how)
+
+Responsiveness is a hard rule (see the top of this file). This is the **inventory
+of mechanisms that already exist** — reuse them, and don't regress them. Every
+one is backed by code; the file/function is named so you can find it.
+
+**Vertical stack:** `[identity] · header (3) · body (Min 5) · cmdlog · status
+(1)`. The **body flexes**; the **command log is height-responsive** —
+`widgets::cmdlog_height(area.height)` yields rows to the body as the terminal
+gets short (6 when roomy → 3 at the floor) **monotonically** (a taller terminal
+never shrinks the body). The Home (`view::inbox`) drops the identity row and uses
+its own 4-row layout; Teams keeps it; `view::mod::split_main` is the shared
+helper both follow. Below **70×18** every screen is replaced by the centered
+"terminal too small" notice (`view::mod::draw_too_small`, states required +
+current size).
+
+**Horizontal panes:** the tree column is **width-responsive** —
+`widgets::tree_pane_width(area.width)` (~28% clamped to `[22, 40]`): it shrinks
+toward the floor on a narrow terminal so the chat keeps room, and grows on a wide
+one so long DM/team names aren't always truncated (no magic `28`). The Home's
+header filter and body tree pass the same width so their columns line up; the
+chat side is `Min(20/24)` and flexes. The conversation header splits the name
+(35%) / in-chat search (65%).
+
+**Text that fits-or-degrades (never a fixed char cap that the terminal clips):**
+- **Footer hint** — `widgets::fit_segments` keeps only whole ` · ` segments that
+  fit, appends ` …`, never cuts a keybinding in half; `F1 help · F10 settings`
+  is anchored right and reserved first.
+- **List columns** — `widgets::col_width(indices, lo, hi, len)` sizes a content
+  column to the **visible** rows, clamped; **only the final column may be `Min`**
+  (a stretching `Min` on a middle column is the recurring "gap" bug). Overflow:
+  `middle_ellipsis` (head-biased, keeps a `#id`/extension tail) for identifiers,
+  `trim_end_ellipsis` (trailing `…`) for start-anchored previews (snippets,
+  reply quotes).
+- **Message bodies** — `conversation::wrap_runs` wraps to the panel width
+  **preserving styles**, hard-splitting an over-long unbroken token; never
+  clipped.
+- **Reaction chips** — `conversation::reaction_lines` fill a row left-to-right
+  then continue on a new row (Discord-style), never truncated.
+- **Select-mode action bar** — `conversation::select_actions_lines` packs onto
+  one line when it fits, else wraps onto continuation lines.
+- **Attachment meta** — `size · type` inline when there's room, else `type`
+  drops to a dim line below (`render_attachment`).
+
+**Growing / scrolling regions:** the **compose** box grows with its line count
+`(compose_lines + 2).clamp(3, 8)` then scrolls to keep the cursor visible
+(`editor_lines`). The **message viewer**, **command log** and **help** each own
+their viewport and clamp the scroll offset against the *real* overflow (so a
+`usize::MAX`/`u16::MAX` "jump to end" sentinel is safe); help shows `▲`/`▼`
+border marks when content is hidden. **Image** thumbnails reserve rows sized to
+the available cols/rows, fill them with a skeleton while loading
+(`image_skeleton_lines`), and cap GIF frames to `GIF_FRAME_MAX_PX`.
+
+**Modals** share one geometry so they line up and stay on-screen:
+`center_rect(MODAL_WIDTH_PCT = 80%, MODAL_HEIGHT = 22)`. The confirm popup sizes
+`w = 66.min(area.width)`, `h = (body + 4).min(area.height)`; **Settings** keeps a
+content-driven width sized **once** to the widest section (so it doesn't resize
+as you navigate), clamps height to `MODAL_HEIGHT.min(area.height - 2)`, **wraps**
+long values onto continuation lines (`settings::wrap_chars`, never a `…`), and
+pins the focused row's hint to the bottom.
+
+**Identity bar fit:** `widgets::draw_identity_bar` fits to width like the footer
+(no hard mid-word clip): the **username is mandatory**, then the **unread count**
+(it outranks the device label when space is tight — a count you must notice beats
+a device name), then the **device**; the username truncates with `…` only as a
+last resort on a very narrow terminal.
+
+**Modals stay on-screen:** every list overlay windows its content by the *real*
+inner height, not the nominal `MODAL_HEIGHT` — the **react picker** /
+**quick switcher** scroll a viewport around the selection (`vh = rows[1].height`),
+**global search** uses a `ListState` that scrolls the selection into view, and the
+**confirm popup** clamps `h = (body + 4).min(area.height)`. So a short-but-valid
+terminal shrinks the modal and the content follows; nothing clips off the bottom.
+
+**Resize hygiene:** `view::draw` stamps `mouse_areas` with the frame size each
+frame and the run loop `terminal.clear()`s on a size change; clicks whose
+coordinates predate the latest resize are dropped.
+
+**Remaining judgment calls (not bugs, but trade-offs to weigh):**
+
+- The body keeps a hard `Min(5)`; on the rare 18-row terminal that's still tight,
+  but the responsive command log already reclaims rows for it before that bites.
+- `tree_pane_width` clamps at 40 cols — a *very* wide terminal gives the chat the
+  rest, which is the right call, but extremely long team names can still need
+  `middle_ellipsis` inside 40. That's intended (the chat is the priority), not a
+  gap. Revisit only if users ask for a draggable/configurable split.
 
 ## Golden rules
 
