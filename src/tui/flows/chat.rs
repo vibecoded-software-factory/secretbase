@@ -20,6 +20,7 @@ use crate::ports::keybase::{ListConversationsOk, ReadChannel};
 use crate::tui::action::ActionState;
 use crate::tui::app::{App, ConvAction};
 use crate::tui::app::{PendingSend, SendState};
+use crate::tui::screens::Screen;
 use crate::tui::worker::{InFlight, WorkerRequest};
 
 /// Number of messages fetched per page. Sized so most chats fit
@@ -1126,6 +1127,253 @@ pub fn handle_default_channels_response(
                 app.set_action(ActionState::Idle);
             }
             app.push_cmd("keybase chat default-channels", false, e.to_string());
+        }
+    }
+}
+
+// ── Members view (listmembers / addtochannel / removefromchannel) ────
+
+/// Clears the Members view's inline modes (add input / remove confirm).
+fn clear_member_input(app: &mut App) {
+    app.member_adding = false;
+    app.member_add_input.clear();
+    app.member_confirm_remove = None;
+}
+
+/// Opens the Members view for `channel` (labelled `label`), returning to
+/// `return_to` on close, and loads the member list.
+fn open_members(app: &mut App, channel: ReadChannel, label: String, return_to: Screen) {
+    app.members_channel = Some(channel);
+    app.members_label = label;
+    app.members.clear();
+    app.members_selected = 0;
+    app.members_return = return_to;
+    clear_member_input(app);
+    app.screen = Screen::Members;
+    request_load_members(app);
+}
+
+/// `m` in the channel browser: members of the selected channel.
+pub fn open_members_from_browser(app: &mut App) {
+    let Some(team) = app.channel_browser_team.clone() else {
+        return;
+    };
+    let Some(c) = app.channels.get(app.channel_selected) else {
+        return;
+    };
+    let topic = channel_topic(c);
+    let channel = ReadChannel {
+        name: team.clone(),
+        members_type: "team".into(),
+        topic_name: Some(topic.clone()),
+    };
+    open_members(
+        app,
+        channel,
+        format!("{team}#{topic}"),
+        Screen::ChannelBrowser,
+    );
+}
+
+/// `Alt+P` on an open team channel: its members. DMs/non-team convs have a
+/// fixed membership, so it's refused there.
+pub fn open_members_from_conversation(app: &mut App) {
+    let Some(conv_id) = app.open_conv_id.clone() else {
+        return;
+    };
+    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
+        return;
+    };
+    if conv.channel.members_type != crate::domain::MembersType::Team {
+        app.set_action(ActionState::Error(
+            "Members is only available for team channels".into(),
+        ));
+        return;
+    }
+    let label = format!(
+        "{}#{}",
+        conv.channel.name,
+        conv.channel.topic_name.as_deref().unwrap_or("general")
+    );
+    let channel = match read_channel_from_conv(conv) {
+        Ok(ch) => ch,
+        Err(_) => return,
+    };
+    open_members(app, channel, label, Screen::Inbox);
+}
+
+pub fn close_members(app: &mut App) {
+    let return_to = app.members_return;
+    app.members_channel = None;
+    app.members.clear();
+    app.members_selected = 0;
+    clear_member_input(app);
+    app.screen = return_to;
+}
+
+pub fn request_load_members(app: &mut App) {
+    let Some(channel) = app.members_channel.clone() else {
+        return;
+    };
+    if !app.begin(InFlight::LoadMembers) {
+        return;
+    }
+    app.set_action(ActionState::Running("Loading members…".into()));
+    let _ = app.worker_tx.send(WorkerRequest::LoadMembers { channel });
+}
+
+pub fn handle_load_members_response(
+    app: &mut App,
+    result: Result<Vec<crate::domain::ChatMember>, KeybaseError>,
+) {
+    match result {
+        Ok(mut members) => {
+            // Higher-privilege roles first, then alphabetical by username.
+            members.sort_by(|a, b| {
+                a.role
+                    .sort_rank()
+                    .cmp(&b.role.sort_rank())
+                    .then_with(|| a.username.cmp(&b.username))
+            });
+            let n = members.len();
+            app.members = members;
+            app.members_selected = app
+                .members_selected
+                .min(app.members.len().saturating_sub(1));
+            app.set_action(ActionState::Done(format!("{n} members")));
+            app.push_cmd("keybase chat api listmembers", true, format!("{n} members"));
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api listmembers", false, e.to_string());
+        }
+    }
+}
+
+pub fn members_move(app: &mut App, delta: isize) {
+    let len = app.members.len();
+    if len == 0 {
+        return;
+    }
+    app.members_selected =
+        (app.members_selected as isize + delta).clamp(0, len as isize - 1) as usize;
+}
+
+// add member(s)
+
+pub fn open_member_add(app: &mut App) {
+    if app.members_channel.is_none() {
+        return;
+    }
+    clear_member_input(app);
+    app.member_adding = true;
+}
+
+pub fn cancel_member_add(app: &mut App) {
+    clear_member_input(app);
+}
+
+pub fn request_add_members(app: &mut App) {
+    use crate::domain::is_valid_keybase_identity;
+    let Some(channel) = app.members_channel.clone() else {
+        return;
+    };
+    // Accept comma / whitespace separated usernames.
+    let usernames: Vec<String> = app
+        .member_add_input
+        .text()
+        .split([',', ' ', '\t'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_lowercase())
+        .collect();
+    if usernames.is_empty() {
+        app.set_action(ActionState::Error("No usernames entered".into()));
+        return;
+    }
+    if let Some(bad) = usernames.iter().find(|u| !is_valid_keybase_identity(u)) {
+        app.set_action(ActionState::Error(format!("Invalid username: {bad}")));
+        return;
+    }
+    let count = usernames.len();
+    if !app.begin(InFlight::AddToChannel { count }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Adding {count} member(s)…")));
+    let _ = app
+        .worker_tx
+        .send(WorkerRequest::AddToChannel { channel, usernames });
+}
+
+pub fn handle_add_members_response(app: &mut App, result: Result<(), KeybaseError>, count: usize) {
+    match result {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Added {count} member(s)")));
+            app.push_cmd(
+                "keybase chat api addtochannel",
+                true,
+                format!("{count} added"),
+            );
+            clear_member_input(app);
+            request_load_members(app);
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api addtochannel", false, e.to_string());
+        }
+    }
+}
+
+// remove member (inline confirm)
+
+pub fn open_member_remove_confirm(app: &mut App) {
+    let Some(m) = app.members.get(app.members_selected) else {
+        return;
+    };
+    let username = m.username.clone();
+    clear_member_input(app);
+    app.member_confirm_remove = Some(username);
+}
+
+pub fn cancel_member_remove(app: &mut App) {
+    clear_member_input(app);
+}
+
+pub fn confirm_remove_member(app: &mut App) {
+    let Some(channel) = app.members_channel.clone() else {
+        return;
+    };
+    let Some(username) = app.member_confirm_remove.clone() else {
+        return;
+    };
+    app.member_confirm_remove = None;
+    if !app.begin(InFlight::RemoveFromChannel {
+        username: username.clone(),
+    }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Removing {username}…")));
+    let _ = app.worker_tx.send(WorkerRequest::RemoveFromChannel {
+        channel,
+        usernames: vec![username],
+    });
+}
+
+pub fn handle_remove_member_response(
+    app: &mut App,
+    result: Result<(), KeybaseError>,
+    username: String,
+) {
+    match result {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Removed {username}")));
+            app.push_cmd("keybase chat api removefromchannel", true, username);
+            clear_member_input(app);
+            request_load_members(app);
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api removefromchannel", false, e.to_string());
         }
     }
 }

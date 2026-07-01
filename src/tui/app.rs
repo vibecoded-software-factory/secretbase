@@ -11,9 +11,10 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    ChatEvent, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
-    MemberStatus, Message, StatusFilter, TeamMembership, fuzzy_score_lowered,
+    ChatEvent, ChatMember, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor,
+    LoweredConversation, MemberStatus, Message, StatusFilter, TeamMembership, fuzzy_score_lowered,
 };
+use crate::ports::keybase::ReadChannel;
 use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
 use crate::tui::file_picker::FilePicker;
@@ -421,6 +422,24 @@ pub struct App {
     /// `t` toggles the selected channel's membership in this set.
     pub default_channels: Vec<String>,
 
+    // ── Members view (Screen::Members) ──────────────────────────────────
+    /// Channel/conversation whose members the Members view is showing.
+    pub members_channel: Option<ReadChannel>,
+    /// Display label for the Members title (e.g. `team#channel`).
+    pub members_label: String,
+    /// Members of `members_channel` (from `listmembers`), sorted by role.
+    pub members: Vec<ChatMember>,
+    /// Selected row in the Members view.
+    pub members_selected: usize,
+    /// Screen to return to when the Members view closes (browser or inbox).
+    pub members_return: Screen,
+    /// Whether the Members view is in **add** mode (`a`) — a username input.
+    pub member_adding: bool,
+    /// Comma/space-separated usernames typed in add mode.
+    pub member_add_input: LineEditor,
+    /// `Some(username)` while an inline **remove** confirm (`x`) is showing.
+    pub member_confirm_remove: Option<String>,
+
     // ── Conversation detail ──────────────────────────────────────────────
     /// Conversation id currently open on the detail screen. `None`
     /// while we're on the inbox screen.
@@ -792,6 +811,14 @@ impl App {
             channel_renaming: None,
             channel_confirm_delete: None,
             default_channels: Vec::new(),
+            members_channel: None,
+            members_label: String::new(),
+            members: Vec::new(),
+            members_selected: 0,
+            members_return: Screen::Inbox,
+            member_adding: false,
+            member_add_input: LineEditor::default(),
+            member_confirm_remove: None,
             open_conv_id: None,
             messages: Vec::new(),
             outbox: Vec::new(),
@@ -1277,6 +1304,7 @@ impl App {
                     | Screen::NewConversation
                     | Screen::UnhideConversation
                     | Screen::ChannelBrowser
+                    | Screen::Members
                     | Screen::SearchGlobal
                     | Screen::ConfirmDeleteMessage
                     | Screen::React

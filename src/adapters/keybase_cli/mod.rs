@@ -75,8 +75,8 @@ use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
 use crate::domain::{
-    AttachmentInfo, Conversation, Emoji, IdentityInfo, Message, MessageContent, Reaction,
-    SystemInfo, SystemKind, TeamMembership, team_role_name,
+    AttachmentInfo, ChatMember, Conversation, Emoji, IdentityInfo, Message, MessageContent,
+    Reaction, SystemInfo, SystemKind, TeamMembership, TeamRole, team_role_name,
 };
 use crate::ports::KeybaseError;
 use crate::ports::keybase::{
@@ -560,6 +560,67 @@ impl KeybasePort for KeybaseCliAdapter {
 
     fn leave_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError> {
         let req = request_with_options("leave", json!({ "channel": channel_object(channel) }));
+        self.chat_api(&req, QUICK_OP_TIMEOUT)?;
+        Ok(())
+    }
+
+    fn list_members(&mut self, channel: &ReadChannel) -> Result<Vec<ChatMember>, KeybaseError> {
+        let req =
+            request_with_options("listmembers", json!({ "channel": channel_object(channel) }));
+        let reply = self.chat_api(&req, QUICK_OP_TIMEOUT)?;
+        let result = reply
+            .pointer("/result")
+            .ok_or_else(|| KeybaseError::shape("keybase chat api listmembers: missing result"))?;
+        // ChatMembersDetails: six role buckets, each a list of {username,…}.
+        let buckets = [
+            ("owners", TeamRole::Owner),
+            ("admins", TeamRole::Admin),
+            ("writers", TeamRole::Writer),
+            ("readers", TeamRole::Reader),
+            ("bots", TeamRole::Bot),
+            ("restrictedBots", TeamRole::RestrictedBot),
+        ];
+        let mut members = Vec::new();
+        for (key, role) in buckets {
+            let Some(arr) = result.get(key).and_then(Value::as_array) else {
+                continue;
+            };
+            for m in arr {
+                if let Some(u) = m.get("username").and_then(Value::as_str)
+                    && !u.is_empty()
+                {
+                    members.push(ChatMember {
+                        username: u.to_string(),
+                        role,
+                    });
+                }
+            }
+        }
+        Ok(members)
+    }
+
+    fn add_to_channel(
+        &mut self,
+        channel: &ReadChannel,
+        usernames: &[String],
+    ) -> Result<(), KeybaseError> {
+        let req = request_with_options(
+            "addtochannel",
+            json!({ "channel": channel_object(channel), "usernames": usernames }),
+        );
+        self.chat_api(&req, QUICK_OP_TIMEOUT)?;
+        Ok(())
+    }
+
+    fn remove_from_channel(
+        &mut self,
+        channel: &ReadChannel,
+        usernames: &[String],
+    ) -> Result<(), KeybaseError> {
+        let req = request_with_options(
+            "removefromchannel",
+            json!({ "channel": channel_object(channel), "usernames": usernames }),
+        );
         self.chat_api(&req, QUICK_OP_TIMEOUT)?;
         Ok(())
     }

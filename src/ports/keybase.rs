@@ -2,7 +2,9 @@
 
 use zeroize::Zeroizing;
 
-use crate::domain::{Conversation, Emoji, IdentityInfo, InboxHit, Message, TeamMembership};
+use crate::domain::{
+    ChatMember, Conversation, Emoji, IdentityInfo, InboxHit, Message, TeamMembership,
+};
 use crate::ports::error::KeybaseError;
 
 /// Successful outcome of [`KeybasePort::list_conversations`].
@@ -286,6 +288,28 @@ pub trait KeybasePort {
     /// `{"method":"leave","params":{"options":{"channel":...}}}` — leaves a
     /// team channel.
     fn leave_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError>;
+
+    /// `{"method":"listmembers","params":{"options":{"channel":...}}}` — the
+    /// members of a conversation / team channel, from the `ChatMembersDetails`
+    /// role buckets (owners/admins/writers/readers/bots/restrictedBots),
+    /// flattened to [`ChatMember`]s.
+    fn list_members(&mut self, channel: &ReadChannel) -> Result<Vec<ChatMember>, KeybaseError>;
+
+    /// `{"method":"addtochannel","params":{"options":{"channel":...,
+    /// "usernames":[...]}}}` — adds team members to a channel.
+    fn add_to_channel(
+        &mut self,
+        channel: &ReadChannel,
+        usernames: &[String],
+    ) -> Result<(), KeybaseError>;
+
+    /// `{"method":"removefromchannel","params":{"options":{"channel":...,
+    /// "usernames":[...]}}}` — removes members from a channel.
+    fn remove_from_channel(
+        &mut self,
+        channel: &ReadChannel,
+        usernames: &[String],
+    ) -> Result<(), KeybaseError>;
 
     /// `keybase chat rename-channel <team> <old> <new>` — renames a team
     /// channel. A **CLI subcommand** (no API method), so a one-shot spawn.

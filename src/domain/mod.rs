@@ -47,7 +47,7 @@ pub use message::{
     team_role_name,
 };
 pub use search::{LoweredConversation, fuzzy_score_lowered};
-pub use team::{TeamMembership, TeamRole};
+pub use team::{ChatMember, TeamMembership, TeamRole};
 pub use timefmt::{message_time, relative_short};
 pub use url::extract_urls;
 pub use validation::{is_valid_keybase_identity, is_valid_keybase_username};

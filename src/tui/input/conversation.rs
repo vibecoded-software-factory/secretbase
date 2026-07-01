@@ -136,6 +136,8 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Char('v') | KeyCode::Char('V') if alt => chat::enter_select_mode(app),
         KeyCode::Char('r') | KeyCode::Char('R') if alt => chat::request_resend_message(app),
         KeyCode::Char('a') | KeyCode::Char('A') if alt => open_attach_picker(app),
+        // Members of the open conversation (team channels only).
+        KeyCode::Char('p') | KeyCode::Char('P') if alt => chat::open_members_from_conversation(app),
 
         // ── text input (cursor moves + edits) ──────────────────────────
         _ => {

@@ -288,6 +288,14 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   whole set). ⚠️ The CLI **can't clear the set to empty** (no `--channel` is a
   get), so removing the last default is refused. Verified vs source
   (`SetDefaultTeamChannelsLocal` / `GetDefaultTeamChannelsLocal`).
+- `listmembers` `{"channel":…}` (or `{"conversation_id":…}`) — the members of a
+  conversation / team channel. Result is `ChatMembersDetails`: six role buckets
+  (`owners`/`admins`/`writers`/`readers`/`bots`/`restrictedBots`), each a list of
+  `{uid,username,fullName}` (verified: `ListMembersV1` → `TeamToChatMembersDetails`).
+  secretbase flattens these to `domain::ChatMember` for the **Members** view (`m`
+  in the channel browser, `Alt+P` on an open team channel).
+- `addtochannel` / `removefromchannel` `{"channel":…,"usernames":[…]}` — add /
+  remove members of a team channel. Driven from the Members view (`a` / `x`).
 - `searchregexp` `{"channel":…,"query":…,"is_regex":false,"max_hits":N}` —
   server-side search **within one conversation** (full history). Result shape
   is `result.hits[]`, each `{hitMessage.valid{messageID, bodySummary,

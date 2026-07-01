@@ -92,6 +92,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Alt+U", "unpin channel"),
             ("Alt+R", "resend failed message"),
             ("Alt+A", "attach a file (opens the file picker)"),
+            ("Alt+P", "members (team channels) — add / remove"),
             ("Esc", "cancel / back"),
         ] {
             lines.push(help_line(k, d, t));
@@ -184,7 +185,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     ("Alt+H", "unhide — restore a blocked/reported chat by name"),
                     (
                         "Alt+K",
-                        "channel browser (team) — join/leave/new/rename/del/default",
+                        "channel browser (team) — join/leave/new/rename/del/default/members",
                     ),
                     ("Alt+T", "teams"),
                     ("Ctrl+G", "global search"),

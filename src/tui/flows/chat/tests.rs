@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use zeroize::Zeroizing;
 
 use crate::domain::{
-    AttachmentInfo, Channel, Conversation, Emoji, IdentityInfo, InboxHit, MemberStatus,
-    MembersType, Message, MessageContent, TeamMembership, TopicType,
+    AttachmentInfo, Channel, ChatMember, Conversation, Emoji, IdentityInfo, InboxHit, MemberStatus,
+    MembersType, Message, MessageContent, TeamMembership, TeamRole, TopicType,
 };
 use crate::ports::KeybaseError;
 use crate::ports::keybase::{
@@ -74,6 +74,10 @@ struct MockState {
     /// `default-channels`: the get result + recorded set calls.
     default_channels_get: Vec<String>,
     default_channels_set: Vec<Vec<String>>,
+    /// Members: pre-baked `listmembers` result + recorded add/remove calls.
+    members: Vec<ChatMember>,
+    added_members: Vec<Vec<String>>,
+    removed_members: Vec<Vec<String>>,
     /// Next adapter call returning a Result returns this error then
     /// clears the slot.
     fail_next: Option<KeybaseError>,
@@ -262,6 +266,37 @@ impl KeybasePort for MockKeybase {
             return Err(e);
         }
         s.left.push(ch.topic_name.clone().unwrap_or_default());
+        Ok(())
+    }
+    fn list_members(&mut self, _: &ReadChannel) -> Result<Vec<ChatMember>, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(s.members.clone())
+    }
+    fn add_to_channel(
+        &mut self,
+        _: &ReadChannel,
+        usernames: &[String],
+    ) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.added_members.push(usernames.to_vec());
+        Ok(())
+    }
+    fn remove_from_channel(
+        &mut self,
+        _: &ReadChannel,
+        usernames: &[String],
+    ) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.removed_members.push(usernames.to_vec());
         Ok(())
     }
     fn rename_channel(&mut self, team: &str, old: &str, new: &str) -> Result<(), KeybaseError> {
@@ -1213,6 +1248,82 @@ fn channel_browser_toggle_default_sends_full_set() {
         vec![vec!["random".to_string()]]
     );
     assert_eq!(rig.app.default_channels, vec!["random".to_string()]);
+}
+
+// ── members (listmembers / addtochannel / removefromchannel) ─────────
+
+fn open_members_rig() -> Rig {
+    let mut rig = build_rig();
+    rig.mock.st().members = vec![
+        ChatMember {
+            username: "zoe".into(),
+            role: TeamRole::Writer,
+        },
+        ChatMember {
+            username: "alice".into(),
+            role: TeamRole::Owner,
+        },
+    ];
+    rig.app.members_channel = Some(ReadChannel {
+        name: "phoenix".into(),
+        members_type: "team".into(),
+        topic_name: Some("general".into()),
+    });
+    request_load_members(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    rig
+}
+
+#[test]
+fn members_load_sorts_by_role_then_name() {
+    let rig = open_members_rig();
+    // Owner (alice) before Writer (zoe) regardless of input order.
+    assert_eq!(rig.app.members.len(), 2);
+    assert_eq!(rig.app.members[0].username, "alice");
+    assert_eq!(rig.app.members[0].role, TeamRole::Owner);
+    assert_eq!(rig.app.members[1].username, "zoe");
+}
+
+#[test]
+fn members_add_parses_usernames_and_calls_adapter() {
+    let mut rig = open_members_rig();
+    open_member_add(&mut rig.app);
+    assert!(rig.app.member_adding);
+    rig.app.member_add_input.set("Bob, charlie");
+    request_add_members(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(
+        rig.mock.st().added_members,
+        vec![vec!["bob".to_string(), "charlie".to_string()]]
+    );
+    assert!(!rig.app.member_adding);
+}
+
+#[test]
+fn members_add_rejects_invalid_username() {
+    let mut rig = open_members_rig();
+    open_member_add(&mut rig.app);
+    rig.app.member_add_input.set("not a valid!!name");
+    request_add_members(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Nothing dispatched — the invalid username short-circuits.
+    assert!(rig.mock.st().added_members.is_empty());
+}
+
+#[test]
+fn members_remove_needs_confirm_then_calls_adapter() {
+    let mut rig = open_members_rig();
+    rig.app.members_selected = 0; // alice
+    open_member_remove_confirm(&mut rig.app);
+    assert_eq!(rig.app.member_confirm_remove.as_deref(), Some("alice"));
+    assert!(rig.mock.st().removed_members.is_empty());
+    confirm_remove_member(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(
+        rig.mock.st().removed_members,
+        vec![vec!["alice".to_string()]]
+    );
+    assert!(rig.app.member_confirm_remove.is_none());
 }
 
 // ── do_create_new_conversation → request_create_new_conversation ─────

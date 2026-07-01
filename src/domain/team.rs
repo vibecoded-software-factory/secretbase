@@ -81,6 +81,21 @@ impl<'de> Deserialize<'de> for TeamRole {
 }
 
 impl TeamRole {
+    /// Sort key placing higher-privilege roles first (owner → …), used to
+    /// order a member list. Lower = shown earlier.
+    pub fn sort_rank(self) -> u8 {
+        match self {
+            TeamRole::Owner => 0,
+            TeamRole::Admin => 1,
+            TeamRole::Writer => 2,
+            TeamRole::Reader => 3,
+            TeamRole::Bot => 4,
+            TeamRole::RestrictedBot => 5,
+            TeamRole::None => 6,
+            TeamRole::Unknown => 7,
+        }
+    }
+
     /// Human-readable single-word label.
     pub fn label(self) -> &'static str {
         match self {
@@ -119,6 +134,13 @@ pub struct TeamMembership {
 
 fn default_role() -> TeamRole {
     TeamRole::Unknown
+}
+
+/// One member of a chat conversation / team channel, from `listmembers`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatMember {
+    pub username: String,
+    pub role: TeamRole,
 }
 
 #[cfg(test)]

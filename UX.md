@@ -451,6 +451,16 @@ under react/delete/download).
   can't clear it to empty, so removing the last one is refused). Every mutation
   resyncs the inbox (silent) so the tree tracks it and reloads the browser. Flows
   in `chat::*channel*`; input in `input::popups::channel_browser`.
+- **Members view** (`Members`, `m` in the channel browser or `Alt+P` on an open
+  team channel) — a standard centered modal (`view::members`) listing a
+  conversation's members via `keybase chat api listmembers` (the six
+  `ChatMembersDetails` role buckets flattened to `domain::ChatMember`, sorted
+  higher-privilege-role first then by name, with the role label dimmed). `a`
+  enters an inline **add** mode (comma/space-separated usernames, validated →
+  `addtochannel`), `x`/`d` an inline **remove** confirm (→ `removefromchannel`),
+  `F5` reloads, `Esc` returns to wherever it was opened from (`members_return`).
+  Add/remove reload the list on success. DMs/non-team convs are refused (fixed
+  membership). Flows in `chat::*member*`; input in `input::popups::members`.
 - **Input popups** (`NewConversation`, `UnhideConversation`, `React`,
   `DownloadAttachment`, `SearchGlobal`): a centered box with an `editor_spans`
   field and

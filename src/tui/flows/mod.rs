@@ -167,6 +167,16 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         (InFlight::LeaveChannel { topic }, WorkerResponse::LeaveChannel(r)) => {
             chat::handle_leave_response(app, r, topic);
         }
+        // ── Members (listmembers / addtochannel / removefromchannel) ──
+        (InFlight::LoadMembers, WorkerResponse::LoadMembers(r)) => {
+            chat::handle_load_members_response(app, r);
+        }
+        (InFlight::AddToChannel { count }, WorkerResponse::AddToChannel(r)) => {
+            chat::handle_add_members_response(app, r, count);
+        }
+        (InFlight::RemoveFromChannel { username }, WorkerResponse::RemoveFromChannel(r)) => {
+            chat::handle_remove_member_response(app, r, username);
+        }
         (InFlight::RenameChannel { topic }, WorkerResponse::RenameChannel(r)) => {
             chat::handle_rename_channel_response(app, r, topic);
         }

@@ -88,7 +88,53 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         KeyCode::Char('d') | KeyCode::Char('D') => chat::open_channel_delete_confirm(app),
         // Toggle the selected channel as a team default (new-member auto-join).
         KeyCode::Char('t') | KeyCode::Char('T') => chat::toggle_default_channel(app),
+        // Members of the selected channel.
+        KeyCode::Char('m') | KeyCode::Char('M') => chat::open_members_from_browser(app),
         KeyCode::F(5) => chat::request_load_channels(app),
+        _ => {}
+    }
+}
+
+// ── Members view (listmembers / add / remove) ──────────────────────────
+
+pub fn members(app: &mut App, key: KeyEvent) {
+    // Add mode: the username input owns the keys.
+    if app.member_adding {
+        match key.code {
+            KeyCode::Esc => chat::cancel_member_add(app),
+            KeyCode::Enter => chat::request_add_members(app),
+            _ => {
+                common::route_line_editor(&mut app.member_add_input, key);
+            }
+        }
+        return;
+    }
+    // Inline remove confirm.
+    if app.member_confirm_remove.is_some() {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => chat::confirm_remove_member(app),
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                chat::cancel_member_remove(app)
+            }
+            _ => {}
+        }
+        return;
+    }
+    match key.code {
+        KeyCode::Esc => chat::close_members(app),
+        KeyCode::Up | KeyCode::Char('k') => chat::members_move(app, -1),
+        KeyCode::Down | KeyCode::Char('j') => chat::members_move(app, 1),
+        KeyCode::PageUp => chat::members_move(app, -10),
+        KeyCode::PageDown => chat::members_move(app, 10),
+        KeyCode::Home | KeyCode::Char('g') => chat::members_move(app, isize::MIN),
+        KeyCode::End | KeyCode::Char('G') => chat::members_move(app, isize::MAX),
+        // Add member(s).
+        KeyCode::Char('a') | KeyCode::Char('A') => chat::open_member_add(app),
+        // Remove the selected member.
+        KeyCode::Char('x') | KeyCode::Char('X') | KeyCode::Char('d') | KeyCode::Char('D') => {
+            chat::open_member_remove_confirm(app)
+        }
+        KeyCode::F(5) => chat::request_load_members(app),
         _ => {}
     }
 }

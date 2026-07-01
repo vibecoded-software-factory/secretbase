@@ -41,7 +41,9 @@ A working terminal client for everyday Keybase chat. Highlights:
   **channel browser** (`Alt+K` on a team) lists every channel to join / open /
   leave, plus create / rename / delete and toggle a channel as a team **default**
   (`listconvsonname` · `join` · `leave` · `newconv` · `rename-channel` ·
-  `delete-channel` · `default-channels`).
+  `delete-channel` · `default-channels`). A **members** view (`m` in the browser,
+  or `Alt+P` on an open team channel) lists members by role and adds / removes
+  them (`listmembers` · `addtochannel` · `removefromchannel`).
 * New conversation (`Alt+N`), mark read, ignore / block / report, unhide
   (restore blocked/reported by name), copy label, plus **local-only** ★ favorite
   (`Alt+S`) and mute (`Alt+U`).
@@ -125,6 +127,7 @@ collapse a group); the header search fuzzy-filters it.
 | `Alt+U`                 | Unpin channel |
 | `Alt+R`                 | Resend failed message |
 | `Alt+A`                 | Attach a file (opens the file picker) |
+| `Alt+P`                 | Members (team channels only) — add / remove |
 | `F5` / `Ctrl+R`         | Refresh |
 | `Ctrl+Y`                | Copy label |
 | `Esc`                   | Cancel / back |
