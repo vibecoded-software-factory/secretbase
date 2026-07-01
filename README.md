@@ -39,8 +39,9 @@ A working terminal client for everyday Keybase chat. Highlights:
   in-conversation regexp search (`Ctrl+F`), and a quick switcher (`Ctrl+K`).
 * **Teams**: list your memberships with role and member count (`Alt+T`); a
   **channel browser** (`Alt+K` on a team) lists every channel to join / open /
-  leave, plus create / rename / delete (`listconvsonname` · `join` · `leave` ·
-  `newconv` · `rename-channel` · `delete-channel`).
+  leave, plus create / rename / delete and toggle a channel as a team **default**
+  (`listconvsonname` · `join` · `leave` · `newconv` · `rename-channel` ·
+  `delete-channel` · `default-channels`).
 * New conversation (`Alt+N`), mark read, ignore / block / report, unhide
   (restore blocked/reported by name), copy label, plus **local-only** ★ favorite
   (`Alt+S`) and mute (`Alt+U`).
@@ -98,7 +99,7 @@ tables.
 | `Alt+B`                 | Block conversation (hide for good) |
 | `Alt+G`                 | Report conversation (flag to Keybase + hide) |
 | `Alt+H`                 | Unhide — restore a blocked/reported chat by name |
-| `Alt+K`                 | Channel browser (on a team) — join/open/leave, new/rename/delete |
+| `Alt+K`                 | Channel browser (on a team) — join/open/leave, new/rename/delete, `t` default |
 | `Alt+T`                 | Teams |
 | `Ctrl+G`                | Global search |
 | `Ctrl+K`                | Quick switcher — jump to a conversation |

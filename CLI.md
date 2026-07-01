@@ -279,6 +279,15 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   `delete-channel` is **non-interactive** (verified: resolves non-interactively +
   `DeleteConversationLocal`, no prompt) but destructive → secretbase confirms
   inline first. Both are driven from the channel browser (`r` / `d`).
+- **`keybase chat default-channels <team> [--channel C]…`** — CLI subcommand
+  (no API method), plain-text output (not JSON). No `--channel` = **get**;
+  repeated `--channel` = **replace** the default set, then print it. The default
+  channels are the ones new team members auto-join; `#general` is always default
+  and printed first (not part of the settable set). secretbase gets them on
+  browser load (badges `★ default`) and toggles with `t` (recomputes + sets the
+  whole set). ⚠️ The CLI **can't clear the set to empty** (no `--channel` is a
+  get), so removing the last default is refused. Verified vs source
+  (`SetDefaultTeamChannelsLocal` / `GetDefaultTeamChannelsLocal`).
 - `searchregexp` `{"channel":…,"query":…,"is_regex":false,"max_hits":N}` —
   server-side search **within one conversation** (full history). Result shape
   is `result.hits[]`, each `{hitMessage.valid{messageID, bodySummary,

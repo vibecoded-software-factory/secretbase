@@ -441,12 +441,16 @@ under react/delete/download).
   input → `newconv` on a team channel, reusing the `NewConversation` request
   routed by an `InFlight::CreateChannel` slot), `r` an inline **rename** mode
   (pre-filled → `rename-channel`), `d` an inline **delete** confirm (destructive
-  + irreversible → `y`/`n`, error-red → `delete-channel`), `F5` refreshes, `Esc`
-  closes. The inline modes share one bottom row + the `channel_new_name` editor;
-  `rename-channel`/`delete-channel` are **CLI subcommands** (one-shot spawn, no
-  API method), the rest are chat-api methods. Every mutation resyncs the inbox
-  (silent) so the tree tracks it and reloads the browser. Flows in
-  `chat::*channel*`; input in `input::popups::channel_browser`.
+  + irreversible → `y`/`n`, error-red → `delete-channel`), `t` toggles the
+  channel as a team **default** (new members auto-join; a `★ default` badge,
+  `#general` always), `F5` refreshes, `Esc` closes. The inline modes share one
+  bottom row + the `channel_new_name` editor; `rename-channel`/`delete-channel`/
+  `default-channels` are **CLI subcommands** (one-shot spawn, no API method), the
+  rest are chat-api methods. `default-channels` is fetched (get) chained after
+  the list load to badge; `t` recomputes and **replaces** the whole set (the CLI
+  can't clear it to empty, so removing the last one is refused). Every mutation
+  resyncs the inbox (silent) so the tree tracks it and reloads the browser. Flows
+  in `chat::*channel*`; input in `input::popups::channel_browser`.
 - **Input popups** (`NewConversation`, `UnhideConversation`, `React`,
   `DownloadAttachment`, `SearchGlobal`): a centered box with an `editor_spans`
   field and

@@ -47,6 +47,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
             if !joined {
                 spans.push(Span::styled("   · join", Style::default().fg(t.dim)));
             }
+            // Default-channel badge (new members auto-join); `#general` always.
+            if topic == "general" || app.default_channels.contains(&topic) {
+                spans.push(Span::styled("  ★ default", Style::default().fg(t.accent)));
+            }
             ListItem::new(Line::from(spans))
         })
         .collect();
@@ -103,7 +107,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         ])
     } else {
         Line::from(Span::styled(
-            " Enter open/join · x leave · r rename · d delete · Alt+N new · F5 · Esc ",
+            " Enter open/join · x leave · r rename · d delete · t default · Alt+N new · F5 · Esc ",
             Style::default().fg(t.dim),
         ))
     };

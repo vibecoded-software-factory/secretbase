@@ -416,6 +416,10 @@ pub struct App {
     /// `Some(topic)` while an inline **delete** confirm (`d`) is showing —
     /// destructive + irreversible, so `y` confirms / `n`/`Esc` cancels.
     pub channel_confirm_delete: Option<String>,
+    /// The team's **default channels** (new members auto-join these), fetched
+    /// alongside the browser list; `#general` is always default and omitted.
+    /// `t` toggles the selected channel's membership in this set.
+    pub default_channels: Vec<String>,
 
     // ── Conversation detail ──────────────────────────────────────────────
     /// Conversation id currently open on the detail screen. `None`
@@ -787,6 +791,7 @@ impl App {
             channel_new_name: LineEditor::default(),
             channel_renaming: None,
             channel_confirm_delete: None,
+            default_channels: Vec::new(),
             open_conv_id: None,
             messages: Vec::new(),
             outbox: Vec::new(),

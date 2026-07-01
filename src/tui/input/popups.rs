@@ -86,6 +86,8 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         // Rename / delete the selected channel (admin).
         KeyCode::Char('r') | KeyCode::Char('R') => chat::open_channel_rename(app),
         KeyCode::Char('d') | KeyCode::Char('D') => chat::open_channel_delete_confirm(app),
+        // Toggle the selected channel as a team default (new-member auto-join).
+        KeyCode::Char('t') | KeyCode::Char('T') => chat::toggle_default_channel(app),
         KeyCode::F(5) => chat::request_load_channels(app),
         _ => {}
     }

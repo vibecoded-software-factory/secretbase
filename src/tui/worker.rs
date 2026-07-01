@@ -146,6 +146,11 @@ pub enum WorkerRequest {
         team: String,
         channel: String,
     },
+    /// Get (empty `set`) or replace the team's default channels.
+    DefaultChannels {
+        team: String,
+        set: Vec<String>,
+    },
     SetConvStatus {
         channel: ReadChannel,
         status: String,
@@ -215,6 +220,7 @@ pub enum WorkerResponse {
     LeaveChannel(Result<(), KeybaseError>),
     RenameChannel(Result<(), KeybaseError>),
     DeleteChannel(Result<(), KeybaseError>),
+    DefaultChannels(Result<Vec<String>, KeybaseError>),
     SetConvStatus(Result<(), KeybaseError>),
     PinMessage(Result<(), KeybaseError>),
     UnpinMessage(Result<(), KeybaseError>),
@@ -290,6 +296,11 @@ pub enum InFlight {
     /// Delete a channel; `topic` is the channel name (for the toast).
     DeleteChannel {
         topic: String,
+    },
+    /// Get / set the team default channels; `setting` distinguishes the two
+    /// (the load-time get is quiet, the set toasts).
+    DefaultChannels {
+        setting: bool,
     },
     /// Any `setstatus` call (mute / unmute / ignore / block / report /
     /// favorite). `done_label` is the feedback shown on success.
@@ -501,6 +512,9 @@ mod tests {
         fn delete_channel(&mut self, _: &str, _: &str) -> Result<(), KeybaseError> {
             Ok(())
         }
+        fn default_channels(&mut self, _: &str, _: &[String]) -> Result<Vec<String>, KeybaseError> {
+            Ok(Vec::new())
+        }
         fn set_conversation_status(
             &mut self,
             _: &ReadChannel,
@@ -634,6 +648,7 @@ mod tests {
                 Self::LeaveChannel(r) => write!(f, "LeaveChannel({r:?})"),
                 Self::RenameChannel(r) => write!(f, "RenameChannel({r:?})"),
                 Self::DeleteChannel(r) => write!(f, "DeleteChannel({r:?})"),
+                Self::DefaultChannels(r) => write!(f, "DefaultChannels({r:?})"),
                 Self::SetConvStatus(r) => write!(f, "SetConvStatus({r:?})"),
                 Self::PinMessage(r) => write!(f, "PinMessage({r:?})"),
                 Self::UnpinMessage(r) => write!(f, "UnpinMessage({r:?})"),
@@ -733,6 +748,11 @@ fn run_worker(
             WorkerRequest::DeleteChannel { team, channel } => {
                 WorkerResponse::DeleteChannel(run_caught(|| {
                     keybase.delete_channel(&team, &channel)
+                }))
+            }
+            WorkerRequest::DefaultChannels { team, set } => {
+                WorkerResponse::DefaultChannels(run_caught(|| {
+                    keybase.default_channels(&team, &set)
                 }))
             }
             WorkerRequest::SetConvStatus { channel, status } => {

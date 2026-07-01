@@ -71,6 +71,9 @@ struct MockState {
     left: Vec<String>,
     renames: Vec<(String, String, String)>,
     deleted_channels: Vec<String>,
+    /// `default-channels`: the get result + recorded set calls.
+    default_channels_get: Vec<String>,
+    default_channels_set: Vec<Vec<String>>,
     /// Next adapter call returning a Result returns this error then
     /// clears the slot.
     fail_next: Option<KeybaseError>,
@@ -277,6 +280,20 @@ impl KeybasePort for MockKeybase {
         }
         s.deleted_channels.push(channel.to_string());
         Ok(())
+    }
+    fn default_channels(&mut self, _: &str, set: &[String]) -> Result<Vec<String>, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        if set.is_empty() {
+            Ok(s.default_channels_get.clone())
+        } else {
+            // SET replaces the set, then the CLI prints the new one back.
+            s.default_channels_set.push(set.to_vec());
+            s.default_channels_get = set.to_vec();
+            Ok(set.to_vec())
+        }
     }
     fn set_conversation_status(
         &mut self,
@@ -1164,6 +1181,38 @@ fn channel_browser_delete_needs_confirm_then_calls_adapter() {
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.mock.st().deleted_channels, vec!["random".to_string()]);
     assert!(rig.app.channel_confirm_delete.is_none());
+}
+
+#[test]
+fn channel_browser_toggle_default_sends_full_set() {
+    let mut rig = build_rig();
+    let mut general = conv("c-general", "phoenix", MembersType::Team);
+    general.channel.topic_name = Some("general".into());
+    general.member_status = MemberStatus::Active;
+    let mut random = conv("c-random", "phoenix", MembersType::Team);
+    random.channel.topic_name = Some("random".into());
+    random.member_status = MemberStatus::Active;
+    rig.mock.st().channels = vec![general, random];
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // The chained default-channels get ran (mock returns none → general only).
+    assert!(rig.app.default_channels.is_empty());
+    // Toggle "random" ON → SET fires with the full new set [random].
+    let ri = rig
+        .app
+        .channels
+        .iter()
+        .position(|c| c.channel.topic_name.as_deref() == Some("random"))
+        .unwrap();
+    rig.app.channel_selected = ri;
+    toggle_default_channel(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(
+        rig.mock.st().default_channels_set,
+        vec![vec!["random".to_string()]]
+    );
+    assert_eq!(rig.app.default_channels, vec!["random".to_string()]);
 }
 
 // ── do_create_new_conversation → request_create_new_conversation ─────

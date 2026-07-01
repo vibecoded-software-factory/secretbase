@@ -878,6 +878,7 @@ pub fn open_channel_browser(app: &mut App) {
     app.channel_browser_team = Some(team);
     app.channels.clear();
     app.channel_selected = 0;
+    app.default_channels.clear();
     clear_channel_input(app);
     app.screen = crate::tui::screens::Screen::ChannelBrowser;
     request_load_channels(app);
@@ -887,6 +888,7 @@ pub fn close_channel_browser(app: &mut App) {
     app.channel_browser_team = None;
     app.channels.clear();
     app.channel_selected = 0;
+    app.default_channels.clear();
     clear_channel_input(app);
     app.screen = crate::tui::screens::Screen::Inbox;
 }
@@ -1036,6 +1038,98 @@ pub fn handle_delete_channel_response(
     }
 }
 
+// ── Default channels (t: toggle) ─────────────────────────────────────
+
+/// Fetches the team's default channels (get-only), chained after the list load
+/// so the browser can badge them. Quiet — no error toast if it fails (badges
+/// just stay empty).
+pub fn request_get_default_channels(app: &mut App) {
+    let Some(team) = app.channel_browser_team.clone() else {
+        return;
+    };
+    if !app.begin(InFlight::DefaultChannels { setting: false }) {
+        return;
+    }
+    let _ = app.worker_tx.send(WorkerRequest::DefaultChannels {
+        team,
+        set: Vec::new(),
+    });
+}
+
+/// `t`: toggles the selected channel in the team's default set (SET replaces the
+/// whole set, so we recompute it). `#general` is always default; and the CLI
+/// can't clear the set to empty (`--channel`-less = get), so removing the last
+/// one is refused with an explanation.
+pub fn toggle_default_channel(app: &mut App) {
+    let Some(c) = app.channels.get(app.channel_selected) else {
+        return;
+    };
+    let topic = channel_topic(c);
+    if topic == "general" {
+        app.set_action(ActionState::Error(
+            "#general is always a default channel".into(),
+        ));
+        return;
+    }
+    let mut set = app.default_channels.clone();
+    if let Some(pos) = set.iter().position(|x| *x == topic) {
+        set.remove(pos);
+    } else {
+        set.push(topic);
+    }
+    if set.is_empty() {
+        app.set_action(ActionState::Error(
+            "Keybase can't clear the last default channel via the CLI".into(),
+        ));
+        return;
+    }
+    let Some(team) = app.channel_browser_team.clone() else {
+        return;
+    };
+    if !app.begin(InFlight::DefaultChannels { setting: true }) {
+        return;
+    }
+    app.set_action(ActionState::Running("Updating default channels…".into()));
+    let _ = app
+        .worker_tx
+        .send(WorkerRequest::DefaultChannels { team, set });
+}
+
+pub fn handle_default_channels_response(
+    app: &mut App,
+    result: Result<Vec<String>, KeybaseError>,
+    setting: bool,
+) {
+    match result {
+        Ok(names) => {
+            let n = names.len();
+            app.default_channels = names;
+            if setting {
+                app.set_action(ActionState::Done("Default channels updated".into()));
+                app.push_cmd("keybase chat default-channels", true, "updated");
+            } else {
+                // Quiet load-time get — just clear the spinner.
+                app.set_action(ActionState::Idle);
+                app.push_cmd(
+                    "keybase chat default-channels",
+                    true,
+                    format!("{n} default(s)"),
+                );
+            }
+        }
+        Err(e) => {
+            // A get failure is non-critical (badges stay empty); a set failure
+            // is a real error the user should see.
+            if setting {
+                app.set_action(ActionState::Error(e.to_string()));
+            } else {
+                app.set_action(ActionState::Idle);
+            }
+            app.push_cmd("keybase chat default-channels", false, e.to_string());
+        }
+    }
+}
+
 /// Creates a new channel on the browsed team (`newconv` with a team channel).
 pub fn request_create_channel(app: &mut App) {
     let Some(team) = app.channel_browser_team.clone() else {
@@ -1129,6 +1223,8 @@ pub fn handle_load_channels_response(
             for diag in load.skipped {
                 app.push_cmd("channel parse warning", false, diag);
             }
+            // Chain a get of the team's default channels to badge them.
+            request_get_default_channels(app);
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));

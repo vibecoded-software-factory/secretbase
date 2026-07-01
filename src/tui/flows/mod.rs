@@ -173,6 +173,9 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         (InFlight::DeleteChannel { topic }, WorkerResponse::DeleteChannel(r)) => {
             chat::handle_delete_channel_response(app, r, topic);
         }
+        (InFlight::DefaultChannels { setting }, WorkerResponse::DefaultChannels(r)) => {
+            chat::handle_default_channels_response(app, r, setting);
+        }
         // ── Conversation status (mute/unmute/ignore/block/…) ──────
         (InFlight::SetConvStatus { done_label }, WorkerResponse::SetConvStatus(r)) => {
             chat::handle_set_conv_status_response(app, r, &done_label);

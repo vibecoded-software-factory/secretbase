@@ -591,6 +591,37 @@ impl KeybasePort for KeybaseCliAdapter {
         Ok(())
     }
 
+    fn default_channels(
+        &mut self,
+        team: &str,
+        set: &[String],
+    ) -> Result<Vec<String>, KeybaseError> {
+        // `chat default-channels <team> [--channel C]…`; a repeated --channel
+        // set REPLACES the default set, then the command prints the result.
+        let mut args: Vec<&str> = vec!["chat", "default-channels", team];
+        for ch in set {
+            args.push("--channel");
+            args.push(ch.as_str());
+        }
+        let out = keybase_run_timeout(&args, QUICK_OP_TIMEOUT)?;
+        if !out.status.success() {
+            return Err(KeybaseError::Exit {
+                stderr: stderr_str(&out),
+                status: out.status.code().unwrap_or(-1),
+            });
+        }
+        // Output is plain text: a header line then one `\t#<name>` per default,
+        // starting with the implicit `#general`. Parse tolerantly, dropping
+        // `general` (always default, not part of the settable set).
+        let names = stdout_str(&out)
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix('#'))
+            .filter(|n| !n.is_empty() && *n != "general")
+            .map(str::to_string)
+            .collect();
+        Ok(names)
+    }
+
     fn set_conversation_status(
         &mut self,
         channel: &ReadChannel,

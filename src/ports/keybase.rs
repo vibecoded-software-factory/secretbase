@@ -297,6 +297,16 @@ pub trait KeybasePort {
     /// irreversible, so the caller confirms first.
     fn delete_channel(&mut self, team: &str, channel: &str) -> Result<(), KeybaseError>;
 
+    /// `keybase chat default-channels <team> [--channel C]…` — the team's
+    /// **default channels** (new members auto-join these). A CLI subcommand
+    /// (one-shot) whose output is plain text, not JSON. With `set` empty it
+    /// **gets**; with `set` non-empty it **replaces** the default set with
+    /// exactly those channels, then prints the result. Either way returns the
+    /// resulting default channel names, **excluding the implicit `#general`**
+    /// (always default, not settable). Set requires team-admin rights.
+    fn default_channels(&mut self, team: &str, set: &[String])
+    -> Result<Vec<String>, KeybaseError>;
+
     /// `{"method":"setstatus","params":{"options":{"channel":...,"status":STATUS}}}`.
     /// `status` is one of `"unfiled"`, `"favorite"`, `"muted"`,
     /// `"ignored"`. Used to mute / unmute (`"muted"` / `"unfiled"`).
