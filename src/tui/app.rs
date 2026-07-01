@@ -512,9 +512,14 @@ pub struct App {
     /// popup's cancel path returns the user to Compose instead of
     /// leaving them stuck in Select mode.
     pub select_from_compose: bool,
-    /// Messages marked in Select mode for a multi-select copy (indices into
-    /// [`Self::messages`]). Empty = copy falls back to the cursor message.
+    /// Messages marked in Select mode for a multi-select action (indices into
+    /// [`Self::messages`]). Empty = the action falls back to the cursor message.
     pub msg_marks: HashSet<usize>,
+    /// A **sequential** batch of per-message ops (delete / react) over the
+    /// multi-selection, in progress. The worker is serial, so the batch fires
+    /// one request at a time — each response advances to the next — instead of
+    /// firing N concurrent requests the busy-guard would drop. `None` when idle.
+    pub pending_batch: Option<PendingBatch>,
     /// Anchor for `Shift+↑/↓` range shading in Select mode — the fixed end of
     /// the contiguous selection while the cursor moves.
     pub select_anchor: Option<usize>,
@@ -779,6 +784,24 @@ pub enum UiMode {
     Search,
 }
 
+/// A sequential batch of per-message operations over a multi-selection —
+/// see [`App::pending_batch`]. Each carries the ids **remaining** to process
+/// plus `done`/`total` for the progress toast.
+#[derive(Clone, Debug)]
+pub enum PendingBatch {
+    Delete {
+        remaining: Vec<u64>,
+        done: usize,
+        total: usize,
+    },
+    React {
+        body: String,
+        remaining: Vec<u64>,
+        done: usize,
+        total: usize,
+    },
+}
+
 impl UiMode {
     pub fn label(self) -> &'static str {
         match self {
@@ -866,6 +889,7 @@ impl App {
             selected_msg_idx: None,
             select_from_compose: false,
             msg_marks: HashSet::new(),
+            pending_batch: None,
             select_anchor: None,
             conv_members: Vec::new(),
             mention_selected: 0,

@@ -19,7 +19,7 @@ use crate::ports::KeybaseError;
 use crate::ports::keybase::{ListConversationsOk, ReadChannel};
 use crate::tui::action::ActionState;
 use crate::tui::app::{App, ConvAction};
-use crate::tui::app::{PendingSend, SendState};
+use crate::tui::app::{PendingBatch, PendingSend, SendState};
 use crate::tui::screens::Screen;
 use crate::tui::worker::{InFlight, WorkerRequest};
 
@@ -606,6 +606,16 @@ pub fn handle_load_messages_response(
             // they were; a fresh open/refresh snaps to the latest message.
             if !std::mem::take(&mut app.preserve_msg_scroll) {
                 app.messages_scroll = 0;
+            }
+            // Re-anchor the Select-mode cursor: rows deleted in a batch are gone,
+            // so a dangling index would point at the wrong message. Clamp it into
+            // range (or drop it if the conversation is now empty).
+            if app.selected_msg_idx.is_some() {
+                if app.messages.is_empty() {
+                    app.selected_msg_idx = None;
+                } else if let Some(i) = app.selected_msg_idx {
+                    app.selected_msg_idx = Some(i.min(app.messages.len() - 1));
+                }
             }
             // This fresh read includes any optimistic send that just
             // succeeded, so drop the Delivered bubbles for this
@@ -2112,6 +2122,8 @@ pub fn open_edit_for_selected(app: &mut App) {
     app.compose.set(body);
     app.compose_open = true;
     app.selected_msg_idx = None;
+    app.msg_marks.clear(); // editing is single-message; drop any shading
+    app.select_anchor = None;
 }
 
 pub fn request_save_edit(app: &mut App) {
@@ -2465,26 +2477,73 @@ pub fn start_reply_for_selected(app: &mut App) {
     app.compose.clear();
     app.compose_open = true;
     app.selected_msg_idx = None;
+    app.msg_marks.clear(); // replying is single-message; drop any shading
+    app.select_anchor = None;
 }
 
 // ── Delete ───────────────────────────────────────────────────────────
 
+// ── Multi-select batch actions (delete / react over `msg_marks`) ─────
+
+/// The message ids the current Select-mode action targets: every **marked**
+/// message (by id — stable across the reload), or the cursor message when
+/// nothing is marked. `own_only` keeps just the local user's messages (delete).
+fn selection_target_ids(app: &App, own_only: bool) -> Vec<u64> {
+    let me = &app.identity.username;
+    let keep = |m: &&crate::domain::Message| !own_only || &m.sender == me;
+    let mut ids: Vec<u64> = if !app.msg_marks.is_empty() {
+        let mut v: Vec<u64> = app
+            .msg_marks
+            .iter()
+            .filter_map(|&i| app.messages.get(i))
+            .filter(keep)
+            .map(|m| m.id)
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    } else {
+        app.selected_msg_idx
+            .and_then(|i| app.messages.get(i))
+            .filter(keep)
+            .map(|m| m.id)
+            .into_iter()
+            .collect()
+    };
+    ids.retain(|&id| id != 0);
+    ids
+}
+
+/// How many of the user's own messages a delete would remove — for the confirm.
+pub fn delete_selection_count(app: &App) -> usize {
+    selection_target_ids(app, true).len()
+}
+
+/// Cleans up after a batch (delete/react) completes or fails: clears the marks
+/// and pending batch, keeps the reader in Select mode where they were. On
+/// success it reloads so the change is reflected (the read handler re-anchors
+/// the cursor); on failure it does **not** reload, so the error toast the
+/// caller set stays visible instead of being overwritten by the read's toast.
+fn finish_selection_batch(app: &mut App, reload: bool) {
+    app.pending_batch = None;
+    app.msg_marks.clear();
+    app.select_anchor = None;
+    if reload {
+        app.preserve_msg_scroll = true; // stay put; stay in Select mode
+        request_load_messages(app);
+    }
+}
+
 pub fn open_delete_for_selected(app: &mut App) {
-    let Some(idx) = app.selected_msg_idx else {
-        app.set_action(ActionState::Error("No message selected".into()));
-        return;
-    };
-    let Some(msg) = app.messages.get(idx) else {
-        return;
-    };
-    if msg.sender != app.identity.username {
+    let n = delete_selection_count(app);
+    if n == 0 {
         app.set_action(ActionState::Error(
-            "Can only delete your own messages".into(),
+            "Select your own message(s) to delete".into(),
         ));
         return;
     }
     app.delete_msg_yes = false;
-    app.screen = crate::tui::screens::Screen::ConfirmDeleteMessage;
+    app.screen = Screen::ConfirmDeleteMessage;
 }
 
 pub fn close_delete_confirm(app: &mut App) {
@@ -2499,46 +2558,78 @@ pub fn close_delete_confirm(app: &mut App) {
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
+/// Starts a (possibly multi-message) delete over the selection. Fires one
+/// delete at a time — the serial worker can't take a burst — chaining through
+/// [`handle_delete_response`].
 pub fn request_delete_selected_message(app: &mut App) {
-    let Some(idx) = app.selected_msg_idx else {
-        app.set_action(ActionState::Error("No message selected".into()));
-        return;
-    };
-    let Some(msg_id) = app.messages.get(idx).map(|m| m.id) else {
-        return;
-    };
-    let Some((_, channel)) = open_channel(app) else {
-        return;
-    };
-    if !app.begin(InFlight::DeleteMessage { message_id: msg_id }) {
+    let mut ids = selection_target_ids(app, true);
+    let total = ids.len();
+    if total == 0 {
+        app.set_action(ActionState::Error("No deletable message selected".into()));
         return;
     }
-    app.set_action(ActionState::Running("Deleting…".into()));
+    let first = ids.remove(0);
+    app.pending_batch = Some(PendingBatch::Delete {
+        remaining: ids,
+        done: 0,
+        total,
+    });
+    fire_next_delete(app, first, 0, total);
+}
+
+fn fire_next_delete(app: &mut App, id: u64, done: usize, total: usize) {
+    let Some((_, channel)) = open_channel(app) else {
+        app.pending_batch = None;
+        return;
+    };
+    if !app.begin(InFlight::DeleteMessage { message_id: id }) {
+        return;
+    }
+    app.set_action(ActionState::Running(if total > 1 {
+        format!("Deleting… {}/{}", done + 1, total)
+    } else {
+        "Deleting…".into()
+    }));
     let _ = app.worker_tx.send(WorkerRequest::DeleteMessage {
         channel,
-        message_id: msg_id,
+        message_id: id,
     });
 }
 
 pub fn handle_delete_response(app: &mut App, result: Result<(), KeybaseError>, message_id: u64) {
     match result {
         Ok(()) => {
-            app.set_action(ActionState::Done("Message deleted".into()));
             app.push_cmd(
                 "keybase chat api delete",
                 true,
                 format!("msg #{message_id}"),
             );
-            app.screen = crate::tui::screens::Screen::Inbox;
-            app.selected_msg_idx = None;
-            app.select_from_compose = false;
-            app.compose_open = true;
-            app.preserve_msg_scroll = true; // stay where the reader was
-            request_load_messages(app);
+            // Advance the batch: the next id, or finish.
+            let (next, done, total) = match &mut app.pending_batch {
+                Some(PendingBatch::Delete {
+                    remaining,
+                    done,
+                    total,
+                }) => {
+                    *done += 1;
+                    (remaining.pop(), *done, *total)
+                }
+                _ => (None, 1, 1),
+            };
+            if let Some(id) = next {
+                fire_next_delete(app, id, done, total);
+                return;
+            }
+            app.set_action(ActionState::Done(format!(
+                "Deleted {total} message{}",
+                if total == 1 { "" } else { "s" }
+            )));
+            finish_selection_batch(app, true);
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api delete", false, e.to_string());
+            finish_selection_batch(app, false);
         }
     }
 }
@@ -2645,22 +2736,46 @@ pub fn request_send_reaction(app: &mut App) {
         app.set_action(ActionState::Error("Reaction is empty".into()));
         return;
     }
-    let Some(idx) = app.selected_msg_idx else {
+    let mut ids = selection_target_ids(app, false);
+    let total = ids.len();
+    if total == 0 {
+        app.set_action(ActionState::Error("No message selected".into()));
         return;
-    };
-    let Some(msg_id) = app.messages.get(idx).map(|m| m.id) else {
-        return;
-    };
+    }
+    // Close the picker; the batch runs over the conversation.
+    app.react.clear();
+    app.screen = Screen::Inbox;
+    // Frecency bump once for the chosen emoji.
+    let alias = body.trim_matches(':').to_string();
+    if !alias.is_empty() {
+        *app.emoji_uses.entry(alias).or_insert(0) += 1;
+    }
+    let first = ids.remove(0);
+    app.pending_batch = Some(PendingBatch::React {
+        body: body.clone(),
+        remaining: ids,
+        done: 0,
+        total,
+    });
+    fire_next_react(app, first, body, 0, total);
+}
+
+fn fire_next_react(app: &mut App, id: u64, body: String, done: usize, total: usize) {
     let Some((_, channel)) = open_channel(app) else {
+        app.pending_batch = None;
         return;
     };
     if !app.begin(InFlight::SendReaction { body: body.clone() }) {
         return;
     }
-    app.set_action(ActionState::Running("Sending reaction…".into()));
+    app.set_action(ActionState::Running(if total > 1 {
+        format!("Reacting… {}/{}", done + 1, total)
+    } else {
+        "Sending reaction…".into()
+    }));
     let _ = app.worker_tx.send(WorkerRequest::React {
         channel,
-        message_id: msg_id,
+        message_id: id,
         body,
     });
 }
@@ -2668,24 +2783,33 @@ pub fn request_send_reaction(app: &mut App) {
 pub fn handle_react_response(app: &mut App, result: Result<(), KeybaseError>, body: String) {
     match result {
         Ok(()) => {
-            // Bump frecency so this emoji floats up the picker next time.
-            let alias = body.trim_matches(':').to_string();
-            if !alias.is_empty() {
-                *app.emoji_uses.entry(alias).or_insert(0) += 1;
+            app.push_cmd("keybase chat api reaction", true, body.clone());
+            let (next, done, total) = match &mut app.pending_batch {
+                Some(PendingBatch::React {
+                    remaining,
+                    done,
+                    total,
+                    ..
+                }) => {
+                    *done += 1;
+                    (remaining.pop(), *done, *total)
+                }
+                _ => (None, 1, 1),
+            };
+            if let Some(id) = next {
+                fire_next_react(app, id, body, done, total);
+                return;
             }
-            app.set_action(ActionState::Done("Reaction sent".into()));
-            app.push_cmd("keybase chat api reaction", true, body);
-            app.screen = crate::tui::screens::Screen::Inbox;
-            app.react.clear();
-            app.selected_msg_idx = None;
-            app.select_from_compose = false;
-            app.compose_open = true;
-            app.preserve_msg_scroll = true; // stay where the reader was
-            request_load_messages(app);
+            app.set_action(ActionState::Done(format!(
+                "Reacted to {total} message{}",
+                if total == 1 { "" } else { "s" }
+            )));
+            finish_selection_batch(app, true);
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api reaction", false, e.to_string());
+            finish_selection_batch(app, false);
         }
     }
 }
@@ -2718,11 +2842,11 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
         Ok(()) => {
             app.set_action(ActionState::Done(format!("Pinned msg #{message_id}")));
             app.push_cmd("keybase chat api pin", true, format!("msg #{message_id}"));
-            // Return to Compose and reload so `rebuild_pinned` refreshes
-            // the 📌 indicator from the new history.
-            app.selected_msg_idx = None;
-            app.select_from_compose = false;
-            app.compose_open = true;
+            // Stay in Select mode (coherent with delete/react) and reload so
+            // `rebuild_pinned` refreshes the 📌 indicator from the new history.
+            app.msg_marks.clear();
+            app.select_anchor = None;
+            app.preserve_msg_scroll = true;
             request_load_messages(app);
         }
         Err(e) => {

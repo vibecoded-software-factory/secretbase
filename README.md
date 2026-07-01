@@ -132,10 +132,13 @@ collapse a group); the header search fuzzy-filters it.
 | `Ctrl+Y`                | Copy label |
 | `Esc`                   | Cancel / back |
 
-In **Select** mode: `o` / `l` open / copy the first link in the message · `↑` / `↓` move the cursor · `Shift+↑/↓` shade a range ·
-`Space` mark / unmark (multi-select) · `y` copy selection (author + time +
-body) · `c` copy bodies only · `e` / `d` / `+` / `p` edit / delete / react /
-pin · `r` / `s` reply / download · `i` / `Enter` / `Esc` return to Compose.
+In **Select** mode: `↑` / `↓` (·`PgUp`/`PgDn`) move the cursor · `Shift+↑/↓`
+shade a range · `Space` mark / unmark. **`d` delete and `+` react act on the
+whole marked set** (or the cursor if nothing's marked) — a multi-message action
+runs one at a time and you stay in Select mode with the shading cleared. `y`
+copy selection (author + time + body) · `c` copy bodies only · `o` / `l` open /
+copy the first link · `e` / `p` edit / pin the cursor message · `r` / `s` reply /
+download · `i` / `Enter` / `Esc` return to Compose.
 
 The **command log** (Tab to focus it) has the same visual multi-select:
 `↑/↓` move · `Shift+↑/↓` range · `Space` mark · `y` copy full line(s) · `c`
