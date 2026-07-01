@@ -92,6 +92,32 @@ restrained night-sky splash. When in doubt, reuse the documented component.
    after every change. Add/adjust unit tests for new pure logic on
    `App`/`domain`.
 
+4. **Judge every change as a coherence + ergonomics judge — BEFORE writing
+   it.** A change that is locally correct but breaks the app's coherence or
+   the user's real flow is a regression, not a fix. For every change (feature
+   *or* fix), reason explicitly about all three, and only proceed once they
+   line up:
+   - **Coherence with everything already built.** Does it follow the same
+     patterns, keybindings, modes, flows and mental model as the rest of the
+     app? A behaviour must not contradict how a sibling feature behaves (e.g.
+     if `react`/`pin` stay in Select mode, `delete` must too; if the
+     multi-selection drives `copy`, it must drive `delete`/`react` too). When a
+     change touches a shared mechanic, check every other place that mechanic is
+     used and keep them consistent (same discipline as #1).
+   - **How the feature is used historically.** Match the established
+     expectation from comparable clients (Discord / Slack / Telegram / iMessage,
+     and pro TUIs — mutt/aerc/lazygit/vim) and from Keybase itself — don't
+     invent behaviour that surprises the user (e.g. multi-select + delete
+     removes *all* selected; deleting keeps you in the list, not the compose
+     box).
+   - **Comfort of the real usage flow.** Walk the actual sequence a user
+     performs, not the single action in isolation (e.g. "delete several
+     messages in a row while cleaning up") and make that smooth — no needless
+     mode-switches, cursor jumps, dropped actions, or re-entry steps.
+
+   State this reasoning briefly when the change is non-trivial, so the
+   trade-off is on the record.
+
 ## What this is
 
 `secretbase` — a terminal UI (Ratatui) over the **Keybase CLI**. Flow:
