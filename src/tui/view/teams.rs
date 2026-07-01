@@ -12,31 +12,29 @@ use ratatui::{
 use crate::domain::TeamRole;
 use crate::tui::app::App;
 use crate::tui::view::widgets::{
-    cmdlog_height, draw_cmd_log, draw_identity_bar, draw_status_strip, identity_content_rows,
-    list_table, list_title,
+    cmdlog_height, draw_cmd_log, draw_status_strip, list_table, list_title,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
-    let id_rows = identity_content_rows(app, area.width);
+    // No identity bar here — the Teams screen is a focused list; the identity /
+    // unread chrome belongs on the inbox home, not on this drill-down.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(id_rows + 2),
             Constraint::Min(5),
             Constraint::Length(cmdlog_height(area.height)), // responsive command log
             Constraint::Length(1),
         ])
         .split(area);
 
-    draw_identity_bar(frame, app, chunks[0]);
-    render_list(frame, app, chunks[1]);
-    draw_cmd_log(frame, app, chunks[2], false, "2");
+    render_list(frame, app, chunks[0]);
+    draw_cmd_log(frame, app, chunks[1], false, "2");
     draw_status_strip(
         frame,
         app,
-        chunks[3],
-        "↑/↓ nav · Alt+R refresh · Alt+I/Esc inbox",
+        chunks[2],
+        "↑/↓ nav · Enter channels · Alt+R refresh · Alt+I/Esc inbox",
     );
 }
 
