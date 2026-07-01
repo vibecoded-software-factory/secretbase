@@ -131,9 +131,18 @@ conversation on normal terminals.
   Worker ops carry their duration (request → response), formatted by
   `domain::format_duration` as a single smallest-unit value
   (`ms`/`s`/`m`/`h`/`d`/`y`).
-- **status** — `widgets::draw_status_strip`: feedback (spinner / ✓ / ✗) when
-  an action is in flight, else the per-focus footer hint on the left with
-  **`F1 help` anchored right**.
+- **status** — `widgets::draw_status_strip`: an **nvim-style `-- MODE --`
+  badge** on the far left (always visible, coloured per mode — `NORMAL` accent,
+  `COMPOSE` success, `SELECT` warm, `SEARCH` cyan — from `App::ui_mode()` /
+  `app::UiMode`), then feedback (spinner / ✓ / ✗) when an action is in flight,
+  else the per-focus footer hint, with **`F1 help` anchored right**. The badge
+  tells the user what a keystroke will do (type vs act vs navigate).
+- **List navigation is centralized.** Every list handler routes universal
+  movement through `input::common::list_nav` (`↑↓`/`j k`, `PgUp/PgDn`, `g/G`,
+  `Home/End`) — or `list_nav_arrows` (only `↑↓`/`PgUp/PgDn`) for a list behind a
+  text input, where the letter aliases would be typed. This guarantees identical
+  coverage so screens can't drift. The **mouse wheel** scrolls whatever list is
+  active on every screen (`input::mouse` dispatches by `Screen`).
 
 The **conversation** screen uses a custom layout (identity · header ·
 messages · compose · status) because the message stream is a *viewer*, not

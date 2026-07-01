@@ -152,14 +152,12 @@ pub fn search_global(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::F(5) => chat::request_search_inbox_remote(app),
-        KeyCode::Up => {
-            let len = app.search_global_results.len();
-            app.search_global_selected = common::clamp_move(app.search_global_selected, -1, len);
-        }
-        KeyCode::Down => {
-            let len = app.search_global_results.len();
-            app.search_global_selected = common::clamp_move(app.search_global_selected, 1, len);
-        }
+        _ if common::list_nav_arrows(
+            &key,
+            app.search_global_results.len(),
+            app.search_global_selected,
+            |i| app.search_global_selected = i,
+        ) => {}
         _ => {
             common::route_line_editor(&mut app.search_global_input, key);
         }
@@ -194,11 +192,13 @@ pub fn confirm_delete_message(app: &mut App, key: KeyEvent) {
 // ── Reaction input popup ──────────────────────────────────────────────
 
 pub fn react(app: &mut App, key: KeyEvent) {
+    let len = app.filtered_emoji_indices().len();
+    if common::list_nav_arrows(&key, len, app.react_selected, |i| app.react_selected = i) {
+        return;
+    }
     match key.code {
         KeyCode::Esc => chat::close_react(app),
         KeyCode::Enter => chat::request_send_reaction(app),
-        KeyCode::Up => react_move(app, -1),
-        KeyCode::Down => react_move(app, 1),
         _ => {
             // Typing edits the search query; reset the highlight to the top
             // match whenever the query actually changes.
@@ -211,19 +211,18 @@ pub fn react(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn react_move(app: &mut App, delta: isize) {
-    let len = app.filtered_emoji_indices().len();
-    app.react_selected = common::clamp_move(app.react_selected, delta, len);
-}
-
 // ── Quick switcher (Ctrl+K) ───────────────────────────────────────────
 
 pub fn quick_switcher(app: &mut App, key: KeyEvent) {
+    let len = app.switcher_selectable().len();
+    if common::list_nav_arrows(&key, len, app.switcher_selected, |i| {
+        app.switcher_selected = i
+    }) {
+        return;
+    }
     match key.code {
         KeyCode::Esc => chat::close_quick_switcher(app),
         KeyCode::Enter => chat::quick_switcher_open_selected(app),
-        KeyCode::Up => switcher_move(app, -1),
-        KeyCode::Down => switcher_move(app, 1),
         _ => {
             let before = app.switcher.text().to_string();
             common::route_line_editor(&mut app.switcher, key);
@@ -232,9 +231,4 @@ pub fn quick_switcher(app: &mut App, key: KeyEvent) {
             }
         }
     }
-}
-
-fn switcher_move(app: &mut App, delta: isize) {
-    let len = app.switcher_selectable().len();
-    app.switcher_selected = common::clamp_move(app.switcher_selected, delta, len);
 }
