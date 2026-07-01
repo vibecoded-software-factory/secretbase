@@ -28,14 +28,6 @@ pub struct ListTeamsOk {
     pub skipped: Vec<String>,
 }
 
-/// Bundle returned by [`KeybasePort::parallel_session_data`]: the
-/// secondary reads the TUI fires immediately after a successful status
-/// check, all carrying their own `Result` so a partial failure does not
-/// poison the whole load.
-pub struct ParallelSessionData {
-    pub teams: Result<ListTeamsOk, KeybaseError>,
-}
-
 /// Abstraction over the Keybase backend.
 ///
 /// The current concrete implementation is
@@ -413,30 +405,23 @@ pub trait KeybasePort {
     ///
     /// Tolerant of malformed rows in the same way as
     /// [`Self::list_conversations`].
-    fn list_self_memberships(&mut self) -> Result<ListTeamsOk, KeybaseError>;
+    /// The teams the local user belongs to — one row per team, with the
+    /// user's role and the team's member count.
+    ///
+    /// NB: it deliberately does **not** use the `list-self-memberships` API
+    /// method — that maps to `TeamListTeammates`, which returns one row per
+    /// *teammate* across every team (including an implicit team per DM), i.e.
+    /// thousands of duplicate rows. Instead it queries `list-user-memberships`
+    /// with the user's own `username` (`TeamListUnverified`), which returns one
+    /// `AnnotatedMemberInfo` per real team (implicit teams excluded). Same
+    /// `result.teams[]` shape, so parsing is unchanged.
+    fn list_self_memberships(&mut self, username: &str) -> Result<ListTeamsOk, KeybaseError>;
 
     /// `{"method":"create-team","params":{"options":{"team":NAME}}}`.
     fn create_team(&mut self, name: &str) -> Result<(), KeybaseError>;
 
     /// `{"method":"leave-team","params":{"options":{"team":NAME,"permanent":true}}}`.
     fn leave_team(&mut self, name: &str, permanent: bool) -> Result<(), KeybaseError>;
-
-    // ── Bulk session data ─────────────────────────────────────────────────
-
-    /// Loads the secondary session data the TUI needs right after a
-    /// fresh status check (team memberships, for now), bundled so
-    /// adapters that can run them concurrently can amortise the spawn
-    /// overhead.
-    ///
-    /// The default implementation runs them sequentially via the
-    /// individual methods, preserving correctness for every
-    /// implementation that doesn't bother to override it. Callers
-    /// must tolerate any subset of the results being `Err`.
-    fn parallel_session_data(&mut self) -> ParallelSessionData {
-        ParallelSessionData {
-            teams: self.list_self_memberships(),
-        }
-    }
 }
 
 /// Channel descriptor for read/write methods.

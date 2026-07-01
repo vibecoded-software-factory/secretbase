@@ -16,6 +16,6 @@ pub mod settings;
 
 pub use clipboard::ClipboardPort;
 pub use error::KeybaseError;
-pub use keybase::{KeybasePort, ListConversationsOk, ListTeamsOk, ParallelSessionData};
+pub use keybase::{KeybasePort, ListConversationsOk, ListTeamsOk};
 pub use opener::OpenerPort;
 pub use settings::{SettingsPort, UserSettings};

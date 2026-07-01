@@ -79,9 +79,7 @@ use crate::domain::{
     Reaction, SystemInfo, SystemKind, TeamMembership, TeamRole, team_role_name,
 };
 use crate::ports::KeybaseError;
-use crate::ports::keybase::{
-    KeybasePort, ListConversationsOk, ListTeamsOk, ParallelSessionData, ReadChannel,
-};
+use crate::ports::keybase::{KeybasePort, ListConversationsOk, ListTeamsOk, ReadChannel};
 
 use codec::{channel_object, encode_request, request_no_params, request_with_options};
 use json::extract_error;
@@ -740,17 +738,18 @@ impl KeybasePort for KeybaseCliAdapter {
 
     // ── Teams ─────────────────────────────────────────────────────────────
 
-    fn list_self_memberships(&mut self) -> Result<ListTeamsOk, KeybaseError> {
-        let reply = self.team_api(&request_no_params("list-self-memberships"), READ_TIMEOUT)?;
-        // The `team list-self-memberships` reply lives under
-        // `result.teams` — but keybase has been emitting it under
-        // `result.teams` for years, so we treat the missing key as a
-        // hard error.
+    fn list_self_memberships(&mut self, username: &str) -> Result<ListTeamsOk, KeybaseError> {
+        // `list-self-memberships` maps to TeamListTeammates → one row per
+        // teammate across every team (incl. an implicit team per DM), i.e.
+        // thousands of dupes. Use `list-user-memberships` with our own username
+        // (TeamListUnverified) → one row per real team, implicit teams excluded.
+        let req = request_with_options("list-user-memberships", json!({ "username": username }));
+        let reply = self.team_api(&req, READ_TIMEOUT)?;
         let arr = reply
             .pointer("/result/teams")
             .and_then(Value::as_array)
             .ok_or_else(|| {
-                KeybaseError::shape("keybase team api list-self-memberships: missing result.teams")
+                KeybaseError::shape("keybase team api list-user-memberships: missing result.teams")
             })?;
         Ok(parse_teams_array(arr))
     }
@@ -771,17 +770,6 @@ impl KeybasePort for KeybaseCliAdapter {
         );
         self.team_api(&req, QUICK_OP_TIMEOUT)?;
         Ok(())
-    }
-
-    fn parallel_session_data(&mut self) -> ParallelSessionData {
-        // Sequential by default — parallelism only pays off when each
-        // call carries a heavy per-spawn cost (e.g. a Node cold-start).
-        // `keybase` is a single Go binary talking to a long-running
-        // service so the spawn overhead is tiny; the sequential
-        // baseline is fast enough.
-        ParallelSessionData {
-            teams: self.list_self_memberships(),
-        }
     }
 }
 
