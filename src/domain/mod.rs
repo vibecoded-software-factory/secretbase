@@ -43,8 +43,8 @@ pub use line_editor::LineEditor;
 pub use markdown::{Run, parse_inline};
 pub use mention::active_mention;
 pub use message::{
-    AttachmentInfo, Message, MessageContent, Reaction, SystemInfo, SystemKind, fold_edits,
-    team_role_name,
+    AttachmentInfo, Message, MessageContent, Reaction, SystemInfo, SystemKind, fold_deletes,
+    fold_edits, team_role_name,
 };
 pub use search::{LoweredConversation, fuzzy_score_lowered};
 pub use team::{ChatMember, TeamMembership, TeamRole};

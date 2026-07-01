@@ -867,7 +867,7 @@ fn reaction_events_are_dropped_from_the_message_stream() {
         target_id: 91,
         body: ":+1:".into(),
     };
-    let kept = without_reaction_events(vec![text_msg(1, "alice", "hi"), reaction]);
+    let kept = project_messages(vec![text_msg(1, "alice", "hi"), reaction]);
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].id, 1);
 }
