@@ -114,6 +114,7 @@ pub fn handle_load_inbox_response(
             let n = load.conversations.len();
             let skipped_count = load.skipped.len();
             app.conversations = load.conversations;
+            app.inbox_error = None;
             app.rebuild_lowered();
             app.rebuild_filter();
             if let Some(id) = prev_selected_id
@@ -144,6 +145,14 @@ pub fn handle_load_inbox_response(
             }
         }
         Err(e) => {
+            // Keep the error for the empty-tree "couldn't load, retry" panel —
+            // the toast expires but the inbox stays empty, so the panel is the
+            // only lasting signal. A silent bg refresh that fails but already
+            // has conversations loaded shouldn't clobber the good list, so only
+            // record it when we have nothing to show.
+            if app.conversations.is_empty() {
+                app.inbox_error = Some(e.to_string());
+            }
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api list", false, e.to_string());
         }
@@ -828,6 +837,284 @@ pub fn request_unhide_conversation(app: &mut App) {
     // Close the popup now; `handle_set_conv_status_response` refreshes the inbox.
     app.unhide_input.clear();
     app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+// ── Channel browser (Alt+K on a team) ───────────────────────────────
+
+/// The channel name of a team-channel conversation (its `topic_name`), used for
+/// display and to build the `join`/`leave` channel.
+fn channel_topic(c: &crate::domain::Conversation) -> String {
+    c.channel.topic_name.clone().unwrap_or_default()
+}
+
+/// Whether a channel row is one you're a member of.
+fn channel_joined(c: &crate::domain::Conversation) -> bool {
+    c.member_status == crate::domain::MemberStatus::Active
+}
+
+/// Opens the channel browser for the team of the selected tree row (a team
+/// group header, or a team channel). Errors when the cursor isn't on a team.
+pub fn open_channel_browser(app: &mut App) {
+    use crate::tui::app::TreeRow;
+    let team = match app.tree_rows().get(app.tree_selected) {
+        Some(TreeRow::Group {
+            is_team: true, key, ..
+        }) => Some(key.clone()),
+        Some(TreeRow::Conv { idx }) => {
+            let c = &app.conversations[*idx];
+            c.channel
+                .members_type
+                .is_team()
+                .then(|| c.channel.name.clone())
+        }
+        _ => None,
+    };
+    let Some(team) = team else {
+        app.set_action(ActionState::Error(
+            "Select a team (or a team channel) first".into(),
+        ));
+        return;
+    };
+    app.channel_browser_team = Some(team);
+    app.channels.clear();
+    app.channel_selected = 0;
+    app.channel_creating = false;
+    app.channel_new_name.clear();
+    app.screen = crate::tui::screens::Screen::ChannelBrowser;
+    request_load_channels(app);
+}
+
+pub fn close_channel_browser(app: &mut App) {
+    app.channel_browser_team = None;
+    app.channels.clear();
+    app.channel_selected = 0;
+    app.channel_creating = false;
+    app.channel_new_name.clear();
+    app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+/// Enters create mode in the browser (`Alt+N`): the new-channel-name input.
+pub fn open_channel_create(app: &mut App) {
+    if app.channel_browser_team.is_none() {
+        return;
+    }
+    app.channel_creating = true;
+    app.channel_new_name.clear();
+}
+
+/// Cancels create mode, back to the channel list.
+pub fn cancel_channel_create(app: &mut App) {
+    app.channel_creating = false;
+    app.channel_new_name.clear();
+}
+
+/// Creates a new channel on the browsed team (`newconv` with a team channel).
+pub fn request_create_channel(app: &mut App) {
+    let Some(team) = app.channel_browser_team.clone() else {
+        return;
+    };
+    let topic = app.channel_new_name.text().trim().to_lowercase();
+    if topic.is_empty() {
+        app.set_action(ActionState::Error("Channel name is empty".into()));
+        return;
+    }
+    let channel = ReadChannel {
+        name: team,
+        members_type: "team".into(),
+        topic_name: Some(topic.clone()),
+    };
+    if !app.begin(InFlight::CreateChannel {
+        topic: topic.clone(),
+    }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Creating #{topic}…")));
+    // Reuses the newconv worker request; routed to the channel handler by the
+    // CreateChannel in-flight slot.
+    let _ = app
+        .worker_tx
+        .send(WorkerRequest::NewConversation { channel });
+}
+
+pub fn handle_create_channel_response(
+    app: &mut App,
+    result: Result<String, KeybaseError>,
+    topic: String,
+) {
+    match result {
+        Ok(_) => {
+            app.set_action(ActionState::Done(format!("Created #{topic}")));
+            app.push_cmd(
+                "keybase chat api newconv (channel)",
+                true,
+                format!("#{topic}"),
+            );
+            app.channel_creating = false;
+            app.channel_new_name.clear();
+            request_load_inbox_silent(app);
+            if app.screen == crate::tui::screens::Screen::ChannelBrowser {
+                request_load_channels(app);
+            }
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api newconv (channel)", false, e.to_string());
+        }
+    }
+}
+
+/// Loads every channel of `channel_browser_team` (`listconvsonname`).
+pub fn request_load_channels(app: &mut App) {
+    let Some(team) = app.channel_browser_team.clone() else {
+        return;
+    };
+    if !app.begin(InFlight::LoadChannels) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Loading channels of {team}…")));
+    let _ = app.worker_tx.send(WorkerRequest::LoadChannels { team });
+}
+
+pub fn handle_load_channels_response(
+    app: &mut App,
+    result: Result<ListConversationsOk, KeybaseError>,
+) {
+    match result {
+        Ok(load) => {
+            let n = load.conversations.len();
+            app.channels = load.conversations;
+            // Joined channels first, then alphabetical by channel name.
+            app.channels.sort_by(|a, b| {
+                channel_joined(b)
+                    .cmp(&channel_joined(a))
+                    .then_with(|| channel_topic(a).cmp(&channel_topic(b)))
+            });
+            app.channel_selected = app
+                .channel_selected
+                .min(app.channels.len().saturating_sub(1));
+            app.set_action(ActionState::Done(format!("{n} channels")));
+            app.push_cmd(
+                "keybase chat api listconvsonname",
+                true,
+                format!("{n} channels"),
+            );
+            for diag in load.skipped {
+                app.push_cmd("channel parse warning", false, diag);
+            }
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api listconvsonname", false, e.to_string());
+        }
+    }
+}
+
+pub fn channel_browser_move(app: &mut App, delta: isize) {
+    let len = app.channels.len();
+    if len == 0 {
+        return;
+    }
+    app.channel_selected =
+        (app.channel_selected as isize + delta).clamp(0, len as isize - 1) as usize;
+}
+
+/// `Enter` in the browser: open a channel you're in, or join one you're not.
+pub fn channel_browser_activate(app: &mut App) {
+    let Some(c) = app.channels.get(app.channel_selected) else {
+        return;
+    };
+    if channel_joined(c) {
+        let id = c.id.clone();
+        close_channel_browser(app);
+        open_conversation_by_id(app, id);
+    } else {
+        request_join_selected_channel(app);
+    }
+}
+
+/// Builds the `team#channel` [`ReadChannel`] for the selected browser row.
+fn selected_channel_read(app: &App) -> Option<(String, ReadChannel)> {
+    let team = app.channel_browser_team.clone()?;
+    let c = app.channels.get(app.channel_selected)?;
+    let topic = channel_topic(c);
+    Some((
+        topic.clone(),
+        ReadChannel {
+            name: team,
+            members_type: "team".into(),
+            topic_name: Some(topic),
+        },
+    ))
+}
+
+pub fn request_join_selected_channel(app: &mut App) {
+    let Some((topic, channel)) = selected_channel_read(app) else {
+        return;
+    };
+    if !app.begin(InFlight::JoinChannel {
+        topic: topic.clone(),
+    }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Joining #{topic}…")));
+    let _ = app.worker_tx.send(WorkerRequest::JoinChannel { channel });
+}
+
+pub fn handle_join_response(app: &mut App, result: Result<(), KeybaseError>, topic: String) {
+    match result {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Joined #{topic}")));
+            app.push_cmd("keybase chat api join", true, format!("#{topic}"));
+            // Pull the new channel into the inbox so it's openable, and refresh
+            // the browser so its membership flips.
+            request_load_inbox_silent(app);
+            if app.screen == crate::tui::screens::Screen::ChannelBrowser {
+                request_load_channels(app);
+            }
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api join", false, e.to_string());
+        }
+    }
+}
+
+pub fn request_leave_selected_channel(app: &mut App) {
+    let joined = app
+        .channels
+        .get(app.channel_selected)
+        .is_some_and(channel_joined);
+    if !joined {
+        app.set_action(ActionState::Error("Not a member of this channel".into()));
+        return;
+    }
+    let Some((topic, channel)) = selected_channel_read(app) else {
+        return;
+    };
+    if !app.begin(InFlight::LeaveChannel {
+        topic: topic.clone(),
+    }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Leaving #{topic}…")));
+    let _ = app.worker_tx.send(WorkerRequest::LeaveChannel { channel });
+}
+
+pub fn handle_leave_response(app: &mut App, result: Result<(), KeybaseError>, topic: String) {
+    match result {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Left #{topic}")));
+            app.push_cmd("keybase chat api leave", true, format!("#{topic}"));
+            request_load_inbox_silent(app);
+            if app.screen == crate::tui::screens::Screen::ChannelBrowser {
+                request_load_channels(app);
+            }
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat api leave", false, e.to_string());
+        }
+    }
 }
 
 pub fn request_create_new_conversation(app: &mut App) {

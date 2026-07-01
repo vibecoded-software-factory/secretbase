@@ -443,8 +443,16 @@ pub fn draw_search_box(
     placeholder: &str,
     editor: &LineEditor,
     focused: bool,
+    disabled: bool,
 ) {
-    let line = if editor.is_empty() && !focused {
+    let line = if disabled {
+        // Unreachable box (e.g. the in-chat search with no conversation open):
+        // muted placeholder + muted border so it reads as unavailable.
+        Line::from(Span::styled(
+            placeholder.to_string(),
+            Style::default().fg(app.theme.muted),
+        ))
+    } else if editor.is_empty() && !focused {
         Line::from(Span::styled(
             placeholder.to_string(),
             Style::default().fg(app.theme.placeholder),
@@ -455,7 +463,12 @@ pub fn draw_search_box(
     // `─[tag]-` panel border tag — the key that focuses this box, mirroring
     // the numbered list-section borders (e.g. `/`, `^f`).
     let title = format!("─[{tag}]-{title}");
-    let p = Paragraph::new(line).block(titled_block(&title, focused, app));
+    let block = if disabled {
+        crate::tui::view::disabled_block(&title, app)
+    } else {
+        titled_block(&title, focused, app)
+    };
+    let p = Paragraph::new(line).block(block);
     frame.render_widget(p, area);
 }
 

@@ -32,6 +32,40 @@ pub fn unhide_conversation(app: &mut App, key: KeyEvent) {
     }
 }
 
+// ── Channel browser (Alt+K on a team) ──────────────────────────────────
+
+pub fn channel_browser(app: &mut App, key: KeyEvent) {
+    // Create mode: the new-channel-name input owns the keys.
+    if app.channel_creating {
+        match key.code {
+            KeyCode::Esc => chat::cancel_channel_create(app),
+            KeyCode::Enter => chat::request_create_channel(app),
+            _ => {
+                common::route_line_editor(&mut app.channel_new_name, key);
+            }
+        }
+        return;
+    }
+    let alt = key.modifiers.contains(crossterm::event::KeyModifiers::ALT);
+    match key.code {
+        KeyCode::Esc => chat::close_channel_browser(app),
+        KeyCode::Up | KeyCode::Char('k') => chat::channel_browser_move(app, -1),
+        KeyCode::Down | KeyCode::Char('j') => chat::channel_browser_move(app, 1),
+        KeyCode::PageUp => chat::channel_browser_move(app, -10),
+        KeyCode::PageDown => chat::channel_browser_move(app, 10),
+        KeyCode::Home | KeyCode::Char('g') => chat::channel_browser_move(app, isize::MIN),
+        KeyCode::End | KeyCode::Char('G') => chat::channel_browser_move(app, isize::MAX),
+        // Create a new channel (enters create mode).
+        KeyCode::Char('n') | KeyCode::Char('N') if alt => chat::open_channel_create(app),
+        // Enter / →: open a channel you're in, join one you're not.
+        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => chat::channel_browser_activate(app),
+        // Leave a joined channel.
+        KeyCode::Char('x') | KeyCode::Char('X') => chat::request_leave_selected_channel(app),
+        KeyCode::F(5) => chat::request_load_channels(app),
+        _ => {}
+    }
+}
+
 // ── Global search popup ───────────────────────────────────────────────
 
 pub fn search_global(app: &mut App, key: KeyEvent) {

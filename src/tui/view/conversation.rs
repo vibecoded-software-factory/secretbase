@@ -30,6 +30,9 @@ pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
         "search this chat",
         &app.conv_search,
         app.focus == Focus::ChatSearch,
+        // Unreachable when no conversation is open (Ctrl+F / the Tab stop are
+        // gated) — render it disabled (muted) so it reads as unavailable.
+        app.open_conv_id.is_none(),
     );
 }
 

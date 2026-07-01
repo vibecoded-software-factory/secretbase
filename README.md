@@ -37,7 +37,9 @@ A working terminal client for everyday Keybase chat. Highlights:
   folder, and inline image thumbnails / animated-GIF playback via `chafa`.
 * **Search**: local fuzzy filter, server-side inbox search (`Ctrl+G`),
   in-conversation regexp search (`Ctrl+F`), and a quick switcher (`Ctrl+K`).
-* **Teams**: list your memberships with role and member count (`Alt+T`).
+* **Teams**: list your memberships with role and member count (`Alt+T`); a
+  **channel browser** (`Alt+K` on a team) lists every channel to join / open /
+  leave (`listconvsonname` · `join` · `leave`).
 * New conversation (`Alt+N`), mark read, ignore / block / report, unhide
   (restore blocked/reported by name), copy label, plus **local-only** ★ favorite
   (`Alt+S`) and mute (`Alt+U`).
@@ -82,7 +84,7 @@ tables.
 | `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
 | `Ctrl+W` then `h`/`j`/`k`/`l` (or arrows) | Move between panels **positionally** (vim window-nav); stays armed so two keys do a diagonal (`Esc` exits) |
 | `Alt+F`                 | `[Alt+F]` Focus the chat **F**ilter |
-| `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Chat (works mid-compose) |
+| `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Messages (works mid-compose) |
 | `Ctrl+F` / `Alt+L`      | Go to `[Ctrl+F]` in-chat search / `[Alt+L]` Command log |
 | `Enter` / `l`           | Open conversation |
 | `Alt+N`                 | New conversation |
@@ -95,6 +97,7 @@ tables.
 | `Alt+B`                 | Block conversation (hide for good) |
 | `Alt+G`                 | Report conversation (flag to Keybase + hide) |
 | `Alt+H`                 | Unhide — restore a blocked/reported chat by name |
+| `Alt+K`                 | Channel browser (on a team) — join / open / leave |
 | `Alt+T`                 | Teams |
 | `Ctrl+G`                | Global search |
 | `Ctrl+K`                | Quick switcher — jump to a conversation |

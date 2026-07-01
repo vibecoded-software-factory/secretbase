@@ -64,6 +64,11 @@ struct MockState {
     emojis: Vec<Emoji>,
     mark_reads: Vec<u64>,
     read_calls: Vec<Option<String>>,
+    /// Channel-browser: pre-baked `listconvsonname` result + recorded
+    /// join / leave topic names.
+    channels: Vec<Conversation>,
+    joined: Vec<String>,
+    left: Vec<String>,
     /// Next adapter call returning a Result returns this error then
     /// clears the slot.
     fail_next: Option<KeybaseError>,
@@ -227,6 +232,32 @@ impl KeybasePort for MockKeybase {
         }
         s.new_convs.push(channel.name.clone());
         Ok(s.new_conv_id.clone())
+    }
+    fn list_channels_on_name(&mut self, _: &str) -> Result<ListConversationsOk, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(ListConversationsOk {
+            conversations: s.channels.clone(),
+            skipped: Vec::new(),
+        })
+    }
+    fn join_channel(&mut self, ch: &ReadChannel) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.joined.push(ch.topic_name.clone().unwrap_or_default());
+        Ok(())
+    }
+    fn leave_channel(&mut self, ch: &ReadChannel) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.left.push(ch.topic_name.clone().unwrap_or_default());
+        Ok(())
     }
     fn set_conversation_status(
         &mut self,
@@ -988,6 +1019,84 @@ fn local_mute_toggles_without_keybase_and_suppresses_unread() {
     toggle_muted_conversation(&mut rig.app);
     assert!(!rig.app.is_muted(&id));
     assert_eq!(rig.app.unread_total(), 1);
+}
+
+#[test]
+fn failed_empty_inbox_load_records_error_and_success_clears_it() {
+    let mut rig = build_rig();
+    // A failed load with nothing already shown records the error for the
+    // persistent "couldn't load, retry" panel.
+    handle_load_inbox_response(
+        &mut rig.app,
+        Err(KeybaseError::Timeout {
+            label: "keybase".into(),
+            secs: 30,
+        }),
+        false,
+    );
+    assert!(rig.app.inbox_error.is_some());
+    // A later successful load clears it.
+    handle_load_inbox_response(
+        &mut rig.app,
+        Ok(ListConversationsOk {
+            conversations: vec![],
+            skipped: vec![],
+        }),
+        false,
+    );
+    assert!(rig.app.inbox_error.is_none());
+}
+
+// ── channel browser (listconvsonname / join) ─────────────────────────
+
+#[test]
+fn channel_browser_loads_sorts_joined_first_and_joins() {
+    let mut rig = build_rig();
+    let mut general = conv("c-general", "phoenix", MembersType::Team);
+    general.channel.topic_name = Some("general".into());
+    general.member_status = MemberStatus::Active; // joined
+    let mut random = conv("c-random", "phoenix", MembersType::Team);
+    random.channel.topic_name = Some("random".into());
+    random.member_status = MemberStatus::Left; // not joined
+    // Return them not-joined-first so the sort is observable.
+    rig.mock.st().channels = vec![random, general];
+
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.channels.len(), 2);
+    // Joined channel floats to the top.
+    assert_eq!(
+        rig.app.channels[0].channel.topic_name.as_deref(),
+        Some("general")
+    );
+
+    // Select the not-joined "random" and activate → join it.
+    let ri = rig
+        .app
+        .channels
+        .iter()
+        .position(|c| c.channel.topic_name.as_deref() == Some("random"))
+        .unwrap();
+    rig.app.channel_selected = ri;
+    channel_browser_activate(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.mock.st().joined, vec!["random".to_string()]);
+}
+
+#[test]
+fn channel_browser_create_fires_newconv_and_exits_create_mode() {
+    let mut rig = build_rig();
+    rig.app.channel_browser_team = Some("phoenix".into());
+    open_channel_create(&mut rig.app);
+    assert!(rig.app.channel_creating);
+    rig.app.channel_new_name.set("announcements");
+    request_create_channel(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // newconv fired on the team (the channel's team name).
+    assert!(rig.mock.st().new_convs.contains(&"phoenix".to_string()));
+    // Create mode exits on success.
+    assert!(!rig.app.channel_creating);
 }
 
 // ── do_create_new_conversation → request_create_new_conversation ─────

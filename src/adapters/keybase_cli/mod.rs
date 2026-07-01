@@ -534,6 +534,36 @@ impl KeybasePort for KeybaseCliAdapter {
         Ok(id)
     }
 
+    fn list_channels_on_name(&mut self, team: &str) -> Result<ListConversationsOk, KeybaseError> {
+        let req = request_with_options(
+            "listconvsonname",
+            json!({ "topic_type": "CHAT", "members_type": "team", "name": team }),
+        );
+        // Same result shape as `list` — reuse the tolerant conversation parser.
+        let reply = self.chat_api(&req, self.list_inbox_timeout)?;
+        let arr = reply
+            .pointer("/result/conversations")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                KeybaseError::shape(
+                    "keybase chat api listconvsonname: missing result.conversations",
+                )
+            })?;
+        Ok(parse_conversations_array(arr))
+    }
+
+    fn join_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError> {
+        let req = request_with_options("join", json!({ "channel": channel_object(channel) }));
+        self.chat_api(&req, QUICK_OP_TIMEOUT)?;
+        Ok(())
+    }
+
+    fn leave_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError> {
+        let req = request_with_options("leave", json!({ "channel": channel_object(channel) }));
+        self.chat_api(&req, QUICK_OP_TIMEOUT)?;
+        Ok(())
+    }
+
     fn set_conversation_status(
         &mut self,
         channel: &ReadChannel,

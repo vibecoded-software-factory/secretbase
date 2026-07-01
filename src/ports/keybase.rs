@@ -272,6 +272,21 @@ pub trait KeybasePort {
     /// the given participant list. Returns the conversation id.
     fn new_conversation(&mut self, channel: &ReadChannel) -> Result<String, KeybaseError>;
 
+    /// `{"method":"listconvsonname","params":{"options":{"topic_type":"CHAT",
+    /// "members_type":"team","name":TEAM}}}` — lists **every channel of a
+    /// team** (not just the ones you're in). Same result shape as `list`
+    /// (`result.conversations[]` of `ConvSummary`), so tolerant parsing is
+    /// reused; a channel's `member_status` tells joined (`Active`) from not.
+    fn list_channels_on_name(&mut self, team: &str) -> Result<ListConversationsOk, KeybaseError>;
+
+    /// `{"method":"join","params":{"options":{"channel":...}}}` — joins a team
+    /// channel (`channel` = team name + `members_type:"team"` + `topic_name`).
+    fn join_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError>;
+
+    /// `{"method":"leave","params":{"options":{"channel":...}}}` — leaves a
+    /// team channel.
+    fn leave_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError>;
+
     /// `{"method":"setstatus","params":{"options":{"channel":...,"status":STATUS}}}`.
     /// `status` is one of `"unfiled"`, `"favorite"`, `"muted"`,
     /// `"ignored"`. Used to mute / unmute (`"muted"` / `"unfiled"`).
