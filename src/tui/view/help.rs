@@ -140,6 +140,32 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     lines.push(help_line(k, d, t));
                 }
             }
+            Screen::ChannelBrowser => {
+                lines.push(section("Channel browser (Alt+K)", t));
+                for (k, d) in [
+                    ("↑/↓ k/j · PgUp/Dn", "navigate"),
+                    ("Enter / → / l", "open a joined channel · join one you're not in"),
+                    ("x", "leave a joined channel"),
+                    ("r / d", "rename / delete the channel"),
+                    ("t", "toggle as a team default (new members auto-join)"),
+                    ("m", "members of the channel"),
+                    ("Alt+N", "create a new channel"),
+                    ("F5 / Esc", "refresh / close"),
+                ] {
+                    lines.push(help_line(k, d, t));
+                }
+            }
+            Screen::Members => {
+                lines.push(section("Members (m / Alt+P)", t));
+                for (k, d) in [
+                    ("↑/↓ k/j · PgUp/Dn", "navigate"),
+                    ("a", "add member(s) (comma/space-separated)"),
+                    ("x / d", "remove the selected member"),
+                    ("F5 / Esc", "refresh / back"),
+                ] {
+                    lines.push(help_line(k, d, t));
+                }
+            }
             Screen::Login => {
                 lines.push(section("Login", t));
                 for (k, d) in [("R / F5", "retry status"), ("Q / Esc", "quit")] {
@@ -229,7 +255,8 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
     for (k, d) in [
         ("F1", "toggle help"),
         ("F10", "settings"),
-        ("↑/↓ j/k", "scroll help"),
+        ("↑/↓ j/k · PgUp/Dn", "scroll this help"),
+        ("g / G · Home/End", "top / bottom of help"),
         ("q / Esc", "close help"),
         ("Ctrl+C", "quit"),
     ] {
