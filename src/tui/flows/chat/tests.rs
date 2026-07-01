@@ -2616,6 +2616,47 @@ fn settings_screen_renders_every_section_without_panicking() {
     }
 }
 
+/// Flattens a `TestBackend` buffer to one string (rows joined by `\n`) so a
+/// test can assert that expected text actually rendered somewhere on screen.
+fn buffer_text(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>) -> String {
+    let buf = terminal.backend().buffer();
+    let area = *buf.area();
+    let mut out = String::new();
+    for y in 0..area.height {
+        for x in 0..area.width {
+            out.push_str(buf[(x, y)].symbol());
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[test]
+fn login_message_is_readable_when_terminal_is_narrow() {
+    // Regression: the login hint box was a fixed 60%-width, single centered
+    // line with no wrap — near the minimum renderable width (70 cols) 60% is
+    // only ~42 cols, so the 48-char message clipped to "…then p". Now the box
+    // is content-sized (and wraps), so the whole message (incl. the "press R."
+    // tail) renders at every width the app draws the login at (≥ 70×18, the
+    // too-small guard). Widths below that show the resize guard, not login.
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+
+    for (w, h) in [(70u16, 18u16), (80, 24), (120, 40)] {
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).expect("backend");
+        terminal
+            .draw(|f| crate::tui::view::draw(f, &mut rig.app))
+            .expect("draw must not panic");
+        let text = buffer_text(&terminal);
+        assert!(
+            text.contains("press") && text.contains("R."),
+            "login message clipped at {w}x{h}:\n{text}"
+        );
+    }
+}
+
 #[test]
 #[ignore = "perf smoke — run manually with `--ignored --nocapture`"]
 fn render_perf_smoke_inbox_500_conversations() {
