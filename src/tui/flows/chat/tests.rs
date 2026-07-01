@@ -64,6 +64,16 @@ struct MockState {
     emojis: Vec<Emoji>,
     mark_reads: Vec<u64>,
     read_calls: Vec<Option<String>>,
+    /// Channel-browser: pre-baked `listconvsonname` result + recorded
+    /// join / leave topic names.
+    channels: Vec<Conversation>,
+    joined: Vec<String>,
+    left: Vec<String>,
+    renames: Vec<(String, String, String)>,
+    deleted_channels: Vec<String>,
+    /// `default-channels`: the get result + recorded set calls.
+    default_channels_get: Vec<String>,
+    default_channels_set: Vec<Vec<String>>,
     /// Next adapter call returning a Result returns this error then
     /// clears the slot.
     fail_next: Option<KeybaseError>,
@@ -227,6 +237,63 @@ impl KeybasePort for MockKeybase {
         }
         s.new_convs.push(channel.name.clone());
         Ok(s.new_conv_id.clone())
+    }
+    fn list_channels_on_name(&mut self, _: &str) -> Result<ListConversationsOk, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        Ok(ListConversationsOk {
+            conversations: s.channels.clone(),
+            skipped: Vec::new(),
+        })
+    }
+    fn join_channel(&mut self, ch: &ReadChannel) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.joined.push(ch.topic_name.clone().unwrap_or_default());
+        Ok(())
+    }
+    fn leave_channel(&mut self, ch: &ReadChannel) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.left.push(ch.topic_name.clone().unwrap_or_default());
+        Ok(())
+    }
+    fn rename_channel(&mut self, team: &str, old: &str, new: &str) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.renames
+            .push((team.to_string(), old.to_string(), new.to_string()));
+        Ok(())
+    }
+    fn delete_channel(&mut self, _team: &str, channel: &str) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.deleted_channels.push(channel.to_string());
+        Ok(())
+    }
+    fn default_channels(&mut self, _: &str, set: &[String]) -> Result<Vec<String>, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        if set.is_empty() {
+            Ok(s.default_channels_get.clone())
+        } else {
+            // SET replaces the set, then the CLI prints the new one back.
+            s.default_channels_set.push(set.to_vec());
+            s.default_channels_get = set.to_vec();
+            Ok(set.to_vec())
+        }
     }
     fn set_conversation_status(
         &mut self,
@@ -988,6 +1055,164 @@ fn local_mute_toggles_without_keybase_and_suppresses_unread() {
     toggle_muted_conversation(&mut rig.app);
     assert!(!rig.app.is_muted(&id));
     assert_eq!(rig.app.unread_total(), 1);
+}
+
+#[test]
+fn failed_empty_inbox_load_records_error_and_success_clears_it() {
+    let mut rig = build_rig();
+    // A failed load with nothing already shown records the error for the
+    // persistent "couldn't load, retry" panel.
+    handle_load_inbox_response(
+        &mut rig.app,
+        Err(KeybaseError::Timeout {
+            label: "keybase".into(),
+            secs: 30,
+        }),
+        false,
+    );
+    assert!(rig.app.inbox_error.is_some());
+    // A later successful load clears it.
+    handle_load_inbox_response(
+        &mut rig.app,
+        Ok(ListConversationsOk {
+            conversations: vec![],
+            skipped: vec![],
+        }),
+        false,
+    );
+    assert!(rig.app.inbox_error.is_none());
+}
+
+// ── channel browser (listconvsonname / join) ─────────────────────────
+
+#[test]
+fn channel_browser_loads_sorts_joined_first_and_joins() {
+    let mut rig = build_rig();
+    let mut general = conv("c-general", "phoenix", MembersType::Team);
+    general.channel.topic_name = Some("general".into());
+    general.member_status = MemberStatus::Active; // joined
+    let mut random = conv("c-random", "phoenix", MembersType::Team);
+    random.channel.topic_name = Some("random".into());
+    random.member_status = MemberStatus::Left; // not joined
+    // Return them not-joined-first so the sort is observable.
+    rig.mock.st().channels = vec![random, general];
+
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.channels.len(), 2);
+    // Joined channel floats to the top.
+    assert_eq!(
+        rig.app.channels[0].channel.topic_name.as_deref(),
+        Some("general")
+    );
+
+    // Select the not-joined "random" and activate → join it.
+    let ri = rig
+        .app
+        .channels
+        .iter()
+        .position(|c| c.channel.topic_name.as_deref() == Some("random"))
+        .unwrap();
+    rig.app.channel_selected = ri;
+    channel_browser_activate(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.mock.st().joined, vec!["random".to_string()]);
+}
+
+#[test]
+fn channel_browser_create_fires_newconv_and_exits_create_mode() {
+    let mut rig = build_rig();
+    rig.app.channel_browser_team = Some("phoenix".into());
+    open_channel_create(&mut rig.app);
+    assert!(rig.app.channel_creating);
+    rig.app.channel_new_name.set("announcements");
+    request_create_channel(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // newconv fired on the team (the channel's team name).
+    assert!(rig.mock.st().new_convs.contains(&"phoenix".to_string()));
+    // Create mode exits on success.
+    assert!(!rig.app.channel_creating);
+}
+
+#[test]
+fn channel_browser_rename_calls_adapter() {
+    let mut rig = build_rig();
+    let mut general = conv("c-general", "phoenix", MembersType::Team);
+    general.channel.topic_name = Some("general".into());
+    general.member_status = MemberStatus::Active;
+    rig.mock.st().channels = vec![general];
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Enter rename mode, type a new name, submit.
+    open_channel_rename(&mut rig.app);
+    assert_eq!(rig.app.channel_renaming.as_deref(), Some("general"));
+    rig.app.channel_new_name.set("lobby");
+    request_rename_channel(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(
+        rig.mock.st().renames,
+        vec![(
+            "phoenix".to_string(),
+            "general".to_string(),
+            "lobby".to_string()
+        )]
+    );
+    assert!(rig.app.channel_renaming.is_none());
+}
+
+#[test]
+fn channel_browser_delete_needs_confirm_then_calls_adapter() {
+    let mut rig = build_rig();
+    let mut random = conv("c-random", "phoenix", MembersType::Team);
+    random.channel.topic_name = Some("random".into());
+    random.member_status = MemberStatus::Active;
+    rig.mock.st().channels = vec![random];
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // `d` opens the inline confirm — nothing deleted yet.
+    open_channel_delete_confirm(&mut rig.app);
+    assert_eq!(rig.app.channel_confirm_delete.as_deref(), Some("random"));
+    assert!(rig.mock.st().deleted_channels.is_empty());
+    // Confirm → delete fires.
+    confirm_channel_delete(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.mock.st().deleted_channels, vec!["random".to_string()]);
+    assert!(rig.app.channel_confirm_delete.is_none());
+}
+
+#[test]
+fn channel_browser_toggle_default_sends_full_set() {
+    let mut rig = build_rig();
+    let mut general = conv("c-general", "phoenix", MembersType::Team);
+    general.channel.topic_name = Some("general".into());
+    general.member_status = MemberStatus::Active;
+    let mut random = conv("c-random", "phoenix", MembersType::Team);
+    random.channel.topic_name = Some("random".into());
+    random.member_status = MemberStatus::Active;
+    rig.mock.st().channels = vec![general, random];
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // The chained default-channels get ran (mock returns none → general only).
+    assert!(rig.app.default_channels.is_empty());
+    // Toggle "random" ON → SET fires with the full new set [random].
+    let ri = rig
+        .app
+        .channels
+        .iter()
+        .position(|c| c.channel.topic_name.as_deref() == Some("random"))
+        .unwrap();
+    rig.app.channel_selected = ri;
+    toggle_default_channel(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(
+        rig.mock.st().default_channels_set,
+        vec![vec!["random".to_string()]]
+    );
+    assert_eq!(rig.app.default_channels, vec!["random".to_string()]);
 }
 
 // ── do_create_new_conversation → request_create_new_conversation ─────

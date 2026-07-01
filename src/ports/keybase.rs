@@ -272,6 +272,41 @@ pub trait KeybasePort {
     /// the given participant list. Returns the conversation id.
     fn new_conversation(&mut self, channel: &ReadChannel) -> Result<String, KeybaseError>;
 
+    /// `{"method":"listconvsonname","params":{"options":{"topic_type":"CHAT",
+    /// "members_type":"team","name":TEAM}}}` — lists **every channel of a
+    /// team** (not just the ones you're in). Same result shape as `list`
+    /// (`result.conversations[]` of `ConvSummary`), so tolerant parsing is
+    /// reused; a channel's `member_status` tells joined (`Active`) from not.
+    fn list_channels_on_name(&mut self, team: &str) -> Result<ListConversationsOk, KeybaseError>;
+
+    /// `{"method":"join","params":{"options":{"channel":...}}}` — joins a team
+    /// channel (`channel` = team name + `members_type:"team"` + `topic_name`).
+    fn join_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError>;
+
+    /// `{"method":"leave","params":{"options":{"channel":...}}}` — leaves a
+    /// team channel.
+    fn leave_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError>;
+
+    /// `keybase chat rename-channel <team> <old> <new>` — renames a team
+    /// channel. A **CLI subcommand** (no API method), so a one-shot spawn.
+    fn rename_channel(&mut self, team: &str, old: &str, new: &str) -> Result<(), KeybaseError>;
+
+    /// `keybase chat delete-channel <team> <channel>` — deletes a channel.
+    /// CLI subcommand (one-shot); **non-interactive** (verified: resolves
+    /// non-interactively + `DeleteConversationLocal`, no prompt). Destructive +
+    /// irreversible, so the caller confirms first.
+    fn delete_channel(&mut self, team: &str, channel: &str) -> Result<(), KeybaseError>;
+
+    /// `keybase chat default-channels <team> [--channel C]…` — the team's
+    /// **default channels** (new members auto-join these). A CLI subcommand
+    /// (one-shot) whose output is plain text, not JSON. With `set` empty it
+    /// **gets**; with `set` non-empty it **replaces** the default set with
+    /// exactly those channels, then prints the result. Either way returns the
+    /// resulting default channel names, **excluding the implicit `#general`**
+    /// (always default, not settable). Set requires team-admin rights.
+    fn default_channels(&mut self, team: &str, set: &[String])
+    -> Result<Vec<String>, KeybaseError>;
+
     /// `{"method":"setstatus","params":{"options":{"channel":...,"status":STATUS}}}`.
     /// `status` is one of `"unfiled"`, `"favorite"`, `"muted"`,
     /// `"ignored"`. Used to mute / unmute (`"muted"` / `"unfiled"`).

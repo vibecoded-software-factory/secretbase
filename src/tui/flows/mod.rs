@@ -153,6 +153,29 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         (InFlight::NewConversation, WorkerResponse::NewConversation(r)) => {
             chat::handle_new_conversation_response(app, r);
         }
+        // ── Channel browser (listconvsonname / join / leave / create) ─
+        (InFlight::LoadChannels, WorkerResponse::LoadChannels(r)) => {
+            chat::handle_load_channels_response(app, r);
+        }
+        // Create reuses the newconv request/response, routed here by its slot.
+        (InFlight::CreateChannel { topic }, WorkerResponse::NewConversation(r)) => {
+            chat::handle_create_channel_response(app, r, topic);
+        }
+        (InFlight::JoinChannel { topic }, WorkerResponse::JoinChannel(r)) => {
+            chat::handle_join_response(app, r, topic);
+        }
+        (InFlight::LeaveChannel { topic }, WorkerResponse::LeaveChannel(r)) => {
+            chat::handle_leave_response(app, r, topic);
+        }
+        (InFlight::RenameChannel { topic }, WorkerResponse::RenameChannel(r)) => {
+            chat::handle_rename_channel_response(app, r, topic);
+        }
+        (InFlight::DeleteChannel { topic }, WorkerResponse::DeleteChannel(r)) => {
+            chat::handle_delete_channel_response(app, r, topic);
+        }
+        (InFlight::DefaultChannels { setting }, WorkerResponse::DefaultChannels(r)) => {
+            chat::handle_default_channels_response(app, r, setting);
+        }
         // ── Conversation status (mute/unmute/ignore/block/…) ──────
         (InFlight::SetConvStatus { done_label }, WorkerResponse::SetConvStatus(r)) => {
             chat::handle_set_conv_status_response(app, r, &done_label);

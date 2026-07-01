@@ -5,6 +5,7 @@
 //! jewel's layout system (`split_main` stack + `titled_block`).
 
 pub mod action;
+pub mod channels;
 pub mod conversation;
 pub mod help;
 pub mod inbox;
@@ -53,6 +54,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::ConfirmConvAction
         | Screen::NewConversation
         | Screen::UnhideConversation
+        | Screen::ChannelBrowser
         | Screen::SearchGlobal
         | Screen::ConfirmDeleteMessage
         | Screen::React => Screen::Inbox,
@@ -134,6 +136,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
         Screen::NewConversation => new_conversation::draw(frame, app),
         Screen::UnhideConversation => unhide::draw(frame, app),
+        Screen::ChannelBrowser => channels::draw(frame, app),
         Screen::SearchGlobal => search_global::draw(frame, app),
         Screen::React => popups::react_input(frame, app),
         Screen::QuickSwitcher => popups::quick_switcher(frame, app),
@@ -236,6 +239,20 @@ pub fn titled_block<'a>(title: &'a str, focused: bool, app: &'a App) -> Block<'a
         .borders(Borders::ALL)
         // Rounded corners on every section panel — the single place that decides
         // it, so the whole app's chrome stays consistently rounded.
+        .border_type(BorderType::Rounded)
+        .title(Span::styled(title.to_string(), style))
+        .border_style(style)
+}
+
+/// A panel that **can't be focused right now** (e.g. the chat and its in-chat
+/// search when no conversation is open — they're skipped by Tab and their go-to
+/// keys are gated). Rendered with the `muted` (darker-than-`inactive`) border
+/// so it clearly reads as *unreachable*, distinct from an available-but-
+/// unfocused panel. Same rounded chrome as [`titled_block`].
+pub fn disabled_block<'a>(title: &'a str, app: &'a App) -> Block<'a> {
+    let style = Style::default().fg(app.theme.muted);
+    Block::default()
+        .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(Span::styled(title.to_string(), style))
         .border_style(style)

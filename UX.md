@@ -301,15 +301,21 @@ Conventions:
   **stays armed across consecutive directions**, so two keys make a diagonal
   (e.g. `k` then `h` = up-left). `Esc`/`Enter` exit; any other key exits and is
   re-processed. The status strip shows the armed hint.
-- A panel is "focused" → accent + bold border/title
-  (`view::mod::titled_block(title, focused, app)`); otherwise the `inactive`
-  tint.
+- **Border tiers signal reachability** (three states, not two):
+  - **focused** → accent + bold (`view::mod::titled_block(title, true, app)`).
+  - **available, unfocused** → the `inactive` tint (bright gray) — you can Tab /
+    go-to it.
+  - **unavailable** → `view::mod::disabled_block` (the darker `muted` tint) for a
+    panel you **can't** focus right now, so it doesn't look like a Tab target
+    that's just ignoring you. Currently the **Chat** pane and its **in-chat
+    search** when no conversation is open (both skipped by Tab, their go-to keys
+    gated); `draw_search_box` takes a `disabled` flag for the search box.
 
 ## Lists & tables — the single pattern
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
-its panels `─[Alt+F]-Search`, `─[Alt+C]-Chats`, `─[Alt+M]-Chat`, `─[Alt+L]-Command log`; Teams
+its panels `─[Alt+F]-Search`, `─[Alt+C]-Chats`, `─[Alt+M]-Messages`, `─[Alt+L]-Command log`; Teams
 uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.
@@ -425,6 +431,26 @@ under react/delete/download).
   notifications, so a local mute can't silence your phone — see README →
   *Not supported*.) **Ignore / block / report** stay server-side (`setstatus`)
   because their effect *is* observable (the conv leaves the inbox).
+- **Channel browser** (`ChannelBrowser`, `Alt+K` on a team row) — a standard
+  centered modal (`view::channels`, `MODAL_*` geometry) listing **every**
+  channel of the team via `keybase chat api listconvsonname` (same `ConvSummary`
+  shape as `list`, so the tolerant parser is reused; `member_status == Active`
+  marks the ones you're in, sorted joined-first). `↑/↓` pick, `Enter` opens a
+  joined channel or **joins** one you aren't in (`join`), `x` **leaves** a
+  joined one (`leave`), `Alt+N` enters an inline **create** mode (a channel-name
+  input → `newconv` on a team channel, reusing the `NewConversation` request
+  routed by an `InFlight::CreateChannel` slot), `r` an inline **rename** mode
+  (pre-filled → `rename-channel`), `d` an inline **delete** confirm (destructive
+  + irreversible → `y`/`n`, error-red → `delete-channel`), `t` toggles the
+  channel as a team **default** (new members auto-join; a `★ default` badge,
+  `#general` always), `F5` refreshes, `Esc` closes. The inline modes share one
+  bottom row + the `channel_new_name` editor; `rename-channel`/`delete-channel`/
+  `default-channels` are **CLI subcommands** (one-shot spawn, no API method), the
+  rest are chat-api methods. `default-channels` is fetched (get) chained after
+  the list load to badge; `t` recomputes and **replaces** the whole set (the CLI
+  can't clear it to empty, so removing the last one is refused). Every mutation
+  resyncs the inbox (silent) so the tree tracks it and reloads the browser. Flows
+  in `chat::*channel*`; input in `input::popups::channel_browser`.
 - **Input popups** (`NewConversation`, `UnhideConversation`, `React`,
   `DownloadAttachment`, `SearchGlobal`): a centered box with an `editor_spans`
   field and

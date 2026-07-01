@@ -265,6 +265,29 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   `list` returns the conversation id as lowercase hex** — secretbase
   decodes it to hex when parsing so a search hit re-keys into the cached
   inbox (open-from-search).
+- `listconvsonname` `{"topic_type":"CHAT","members_type":"team","name":TEAM}` —
+  lists **every channel of a team** (joined or not), same `result.conversations[]`
+  (`ConvSummary`) shape as `list` (verified: `ListConvsOnNameV1` → `ExportToSummary`),
+  so the tolerant parser is reused. `member_status == Active` = you're a member.
+  secretbase drives it from the **channel browser** (`Alt+K`); `join`/`leave`
+  `{"channel":{name:TEAM,members_type:"team",topic_name:CH}}` join/leave a channel,
+  and **create** reuses `newconv` on a team channel (`{name:TEAM,members_type:
+  "team",topic_name:NEW}`) — there's no dedicated `create-channel` API method
+  (that's a CLI subcommand), and `newconv` creates the channel just the same.
+- **`keybase chat rename-channel <team> <old> <new>`** / **`delete-channel
+  <team> <channel>`** — CLI subcommands (no API method), so one-shot spawns.
+  `delete-channel` is **non-interactive** (verified: resolves non-interactively +
+  `DeleteConversationLocal`, no prompt) but destructive → secretbase confirms
+  inline first. Both are driven from the channel browser (`r` / `d`).
+- **`keybase chat default-channels <team> [--channel C]…`** — CLI subcommand
+  (no API method), plain-text output (not JSON). No `--channel` = **get**;
+  repeated `--channel` = **replace** the default set, then print it. The default
+  channels are the ones new team members auto-join; `#general` is always default
+  and printed first (not part of the settable set). secretbase gets them on
+  browser load (badges `★ default`) and toggles with `t` (recomputes + sets the
+  whole set). ⚠️ The CLI **can't clear the set to empty** (no `--channel` is a
+  get), so removing the last default is refused. Verified vs source
+  (`SetDefaultTeamChannelsLocal` / `GetDefaultTeamChannelsLocal`).
 - `searchregexp` `{"channel":…,"query":…,"is_regex":false,"max_hits":N}` —
   server-side search **within one conversation** (full history). Result shape
   is `result.hits[]`, each `{hitMessage.valid{messageID, bodySummary,

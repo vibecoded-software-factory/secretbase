@@ -94,6 +94,7 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
         "type to filter chats…",
         &app.search,
         app.focus == Focus::Search,
+        false, // the tree filter is always available
     );
 }
 
@@ -101,6 +102,36 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
 /// collapsible, each (unless folded) followed by its conversations.
 fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
+    // Persistent failure state: the load errored and we have nothing to show.
+    // The feedback toast expires after ~1.5 s, so without this the user is left
+    // with a blank inbox and only the command log. Show what failed + how to
+    // retry, right in the panel.
+    if app.conversations.is_empty()
+        && let Some(err) = app.inbox_error.clone()
+    {
+        let focused = app.focus == Focus::Tree;
+        let block = titled_block("─[Alt+C]-Chats", focused, app);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        let lines = vec![
+            Line::from(Span::styled(
+                "  ⚠ Couldn't load chats",
+                Style::default().fg(t.error).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(format!("  {err}"), Style::default().fg(t.dim))),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Alt+R / F5 to retry",
+                Style::default().fg(t.foreground),
+            )),
+        ];
+        frame.render_widget(
+            ratatui::widgets::Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false }),
+            inner,
+        );
+        return;
+    }
     let model = app.tree_rows();
     let budget = (area.width as usize).saturating_sub(7).max(6);
 
@@ -220,21 +251,40 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     app.list_scroll = scroll;
 }
 
-/// Right pane shown when no conversation is open.
+/// Linearly blends `a` toward `b` by `f` (0 = `a`, 1 = `b`), for RGB theme
+/// colours; a non-RGB colour (a hand-set named value) falls back to `a`. Used
+/// to place the placeholder legend a step below `placeholder` toward `muted`.
+fn blend(a: ratatui::style::Color, b: ratatui::style::Color, f: f32) -> ratatui::style::Color {
+    use ratatui::style::Color::Rgb;
+    if let (Rgb(ar, ag, ab), Rgb(br, bg, bb)) = (a, b) {
+        let lerp = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * f).round() as u8;
+        Rgb(lerp(ar, br), lerp(ag, bg), lerp(ab, bb))
+    } else {
+        a
+    }
+}
+
+/// Right pane shown when no conversation is open. The Chat pane can't be
+/// focused with nothing open (Tab skips it, `Alt+M` is gated), so its border is
+/// `disabled_block` (muted) — it reads as unreachable, not just unfocused.
 fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let block = titled_block("─[Alt+M]-Chat", app.focus == Focus::Chat, app);
+    let block = crate::tui::view::disabled_block("─[Alt+M]-Messages", app);
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    // The pane is unreachable (nothing open), so its legend recedes: a touch
+    // dimmer than `placeholder`, blended toward the border's `muted`, but kept
+    // clear of `muted` itself so it stays legible.
+    let legend = blend(t.placeholder, t.muted, 0.5);
     let lines = vec![
         Line::from(Span::raw("")),
         Line::from(Span::styled(
             "  Select a conversation to start chatting",
-            Style::default().fg(t.dim),
+            Style::default().fg(legend),
         )),
         Line::from(Span::styled(
             "  Tab to Chats · ↑/↓ pick · Enter to open",
-            Style::default().fg(t.placeholder),
+            Style::default().fg(legend),
         )),
     ];
     frame.render_widget(Paragraph::new(lines), inner);

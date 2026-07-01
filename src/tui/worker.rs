@@ -127,6 +127,30 @@ pub enum WorkerRequest {
     NewConversation {
         channel: ReadChannel,
     },
+    /// List every channel of a team (`listconvsonname`) for the channel browser.
+    LoadChannels {
+        team: String,
+    },
+    JoinChannel {
+        channel: ReadChannel,
+    },
+    LeaveChannel {
+        channel: ReadChannel,
+    },
+    RenameChannel {
+        team: String,
+        old: String,
+        new: String,
+    },
+    DeleteChannel {
+        team: String,
+        channel: String,
+    },
+    /// Get (empty `set`) or replace the team's default channels.
+    DefaultChannels {
+        team: String,
+        set: Vec<String>,
+    },
     SetConvStatus {
         channel: ReadChannel,
         status: String,
@@ -191,6 +215,12 @@ pub enum WorkerResponse {
     DeleteMessage(Result<(), KeybaseError>),
     React(Result<(), KeybaseError>),
     NewConversation(Result<String, KeybaseError>),
+    LoadChannels(Result<ListConversationsOk, KeybaseError>),
+    JoinChannel(Result<(), KeybaseError>),
+    LeaveChannel(Result<(), KeybaseError>),
+    RenameChannel(Result<(), KeybaseError>),
+    DeleteChannel(Result<(), KeybaseError>),
+    DefaultChannels(Result<Vec<String>, KeybaseError>),
     SetConvStatus(Result<(), KeybaseError>),
     PinMessage(Result<(), KeybaseError>),
     UnpinMessage(Result<(), KeybaseError>),
@@ -243,6 +273,35 @@ pub enum InFlight {
         body: String,
     },
     NewConversation,
+    /// Create a team channel (`newconv` on a team channel) — reuses the
+    /// `NewConversation` request/response but routes to the channel handler.
+    /// `topic` is the new channel name (for the toast + browser reload).
+    CreateChannel {
+        topic: String,
+    },
+    /// Channel-browser load for a team (`listconvsonname`).
+    LoadChannels,
+    /// Join a team channel; `topic` is the channel name (for the toast).
+    JoinChannel {
+        topic: String,
+    },
+    /// Leave a team channel; `topic` is the channel name (for the toast).
+    LeaveChannel {
+        topic: String,
+    },
+    /// Rename a channel; `topic` is the new name (for the toast).
+    RenameChannel {
+        topic: String,
+    },
+    /// Delete a channel; `topic` is the channel name (for the toast).
+    DeleteChannel {
+        topic: String,
+    },
+    /// Get / set the team default channels; `setting` distinguishes the two
+    /// (the load-time get is quiet, the set toasts).
+    DefaultChannels {
+        setting: bool,
+    },
     /// Any `setstatus` call (mute / unmute / ignore / block / report /
     /// favorite). `done_label` is the feedback shown on success.
     SetConvStatus {
@@ -435,6 +494,27 @@ mod tests {
         fn new_conversation(&mut self, _: &ReadChannel) -> Result<String, KeybaseError> {
             Ok(String::new())
         }
+        fn list_channels_on_name(&mut self, _: &str) -> Result<ListConversationsOk, KeybaseError> {
+            Ok(ListConversationsOk {
+                conversations: Vec::new(),
+                skipped: Vec::new(),
+            })
+        }
+        fn join_channel(&mut self, _: &ReadChannel) -> Result<(), KeybaseError> {
+            Ok(())
+        }
+        fn leave_channel(&mut self, _: &ReadChannel) -> Result<(), KeybaseError> {
+            Ok(())
+        }
+        fn rename_channel(&mut self, _: &str, _: &str, _: &str) -> Result<(), KeybaseError> {
+            Ok(())
+        }
+        fn delete_channel(&mut self, _: &str, _: &str) -> Result<(), KeybaseError> {
+            Ok(())
+        }
+        fn default_channels(&mut self, _: &str, _: &[String]) -> Result<Vec<String>, KeybaseError> {
+            Ok(Vec::new())
+        }
         fn set_conversation_status(
             &mut self,
             _: &ReadChannel,
@@ -563,6 +643,12 @@ mod tests {
                 Self::DeleteMessage(r) => write!(f, "DeleteMessage({r:?})"),
                 Self::React(r) => write!(f, "React({r:?})"),
                 Self::NewConversation(r) => write!(f, "NewConversation({r:?})"),
+                Self::LoadChannels(_) => f.write_str("LoadChannels(..)"),
+                Self::JoinChannel(r) => write!(f, "JoinChannel({r:?})"),
+                Self::LeaveChannel(r) => write!(f, "LeaveChannel({r:?})"),
+                Self::RenameChannel(r) => write!(f, "RenameChannel({r:?})"),
+                Self::DeleteChannel(r) => write!(f, "DeleteChannel({r:?})"),
+                Self::DefaultChannels(r) => write!(f, "DefaultChannels({r:?})"),
                 Self::SetConvStatus(r) => write!(f, "SetConvStatus({r:?})"),
                 Self::PinMessage(r) => write!(f, "PinMessage({r:?})"),
                 Self::UnpinMessage(r) => write!(f, "UnpinMessage({r:?})"),
@@ -644,6 +730,30 @@ fn run_worker(
             } => WorkerResponse::React(run_caught(|| keybase.react(&channel, message_id, &body))),
             WorkerRequest::NewConversation { channel } => {
                 WorkerResponse::NewConversation(run_caught(|| keybase.new_conversation(&channel)))
+            }
+            WorkerRequest::LoadChannels { team } => {
+                WorkerResponse::LoadChannels(run_caught(|| keybase.list_channels_on_name(&team)))
+            }
+            WorkerRequest::JoinChannel { channel } => {
+                WorkerResponse::JoinChannel(run_caught(|| keybase.join_channel(&channel)))
+            }
+            WorkerRequest::LeaveChannel { channel } => {
+                WorkerResponse::LeaveChannel(run_caught(|| keybase.leave_channel(&channel)))
+            }
+            WorkerRequest::RenameChannel { team, old, new } => {
+                WorkerResponse::RenameChannel(run_caught(|| {
+                    keybase.rename_channel(&team, &old, &new)
+                }))
+            }
+            WorkerRequest::DeleteChannel { team, channel } => {
+                WorkerResponse::DeleteChannel(run_caught(|| {
+                    keybase.delete_channel(&team, &channel)
+                }))
+            }
+            WorkerRequest::DefaultChannels { team, set } => {
+                WorkerResponse::DefaultChannels(run_caught(|| {
+                    keybase.default_channels(&team, &set)
+                }))
             }
             WorkerRequest::SetConvStatus { channel, status } => {
                 WorkerResponse::SetConvStatus(run_caught(|| {

@@ -199,6 +199,11 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             chat::toggle_favorite_conversation(app);
             return;
         }
+        KeyCode::Char('k') | KeyCode::Char('K') if alt => {
+            // Channel browser for the selected team (join / open / leave).
+            chat::open_channel_browser(app);
+            return;
+        }
         KeyCode::Char('h') | KeyCode::Char('H') if alt => {
             chat::open_unhide(app);
             return;

@@ -385,11 +385,41 @@ pub struct App {
     pub filtered_cache: Vec<usize>,
     /// First visible row in the conversation tree — driven by scrolling.
     pub list_scroll: usize,
+    /// Error from the **last inbox `list`** — kept so the empty tree shows a
+    /// persistent "couldn't load, retry" state (the feedback toast expires
+    /// after ~1.5 s, leaving nothing but the command log otherwise). `None`
+    /// after a successful load.
+    pub inbox_error: Option<String>,
 
     /// Team memberships (from `keybase team api {"method":"list-self-memberships"}`).
     pub teams: Vec<TeamMembership>,
     /// Currently selected row inside [`Self::teams`].
     pub teams_selected: usize,
+
+    // ── Channel browser (Alt+K on a team) ───────────────────────────────
+    /// Team whose channels the browser is showing (`None` while closed).
+    pub channel_browser_team: Option<String>,
+    /// Channels of `channel_browser_team` from `listconvsonname` — **all** of
+    /// them, joined or not (`member_status == Active` means you're a member).
+    pub channels: Vec<Conversation>,
+    /// Selected row in the channel browser.
+    pub channel_selected: usize,
+    /// Whether the browser is in **create mode** (`Alt+N`) — the input for a
+    /// new channel name is shown; `Enter` creates it (`newconv` on a team
+    /// channel), `Esc` cancels back to the list.
+    pub channel_creating: bool,
+    /// New-channel name typed in create/rename mode (shared input).
+    pub channel_new_name: LineEditor,
+    /// `Some(old)` while the browser is **renaming** a channel (`r`): the old
+    /// channel name; the new name is typed into [`Self::channel_new_name`].
+    pub channel_renaming: Option<String>,
+    /// `Some(topic)` while an inline **delete** confirm (`d`) is showing —
+    /// destructive + irreversible, so `y` confirms / `n`/`Esc` cancels.
+    pub channel_confirm_delete: Option<String>,
+    /// The team's **default channels** (new members auto-join these), fetched
+    /// alongside the browser list; `#general` is always default and omitted.
+    /// `t` toggles the selected channel's membership in this set.
+    pub default_channels: Vec<String>,
 
     // ── Conversation detail ──────────────────────────────────────────────
     /// Conversation id currently open on the detail screen. `None`
@@ -751,8 +781,17 @@ impl App {
             conversations_lowered: Vec::new(),
             filtered_cache: Vec::new(),
             list_scroll: 0,
+            inbox_error: None,
             teams: Vec::new(),
             teams_selected: 0,
+            channel_browser_team: None,
+            channels: Vec::new(),
+            channel_selected: 0,
+            channel_creating: false,
+            channel_new_name: LineEditor::default(),
+            channel_renaming: None,
+            channel_confirm_delete: None,
+            default_channels: Vec::new(),
             open_conv_id: None,
             messages: Vec::new(),
             outbox: Vec::new(),
@@ -1237,6 +1276,7 @@ impl App {
                     | Screen::ConfirmConvAction
                     | Screen::NewConversation
                     | Screen::UnhideConversation
+                    | Screen::ChannelBrowser
                     | Screen::SearchGlobal
                     | Screen::ConfirmDeleteMessage
                     | Screen::React

@@ -534,6 +534,94 @@ impl KeybasePort for KeybaseCliAdapter {
         Ok(id)
     }
 
+    fn list_channels_on_name(&mut self, team: &str) -> Result<ListConversationsOk, KeybaseError> {
+        let req = request_with_options(
+            "listconvsonname",
+            json!({ "topic_type": "CHAT", "members_type": "team", "name": team }),
+        );
+        // Same result shape as `list` — reuse the tolerant conversation parser.
+        let reply = self.chat_api(&req, self.list_inbox_timeout)?;
+        let arr = reply
+            .pointer("/result/conversations")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                KeybaseError::shape(
+                    "keybase chat api listconvsonname: missing result.conversations",
+                )
+            })?;
+        Ok(parse_conversations_array(arr))
+    }
+
+    fn join_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError> {
+        let req = request_with_options("join", json!({ "channel": channel_object(channel) }));
+        self.chat_api(&req, QUICK_OP_TIMEOUT)?;
+        Ok(())
+    }
+
+    fn leave_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError> {
+        let req = request_with_options("leave", json!({ "channel": channel_object(channel) }));
+        self.chat_api(&req, QUICK_OP_TIMEOUT)?;
+        Ok(())
+    }
+
+    fn rename_channel(&mut self, team: &str, old: &str, new: &str) -> Result<(), KeybaseError> {
+        // CLI subcommand (not api-mode): one-shot spawn like `logout`.
+        let out = keybase_run_timeout(
+            &["chat", "rename-channel", team, old, new],
+            QUICK_OP_TIMEOUT,
+        )?;
+        if !out.status.success() {
+            return Err(KeybaseError::Exit {
+                stderr: stderr_str(&out),
+                status: out.status.code().unwrap_or(-1),
+            });
+        }
+        Ok(())
+    }
+
+    fn delete_channel(&mut self, team: &str, channel: &str) -> Result<(), KeybaseError> {
+        let out =
+            keybase_run_timeout(&["chat", "delete-channel", team, channel], QUICK_OP_TIMEOUT)?;
+        if !out.status.success() {
+            return Err(KeybaseError::Exit {
+                stderr: stderr_str(&out),
+                status: out.status.code().unwrap_or(-1),
+            });
+        }
+        Ok(())
+    }
+
+    fn default_channels(
+        &mut self,
+        team: &str,
+        set: &[String],
+    ) -> Result<Vec<String>, KeybaseError> {
+        // `chat default-channels <team> [--channel C]…`; a repeated --channel
+        // set REPLACES the default set, then the command prints the result.
+        let mut args: Vec<&str> = vec!["chat", "default-channels", team];
+        for ch in set {
+            args.push("--channel");
+            args.push(ch.as_str());
+        }
+        let out = keybase_run_timeout(&args, QUICK_OP_TIMEOUT)?;
+        if !out.status.success() {
+            return Err(KeybaseError::Exit {
+                stderr: stderr_str(&out),
+                status: out.status.code().unwrap_or(-1),
+            });
+        }
+        // Output is plain text: a header line then one `\t#<name>` per default,
+        // starting with the implicit `#general`. Parse tolerantly, dropping
+        // `general` (always default, not part of the settable set).
+        let names = stdout_str(&out)
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix('#'))
+            .filter(|n| !n.is_empty() && *n != "general")
+            .map(str::to_string)
+            .collect();
+        Ok(names)
+    }
+
     fn set_conversation_status(
         &mut self,
         channel: &ReadChannel,
