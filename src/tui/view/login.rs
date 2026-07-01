@@ -1,94 +1,145 @@
 //! Login screen (signed-out) — a bytewarden-style form over the
-//! figlet/starfield backdrop. Three fields (Username / Device / Paper key,
-//! the last masked unless F2-revealed) and two action buttons: "Log in"
-//! (non-interactive paper-key login) and "Log in in terminal" (cede the
-//! terminal to interactive `keybase login` for an already-provisioned device).
+//! figlet/starfield backdrop. Each field is a **labelled, full-width bordered
+//! input** (Username / Device name / Paper key, the last masked unless
+//! F2-revealed); below them two action buttons: "Log in" (non-interactive
+//! paper-key login) and "Log in in terminal" (cede the terminal to interactive
+//! `keybase login` for an already-provisioned device).
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Clear, Paragraph},
+    widgets::{Clear, Paragraph, Wrap},
 };
 
+use crate::domain::LineEditor;
 use crate::tui::app::{App, LoginField};
 use crate::tui::theme::Theme;
-use crate::tui::view::widgets::{
-    center_rect_abs, editor_spans, editor_spans_masked, rounded_block,
-};
+use crate::tui::view::widgets::{editor_spans, editor_spans_masked, rounded_block};
 use crate::tui::view::{action, logo};
-
-/// Label column width so the field values line up.
-const LABEL_W: usize = 13;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let t = app.theme.clone();
 
-    let layout = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(area);
-    let body = layout[0];
-    let bar = layout[1];
+    let outer = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(area);
+    let body = outer[0];
+    let bar = outer[1];
 
+    // Starfield + figlet backdrop across the whole body; the form box sits over
+    // its lower portion (cleared, opaque), leaving the wordmark up top.
     logo::render(frame, app, body);
 
     let focus = app.login_focus;
     let reveal = app.login_reveal;
 
-    let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw(""));
-    lines.push(field_line(
-        "Username:",
-        &app.login_username,
-        focus == LoginField::Username,
-        false,
-        None,
-        &t,
-    ));
-    lines.push(field_line(
-        "Device name:",
-        &app.login_device,
-        focus == LoginField::Device,
-        false,
-        None,
-        &t,
-    ));
-    lines.push(field_line(
-        "Paper key:",
-        &app.login_paperkey,
-        focus == LoginField::PaperKey,
-        !reveal,
-        Some(if reveal { "(F2: hide)" } else { "(F2: reveal)" }),
-        &t,
-    ));
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![
-        Span::raw("   "),
-        button("Log in", focus == LoginField::SubmitPaperkey, &t),
-        Span::raw("     "),
-        button("Log in in terminal", focus == LoginField::SubmitNative, &t),
-    ]));
-    lines.push(Line::raw(""));
-    lines.push(Line::from(Span::styled(
-        " New device → paper key · already provisioned (logged out) → terminal ",
-        Style::default().fg(t.dim),
-    )));
-
-    // Content-sized, responsive box (see widgets::center_rect_abs): wide enough
-    // for the fields, clamped to the terminal.
-    let inner_w: u16 = 66;
-    let box_w = inner_w.min(body.width.saturating_sub(4)).max(30);
-    let box_h = lines.len() as u16 + 2;
-    let panel = center_rect_abs(box_w, box_h, body);
+    // The Login block: comfortably wide, bottom-aligned so the wordmark keeps
+    // the top of the screen (like the reference design). Height fits its
+    // contents; it collapses gracefully on a short terminal.
+    let block_w = 72.min(body.width.saturating_sub(6)).max(40);
+    let block_h = FORM_ROWS.min(body.height);
+    let form = Rect {
+        x: body.x + (body.width - block_w) / 2,
+        y: body.y + body.height.saturating_sub(block_h),
+        width: block_w,
+        height: block_h,
+    };
+    frame.render_widget(Clear, form);
 
     let block = rounded_block(Style::default().fg(t.accent)).title(Span::styled(
         " Login ",
         Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
     ));
-    // Clear the panel so the starfield behind doesn't bleed through the gaps
-    // to the right of each field (the box is an opaque form over the backdrop).
-    frame.render_widget(Clear, panel);
-    frame.render_widget(Paragraph::new(lines).block(block), panel);
+    let inner = block.inner(form);
+    frame.render_widget(block, form);
+
+    // One row per element; the flexible spacer soaks up extra height on a tall
+    // terminal so the fields stay grouped at the top and the buttons/hint sit
+    // lower — the reference layout.
+    let rows = Layout::vertical([
+        Constraint::Length(1), // Username label
+        Constraint::Length(3), // Username input
+        Constraint::Length(1), // Device label
+        Constraint::Length(3), // Device input
+        Constraint::Length(1), // Paper key label
+        Constraint::Length(3), // Paper key input
+        Constraint::Min(0),    // flexible spacer
+        Constraint::Length(1), // buttons
+        Constraint::Length(1), // hint
+    ])
+    .horizontal_margin(2)
+    .split(inner);
+
+    render_label(
+        frame,
+        rows[0],
+        "Username",
+        None,
+        focus == LoginField::Username,
+        &t,
+    );
+    render_input(
+        frame,
+        rows[1],
+        &app.login_username,
+        focus == LoginField::Username,
+        false,
+        &t,
+    );
+    render_label(
+        frame,
+        rows[2],
+        "Device name",
+        None,
+        focus == LoginField::Device,
+        &t,
+    );
+    render_input(
+        frame,
+        rows[3],
+        &app.login_device,
+        focus == LoginField::Device,
+        false,
+        &t,
+    );
+    render_label(
+        frame,
+        rows[4],
+        "Paper key",
+        Some(if reveal { "(F2: hide)" } else { "(F2: reveal)" }),
+        focus == LoginField::PaperKey,
+        &t,
+    );
+    render_input(
+        frame,
+        rows[5],
+        &app.login_paperkey,
+        focus == LoginField::PaperKey,
+        !reveal,
+        &t,
+    );
+
+    // Buttons.
+    let buttons = Line::from(vec![
+        button("Log in", focus == LoginField::SubmitPaperkey, &t),
+        Span::raw("    "),
+        button("Log in in terminal", focus == LoginField::SubmitNative, &t),
+    ]);
+    frame.render_widget(
+        Paragraph::new(buttons).alignment(Alignment::Center),
+        rows[7],
+    );
+
+    // Hint (wraps so it never clips).
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "New device → paper key · already provisioned → Log in in terminal",
+            Style::default().fg(t.dim),
+        )))
+        .wrap(Wrap { trim: true }),
+        rows[8],
+    );
 
     // Bottom hint strip.
     frame.render_widget(
@@ -103,34 +154,54 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     action::render(frame, app, body);
 }
 
-/// One `label + value` form row. `masked` renders the value as `●` (secret);
-/// `suffix` appends a dim hint (e.g. the reveal toggle) after the value.
-fn field_line<'a>(
+/// Rows the form block needs at full size (borders + labels + bordered inputs
+/// + spacer + buttons + hint). Shrinks to the terminal when shorter.
+const FORM_ROWS: u16 = 19;
+
+/// A field label row: accent+bold when its field is focused, else dim. `hint`
+/// (e.g. the reveal toggle) is appended right-aligned-ish after the label.
+fn render_label(
+    frame: &mut Frame,
+    area: Rect,
     label: &str,
-    editor: &crate::domain::LineEditor,
+    hint: Option<&str>,
     focused: bool,
-    masked: bool,
-    suffix: Option<&'a str>,
     t: &Theme,
-) -> Line<'a> {
-    let label_style = if focused {
+) {
+    let style = if focused {
         Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(t.dim)
     };
-    let mut spans = vec![
-        Span::raw(" "),
-        Span::styled(format!("{label:<LABEL_W$}"), label_style),
-    ];
+    let mut spans = vec![Span::styled(format!("{label}:"), style)];
+    if let Some(h) = hint {
+        spans.push(Span::styled(format!("   {h}"), Style::default().fg(t.dim)));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// A full-width bordered input box holding the editor's value (masked for the
+/// paper key). The border lights up (accent) when focused, else recedes.
+fn render_input(
+    frame: &mut Frame,
+    area: Rect,
+    editor: &LineEditor,
+    focused: bool,
+    masked: bool,
+    t: &Theme,
+) {
+    let border = if focused { t.accent } else { t.inactive };
+    let blk = rounded_block(Style::default().fg(border));
+    let text_area = blk.inner(area);
+    frame.render_widget(blk, area);
+
+    let mut spans = vec![Span::raw(" ")];
     if masked {
         spans.extend(editor_spans_masked(editor, focused, t));
     } else {
         spans.extend(editor_spans(editor, focused, t));
     }
-    if let Some(s) = suffix {
-        spans.push(Span::styled(format!("   {s}"), Style::default().fg(t.dim)));
-    }
-    Line::from(spans)
+    frame.render_widget(Paragraph::new(Line::from(spans)), text_area);
 }
 
 /// A focus-highlighted action button (`[ label ]`).

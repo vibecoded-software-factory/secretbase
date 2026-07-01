@@ -185,10 +185,11 @@ reveals it. Focus (`App::login_focus`, [`LoginField`]) is shown by an accent
 label / highlighted button; `Tab`/`↑↓` cycle, `Enter` submits, `F2` reveals,
 `F5` retries status, `Esc`/`Ctrl+C` quit. As a **text-entry** screen it owns
 bare letters as typed text (the gradient rule), so its actions live on
-non-text keys. The box is content-sized via `widgets::center_rect_abs(w, h,
-…)` (clamped to the terminal); prefer that pair (with `wrapped_line_count`
-when wrapping) over a fixed-`width_pct` `center_rect` for any content-sized
-notice.
+non-text keys. Layout: the `Login` block is bottom-aligned (wordmark keeps the
+top), and a `Layout::vertical` splits its inner into label + 3-row bordered
+input per field, a flexible `Min(0)` spacer, the buttons row and a wrapped
+hint — so it fills a tall terminal like the reference and collapses gracefully
+on a short one.
 
 Login maps to the two real `keybase login` paths (see `CLI.md`): **Log in**
 runs the non-interactive **paper-key** login on the worker
@@ -433,10 +434,8 @@ decision.
 - `widgets::draw_confirm_popup(frame, area, theme, title, body, confirmed)` —
   the shared navigable y/n overlay.
 - `widgets::center_rect` / `rounded_block` / `help_line` — popup chrome.
-  `widgets::center_rect_abs(w, h, area)` is the **content-sized** sibling
-  (absolute dims clamped to the area, for short notices that must not clip on a
-  narrow terminal); `widgets::wrapped_line_count(text, w)` sizes such a box's
-  height around wrapped text.
+  `widgets::editor_spans` / `editor_spans_masked` render a `LineEditor` (the
+  latter as `●` for secret fields like the Login paper key).
 - `widgets::MODAL_WIDTH_PCT` / `widgets::MODAL_HEIGHT` — **the standard
   centered-modal geometry** (currently 80% wide × 22 rows). Every list / picker
   overlay imitates it via `center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, …)` so
