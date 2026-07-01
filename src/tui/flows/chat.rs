@@ -28,18 +28,20 @@ use crate::tui::worker::{InFlight, WorkerRequest};
 /// decode cost low when the user paginates back through history.
 pub const MESSAGES_PER_PAGE: u32 = 50;
 
-/// Drops standalone `reaction` messages. Keybase aggregates each reaction
-/// onto its target message's `reactions` field (which the view renders
-/// collapsed beneath the message), so the separate reaction event would
-/// only duplicate it as a stray line.
-/// Projects a freshly-read message list for display: drops standalone reaction
-/// events and **folds edits into their targets** (Discord-style `(edited)`).
-fn without_reaction_events(msgs: Vec<Message>) -> Vec<Message> {
+/// Projects a freshly-read message list for display:
+/// * drops standalone `reaction` events (Keybase aggregates each onto its
+///   target's `reactions` field, which the view renders collapsed beneath it);
+/// * **folds edits into their targets** (Discord-style `(edited)`);
+/// * **applies deletes** — drops the `delete` events and removes the deleted
+///   originals, so a deleted message disappears rather than leaving a stray
+///   `(deleted msg #N)` line at deletion time ([`crate::domain::fold_deletes`]).
+fn project_messages(msgs: Vec<Message>) -> Vec<Message> {
     let mut out: Vec<Message> = msgs
         .into_iter()
         .filter(|m| !matches!(m.content, crate::domain::MessageContent::Reaction { .. }))
         .collect();
     crate::domain::fold_edits(&mut out);
+    crate::domain::fold_deletes(&mut out);
     out
 }
 
@@ -582,7 +584,7 @@ pub fn handle_load_messages_response(
     match result {
         Ok((mut msgs, next)) => {
             msgs.reverse();
-            app.messages = without_reaction_events(msgs);
+            app.messages = project_messages(msgs);
             app.rebuild_conv_members(); // add the people who've spoken
             let n = app.messages.len();
             app.messages_next = next;
@@ -635,8 +637,18 @@ pub fn handle_load_messages_response(
 /// inbox conversation (recency + unread). A message for a conversation
 /// not yet in the inbox triggers a silent resync to pull it in.
 pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message) {
+    use crate::domain::MessageContent;
     let from_me = !app.identity.username.is_empty() && message.sender == app.identity.username;
     let viewing = app.open_conv_id.as_deref() == Some(conv_id.as_str());
+    // Control events (edit / delete / reaction) aren't "new content": they must
+    // not bump the conversation's recency or mark it unread — otherwise your own
+    // delete resurfaces the chat with a phantom unread badge.
+    let is_control = matches!(
+        &message.content,
+        MessageContent::Edit { .. }
+            | MessageContent::Delete { .. }
+            | MessageContent::Reaction { .. }
+    );
     let sent_at = message.sent_at;
     let sent_at_ms = message.sent_at_ms;
     let msg_id = message.id;
@@ -650,14 +662,7 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
         // it refuses if a read is already in flight. Plain new content
         // (text, attachment, system, pin, join, …) is appended in place,
         // which is instant and needs no round-trip.
-        use crate::domain::MessageContent;
-        let modifies_existing = matches!(
-            &message.content,
-            MessageContent::Edit { .. }
-                | MessageContent::Delete { .. }
-                | MessageContent::Reaction { .. }
-        );
-        if modifies_existing {
+        if is_control {
             request_load_messages(app);
         } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
             app.messages.push(message);
@@ -667,12 +672,13 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
 
     // 2. Incremental inbox bump (no full re-fetch).
     let known = if let Some(c) = app.conversations.iter_mut().find(|c| c.id == conv_id) {
-        if sent_at_ms > c.active_at_ms {
+        if !is_control && sent_at_ms > c.active_at_ms {
             c.active_at_ms = sent_at_ms;
             c.active_at = sent_at;
         }
-        // Mark unread unless it's our own message or we're viewing it.
-        if !from_me && !viewing {
+        // Mark unread unless it's our own message, we're viewing it, or it's a
+        // control event (edit/delete/reaction — not new content).
+        if !from_me && !viewing && !is_control {
             c.unread = true;
         }
         true
@@ -728,7 +734,7 @@ pub fn handle_load_older_messages_response(
     match result {
         Ok((mut older, next)) => {
             older.reverse();
-            older = without_reaction_events(older);
+            older = project_messages(older);
             let n = older.len();
             older.extend(std::mem::take(&mut app.messages));
             app.messages = older;

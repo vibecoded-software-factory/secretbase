@@ -269,6 +269,32 @@ pub fn fold_edits(messages: &mut Vec<Message>) {
     });
 }
 
+/// Applies `delete` events to a freshly-read message list.
+///
+/// A Keybase deletion is a **new** `delete` message (with its own recent
+/// timestamp) that names the deleted message ids; the original message is not
+/// returned as a placeholder. Rendering the delete event verbatim therefore put
+/// a stray `(deleted msg #N)` line at *deletion time* — a different, usually
+/// much later, position than the message it removed, which read as a phantom
+/// recent message.
+///
+/// Instead we **drop the delete events** and **remove any deleted originals**
+/// that happen to be in the loaded window (so their content can't leak). Net
+/// effect: a deleted message simply disappears from the conversation, like every
+/// other chat client — never a tombstone at the wrong spot.
+pub fn fold_deletes(messages: &mut Vec<Message>) {
+    use std::collections::HashSet;
+    let mut deleted: HashSet<u64> = HashSet::new();
+    for m in messages.iter() {
+        if let MessageContent::Delete { target_ids } = &m.content {
+            deleted.extend(target_ids.iter().copied());
+        }
+    }
+    messages.retain(|m| {
+        !matches!(m.content, MessageContent::Delete { .. }) && !deleted.contains(&m.id)
+    });
+}
+
 /// Lightweight reaction summary as exposed to the view layer (kept
 /// separate from raw [`MessageContent::Reaction`] envelopes so the
 /// view doesn't depend on the JSON shape).
@@ -314,6 +340,33 @@ mod tests {
         assert!(matches!(&m1.content, MessageContent::Text(b) if b == "hello (fixed again)"));
         let m2 = msgs.iter().find(|m| m.id == 2).unwrap();
         assert!(!m2.edited);
+    }
+
+    fn delete(id: u64, targets: &[u64]) -> Message {
+        let mut m = Message::default();
+        m.id = id;
+        m.content = MessageContent::Delete {
+            target_ids: targets.to_vec(),
+        };
+        m
+    }
+
+    #[test]
+    fn fold_deletes_drops_event_and_removes_target_if_present() {
+        // Target #1 is in the window; #99 is not (deleted from an unloaded page).
+        let mut msgs = vec![text(1, "secret"), text(2, "keep"), delete(50, &[1, 99])];
+        fold_deletes(&mut msgs);
+        // The delete event is gone, the deleted original #1 is gone (no content
+        // leak), and the untouched message survives.
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].id, 2);
+    }
+
+    #[test]
+    fn fold_deletes_noop_without_delete_events() {
+        let mut msgs = vec![text(1, "a"), text(2, "b")];
+        fold_deletes(&mut msgs);
+        assert_eq!(msgs.len(), 2);
     }
 
     #[test]
