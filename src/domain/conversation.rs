@@ -181,6 +181,31 @@ pub struct Conversation {
     pub creator_info: Option<CreatorInfo>,
 }
 
+impl Conversation {
+    /// Whether this is a **note-to-self** DM: a non-team conversation whose
+    /// only participant is `me`. Such a conversation can never be genuinely
+    /// unread — Keybase's `list` nonetheless flags it unread whenever your own
+    /// edits/deletes/reactions push the latest message id past your read
+    /// pointer, which shows up as a phantom badge.
+    pub fn is_self_dm(&self, me: &str) -> bool {
+        if self.channel.members_type.is_team() || me.is_empty() {
+            return false;
+        }
+        let mut any = false;
+        for u in self.channel.name.split(',') {
+            let u = u.trim();
+            if u.is_empty() {
+                continue;
+            }
+            any = true;
+            if u != me {
+                return false;
+            }
+        }
+        any
+    }
+}
+
 fn default_member_status() -> MemberStatus {
     MemberStatus::Active
 }
@@ -227,6 +252,25 @@ mod tests {
     #[test]
     fn members_type_label_team() {
         assert_eq!(MembersType::Team.label(), "TEAM");
+    }
+
+    #[test]
+    fn is_self_dm_detects_note_to_self() {
+        let dm = |name: &str, mt: &str| {
+            parse_conv(&format!(
+                r#"{{"id":"x","channel":{{"name":"{name}","members_type":"{mt}","topic_type":"chat"}},
+                    "unread":true,"active_at":1,"active_at_ms":1,"member_status":"active"}}"#
+            ))
+        };
+        // Only yourself → note-to-self.
+        assert!(dm("me", "impteamnative").is_self_dm("me"));
+        // A real DM with someone else → not.
+        assert!(!dm("me,alice", "impteamnative").is_self_dm("me"));
+        assert!(!dm("alice", "impteamnative").is_self_dm("me"));
+        // A team channel is never a self-DM.
+        assert!(!dm("me", "team").is_self_dm("me"));
+        // Empty self guards against false positives.
+        assert!(!dm("me", "impteamnative").is_self_dm(""));
     }
 
     #[test]

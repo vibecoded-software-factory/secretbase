@@ -117,6 +117,18 @@ pub fn handle_load_inbox_response(
             let n = load.conversations.len();
             let skipped_count = load.skipped.len();
             app.conversations = load.conversations;
+            // A note-to-self DM can never be genuinely unread — but Keybase's
+            // `list` marks it unread whenever your own edits/deletes/reactions
+            // advance the latest message id past your read pointer. Clear it so
+            // it doesn't show a phantom unread badge.
+            let me = app.identity.username.clone();
+            if !me.is_empty() {
+                for c in app.conversations.iter_mut() {
+                    if c.is_self_dm(&me) {
+                        c.unread = false;
+                    }
+                }
+            }
             app.inbox_error = None;
             app.rebuild_lowered();
             app.rebuild_filter();
