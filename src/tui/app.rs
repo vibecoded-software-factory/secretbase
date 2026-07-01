@@ -765,6 +765,31 @@ pub struct App {
     pub settings: Box<dyn SettingsPort>,
 }
 
+/// The current interaction mode, shown as an nvim-style `-- MODE --` badge in
+/// the status strip so the user always knows what a keystroke will do.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum UiMode {
+    /// Navigating a list — letters/keys act (or move), nothing is typed.
+    Normal,
+    /// Typing a chat message.
+    Compose,
+    /// Multi-selecting messages to act on them.
+    Select,
+    /// Typing into a search / filter box.
+    Search,
+}
+
+impl UiMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            UiMode::Normal => "NORMAL",
+            UiMode::Compose => "COMPOSE",
+            UiMode::Select => "SELECT",
+            UiMode::Search => "SEARCH",
+        }
+    }
+}
+
 impl App {
     /// Builds the initial state. The composition root (`main.rs`) is
     /// the only intended caller.
@@ -1218,6 +1243,46 @@ impl App {
     /// locally muted. Every unread surface (the `●` dot, the bold, the unread
     /// count, the Unread filter, the switcher's Unread section) uses this so a
     /// muted conversation stops demanding attention without leaving the inbox.
+    /// The current [`UiMode`] for the status-strip badge, derived from the
+    /// active screen + focus + sub-state.
+    pub fn ui_mode(&self) -> UiMode {
+        match self.screen {
+            // Text-entry overlays.
+            Screen::NewConversation
+            | Screen::UnhideConversation
+            | Screen::SearchGlobal
+            | Screen::React
+            | Screen::QuickSwitcher => UiMode::Search,
+            // Modal browsers: Search while an inline text mode is open, else Normal.
+            Screen::ChannelBrowser => {
+                if self.channel_creating || self.channel_renaming.is_some() {
+                    UiMode::Search
+                } else {
+                    UiMode::Normal
+                }
+            }
+            Screen::Members => {
+                if self.member_adding {
+                    UiMode::Search
+                } else {
+                    UiMode::Normal
+                }
+            }
+            Screen::Inbox => {
+                if self.selected_msg_idx.is_some() {
+                    UiMode::Select
+                } else {
+                    match self.focus {
+                        Focus::Search | Focus::ChatSearch => UiMode::Search,
+                        Focus::Chat if self.open_conv_id.is_some() => UiMode::Compose,
+                        _ => UiMode::Normal,
+                    }
+                }
+            }
+            _ => UiMode::Normal,
+        }
+    }
+
     pub fn conv_is_unread(&self, conv: &Conversation) -> bool {
         conv.unread && !self.muted.contains(&conv.id)
     }

@@ -7,9 +7,10 @@ use crossterm::event::{MouseEvent, MouseEventKind};
 
 use crate::tui::app::App;
 use crate::tui::flows::chat;
+use crate::tui::input::common::clamp_move;
 use crate::tui::input::conversation;
 use crate::tui::mouse_areas::hit_test;
-use crate::tui::screens::Focus;
+use crate::tui::screens::{Focus, Screen};
 use crate::tui::view::widgets::table_row_at;
 
 pub fn handle(app: &mut App, ev: MouseEvent) {
@@ -17,8 +18,47 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     if app.mouse_areas.frame_size != app.last_terminal_size {
         return;
     }
-    // Everything lives on the unified inbox/home screen now.
-    handle_home(app, ev);
+    // The wheel scrolls whatever is active — position-aware across the home's
+    // panes, whole-screen on a single-list overlay. Clicks only mean something
+    // on the home screen for now.
+    let delta = match ev.kind {
+        MouseEventKind::ScrollUp => -1isize,
+        MouseEventKind::ScrollDown => 1isize,
+        _ => {
+            if app.screen == Screen::Inbox {
+                handle_home(app, ev);
+            }
+            return;
+        }
+    };
+    match app.screen {
+        Screen::Inbox => handle_home(app, ev), // position-aware pane scroll
+        Screen::Teams => {
+            app.teams_selected = clamp_move(app.teams_selected, delta, app.teams.len());
+        }
+        Screen::ChannelBrowser => chat::channel_browser_move(app, delta),
+        Screen::Members => chat::members_move(app, delta),
+        Screen::SearchGlobal => {
+            let len = app.search_global_results.len();
+            app.search_global_selected = clamp_move(app.search_global_selected, delta, len);
+        }
+        Screen::React => {
+            let len = app.filtered_emoji_indices().len();
+            app.react_selected = clamp_move(app.react_selected, delta, len);
+        }
+        Screen::QuickSwitcher => {
+            let len = app.switcher_selectable().len();
+            app.switcher_selected = clamp_move(app.switcher_selected, delta, len);
+        }
+        Screen::Help => {
+            app.help_scroll = if delta < 0 {
+                app.help_scroll.saturating_sub(3)
+            } else {
+                app.help_scroll.saturating_add(3)
+            };
+        }
+        _ => {}
+    }
 }
 
 fn handle_home(app: &mut App, ev: MouseEvent) {

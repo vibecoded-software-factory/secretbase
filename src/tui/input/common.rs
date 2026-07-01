@@ -17,6 +17,50 @@ pub fn clamp_move(current: usize, delta: isize, len: usize) -> usize {
     (current as isize + delta).clamp(0, len as isize - 1) as usize
 }
 
+/// The single router for **universal list-movement keys**, so every list
+/// (inbox tree, teams, channels, members, search results, reaction picker,
+/// quick switcher, help) gets identical coverage and can't drift:
+/// `↑`/`k`, `↓`/`j`, `PgUp`/`PgDn` (by [`PAGE_STEP`]), `g`/`Home` (top),
+/// `G`/`End` (bottom).
+///
+/// Returns `true` if it consumed the key (after invoking `set` with the new
+/// index), `false` otherwise so the caller can match its own keys. Handlers
+/// call this right after the busy guard. It moves the selection only — screen-
+/// specific keys (Enter, Esc, `/`, actions) stay in each handler.
+///
+/// [`PAGE_STEP`]: crate::tui::app::PAGE_STEP
+pub fn list_nav(key: &KeyEvent, len: usize, sel: usize, set: impl FnOnce(usize)) -> bool {
+    let page = crate::tui::app::PAGE_STEP as isize;
+    let new = match key.code {
+        KeyCode::Up | KeyCode::Char('k') => clamp_move(sel, -1, len),
+        KeyCode::Down | KeyCode::Char('j') => clamp_move(sel, 1, len),
+        KeyCode::PageUp => clamp_move(sel, -page, len),
+        KeyCode::PageDown => clamp_move(sel, page, len),
+        KeyCode::Home | KeyCode::Char('g') => 0,
+        KeyCode::End | KeyCode::Char('G') => len.saturating_sub(1),
+        _ => return false,
+    };
+    set(new);
+    true
+}
+
+/// Movement router for lists that sit **behind a text input** (the global
+/// search, reaction picker, quick switcher): only `↑`/`↓` and `PgUp`/`PgDn`
+/// move the selection — the letter aliases (`j/k/g/G`) would be typed into the
+/// query, and `Home`/`End` are the text cursor. Same contract as [`list_nav`].
+pub fn list_nav_arrows(key: &KeyEvent, len: usize, sel: usize, set: impl FnOnce(usize)) -> bool {
+    let page = crate::tui::app::PAGE_STEP as isize;
+    let new = match key.code {
+        KeyCode::Up => clamp_move(sel, -1, len),
+        KeyCode::Down => clamp_move(sel, 1, len),
+        KeyCode::PageUp => clamp_move(sel, -page, len),
+        KeyCode::PageDown => clamp_move(sel, page, len),
+        _ => return false,
+    };
+    set(new);
+    true
+}
+
 /// Next focus in `order` from `current`, wrapping. `forward = false`
 /// goes backwards (Shift+Tab).
 pub fn cycle_focus(order: &[Focus], current: Focus, forward: bool) -> Focus {

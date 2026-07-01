@@ -185,6 +185,17 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),
         KeyCode::Down | KeyCode::Char('j') => chat::select_move_down(app),
+        KeyCode::PageUp => {
+            if let Some(i) = app.selected_msg_idx {
+                app.selected_msg_idx = Some(i.saturating_sub(crate::tui::app::PAGE_STEP));
+            }
+        }
+        KeyCode::PageDown => {
+            let max = app.messages.len().saturating_sub(1);
+            if let Some(i) = app.selected_msg_idx {
+                app.selected_msg_idx = Some((i + crate::tui::app::PAGE_STEP).min(max));
+            }
+        }
         KeyCode::Home | KeyCode::Char('g') => app.selected_msg_idx = Some(0),
         KeyCode::End | KeyCode::Char('G') => {
             app.selected_msg_idx = Some(app.messages.len().saturating_sub(1));

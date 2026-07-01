@@ -685,7 +685,33 @@ fn fit_segments(s: &str, max: usize) -> String {
 /// flight (or just finished) it shows the spinner/✓/✗ message full
 /// width; idle, it shows `footer_hint` on the left with `F1 help`
 /// anchored right.
-pub fn draw_status_strip(frame: &mut Frame, app: &App, area: Rect, footer_hint: &str) {
+pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_hint: &str) {
+    use crate::tui::app::UiMode;
+    // nvim-style mode badge on the far left — always visible, so the user knows
+    // what a keystroke will do.
+    let mode = app.ui_mode();
+    let mode_color = match mode {
+        UiMode::Normal => app.theme.accent,
+        UiMode::Compose => app.theme.success,
+        UiMode::Select => app.theme.conv_unread,
+        UiMode::Search => app.theme.conv_dm,
+    };
+    let badge = format!("-- {} -- ", mode.label());
+    let badge_w = (badge.chars().count() as u16).min(full_area.width);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            badge,
+            Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
+        ))),
+        full_area,
+    );
+    // Everything else lives to the right of the badge.
+    let area = Rect {
+        x: full_area.x + badge_w,
+        y: full_area.y,
+        width: full_area.width.saturating_sub(badge_w),
+        height: full_area.height,
+    };
     let feedback = match &app.action_state {
         ActionState::Idle => None,
         ActionState::Running(msg) => {
