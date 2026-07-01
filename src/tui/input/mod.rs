@@ -168,6 +168,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::NewConversation => popups::new_conversation(app, key),
         Screen::UnhideConversation => popups::unhide_conversation(app, key),
         Screen::ChannelBrowser => popups::channel_browser(app, key),
+        Screen::Members => popups::members(app, key),
         Screen::SearchGlobal => popups::search_global(app, key),
         Screen::ConfirmDeleteMessage => popups::confirm_delete_message(app, key),
         Screen::React => popups::react(app, key),

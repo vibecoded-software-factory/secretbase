@@ -11,6 +11,7 @@ pub mod help;
 pub mod inbox;
 pub mod login;
 pub mod logo;
+pub mod members;
 pub mod new_conversation;
 pub mod popups;
 pub mod search_global;
@@ -55,6 +56,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::NewConversation
         | Screen::UnhideConversation
         | Screen::ChannelBrowser
+        | Screen::Members
         | Screen::SearchGlobal
         | Screen::ConfirmDeleteMessage
         | Screen::React => Screen::Inbox,
@@ -137,6 +139,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::NewConversation => new_conversation::draw(frame, app),
         Screen::UnhideConversation => unhide::draw(frame, app),
         Screen::ChannelBrowser => channels::draw(frame, app),
+        Screen::Members => members::draw(frame, app),
         Screen::SearchGlobal => search_global::draw(frame, app),
         Screen::React => popups::react_input(frame, app),
         Screen::QuickSwitcher => popups::quick_switcher(frame, app),

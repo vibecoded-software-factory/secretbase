@@ -39,7 +39,7 @@ use std::panic::AssertUnwindSafe;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread::JoinHandle;
 
-use crate::domain::{Emoji, IdentityInfo, InboxHit, Message};
+use crate::domain::{ChatMember, Emoji, IdentityInfo, InboxHit, Message};
 use crate::ports::keybase::{ListConversationsOk, ListTeamsOk, ReadChannel};
 use crate::ports::{KeybaseError, KeybasePort};
 
@@ -137,6 +137,18 @@ pub enum WorkerRequest {
     LeaveChannel {
         channel: ReadChannel,
     },
+    /// List the members of a conversation / channel (`listmembers`).
+    LoadMembers {
+        channel: ReadChannel,
+    },
+    AddToChannel {
+        channel: ReadChannel,
+        usernames: Vec<String>,
+    },
+    RemoveFromChannel {
+        channel: ReadChannel,
+        usernames: Vec<String>,
+    },
     RenameChannel {
         team: String,
         old: String,
@@ -218,6 +230,9 @@ pub enum WorkerResponse {
     LoadChannels(Result<ListConversationsOk, KeybaseError>),
     JoinChannel(Result<(), KeybaseError>),
     LeaveChannel(Result<(), KeybaseError>),
+    LoadMembers(Result<Vec<ChatMember>, KeybaseError>),
+    AddToChannel(Result<(), KeybaseError>),
+    RemoveFromChannel(Result<(), KeybaseError>),
     RenameChannel(Result<(), KeybaseError>),
     DeleteChannel(Result<(), KeybaseError>),
     DefaultChannels(Result<Vec<String>, KeybaseError>),
@@ -288,6 +303,16 @@ pub enum InFlight {
     /// Leave a team channel; `topic` is the channel name (for the toast).
     LeaveChannel {
         topic: String,
+    },
+    /// Load the members of a channel/conversation for the Members view.
+    LoadMembers,
+    /// Add `count` members to a channel; count drives the toast.
+    AddToChannel {
+        count: usize,
+    },
+    /// Remove a member from a channel; `username` for the toast.
+    RemoveFromChannel {
+        username: String,
     },
     /// Rename a channel; `topic` is the new name (for the toast).
     RenameChannel {
@@ -506,6 +531,19 @@ mod tests {
         fn leave_channel(&mut self, _: &ReadChannel) -> Result<(), KeybaseError> {
             Ok(())
         }
+        fn list_members(&mut self, _: &ReadChannel) -> Result<Vec<ChatMember>, KeybaseError> {
+            Ok(Vec::new())
+        }
+        fn add_to_channel(&mut self, _: &ReadChannel, _: &[String]) -> Result<(), KeybaseError> {
+            Ok(())
+        }
+        fn remove_from_channel(
+            &mut self,
+            _: &ReadChannel,
+            _: &[String],
+        ) -> Result<(), KeybaseError> {
+            Ok(())
+        }
         fn rename_channel(&mut self, _: &str, _: &str, _: &str) -> Result<(), KeybaseError> {
             Ok(())
         }
@@ -646,6 +684,9 @@ mod tests {
                 Self::LoadChannels(_) => f.write_str("LoadChannels(..)"),
                 Self::JoinChannel(r) => write!(f, "JoinChannel({r:?})"),
                 Self::LeaveChannel(r) => write!(f, "LeaveChannel({r:?})"),
+                Self::LoadMembers(_) => f.write_str("LoadMembers(..)"),
+                Self::AddToChannel(r) => write!(f, "AddToChannel({r:?})"),
+                Self::RemoveFromChannel(r) => write!(f, "RemoveFromChannel({r:?})"),
                 Self::RenameChannel(r) => write!(f, "RenameChannel({r:?})"),
                 Self::DeleteChannel(r) => write!(f, "DeleteChannel({r:?})"),
                 Self::DefaultChannels(r) => write!(f, "DefaultChannels({r:?})"),
@@ -739,6 +780,19 @@ fn run_worker(
             }
             WorkerRequest::LeaveChannel { channel } => {
                 WorkerResponse::LeaveChannel(run_caught(|| keybase.leave_channel(&channel)))
+            }
+            WorkerRequest::LoadMembers { channel } => {
+                WorkerResponse::LoadMembers(run_caught(|| keybase.list_members(&channel)))
+            }
+            WorkerRequest::AddToChannel { channel, usernames } => {
+                WorkerResponse::AddToChannel(run_caught(|| {
+                    keybase.add_to_channel(&channel, &usernames)
+                }))
+            }
+            WorkerRequest::RemoveFromChannel { channel, usernames } => {
+                WorkerResponse::RemoveFromChannel(run_caught(|| {
+                    keybase.remove_from_channel(&channel, &usernames)
+                }))
             }
             WorkerRequest::RenameChannel { team, old, new } => {
                 WorkerResponse::RenameChannel(run_caught(|| {

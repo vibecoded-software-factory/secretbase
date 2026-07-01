@@ -32,6 +32,9 @@ pub enum Screen {
     /// Channel browser (Alt+K on a team) — lists every channel of a team
     /// (`listconvsonname`) to join / open / leave.
     ChannelBrowser,
+    /// Members view (`m` in the channel browser, or `Alt+P` on an open team
+    /// channel) — lists a conversation's members (`listmembers`) to add/remove.
+    Members,
     /// Server-side search popup (Ctrl+G) — input + results list.
     SearchGlobal,
     /// Confirm-delete popup for a message inside the open
