@@ -252,21 +252,18 @@ pub fn fold_edits(messages: &mut Vec<Message>) {
     if edits.is_empty() {
         return;
     }
-    // Apply edits to the targets that are actually present, tracking which
-    // ones we folded so we only drop those edit envelopes (orphan edits whose
-    // target isn't loaded stay as-is).
-    let mut folded: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    // Apply each edit to its target message, if that target is in the window.
     for m in messages.iter_mut() {
         if let Some((_, body)) = edits.get(&m.id) {
             m.content = MessageContent::Text(body.clone());
             m.edited = true;
-            folded.insert(m.id);
         }
     }
-    messages.retain(|m| match &m.content {
-        MessageContent::Edit { target_id, .. } => !folded.contains(target_id),
-        _ => true,
-    });
+    // Drop **every** edit envelope: a folded one is already applied above, and
+    // an orphan edit (target not in the loaded window) would otherwise render
+    // as a phantom `(edited msg #N)` line at the *edit's* recent position —
+    // exactly the stray-tombstone problem we fixed for deletes.
+    messages.retain(|m| !matches!(m.content, MessageContent::Edit { .. }));
 }
 
 /// Applies `delete` events to a freshly-read message list.
@@ -370,13 +367,16 @@ mod tests {
     }
 
     #[test]
-    fn fold_edits_keeps_edit_when_target_missing() {
+    fn fold_edits_drops_orphan_edit_when_target_missing() {
         let mut msgs = vec![text(2, "world"), edit(3, 99, "orphan")];
         fold_edits(&mut msgs);
-        // The orphan edit (target not loaded) is left untouched.
-        assert_eq!(msgs.len(), 2);
+        // The orphan edit (target #99 not loaded) is dropped, not shown as a
+        // phantom "(edited msg #99)" line — only the real message survives.
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].id, 2);
         assert!(
-            msgs.iter()
+            !msgs
+                .iter()
                 .any(|m| matches!(m.content, MessageContent::Edit { .. }))
         );
     }
