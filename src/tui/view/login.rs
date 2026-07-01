@@ -1,83 +1,107 @@
-//! Login screen (signed-out) — a bytewarden-style form over the
-//! figlet/starfield backdrop. Each field is a **labelled, full-width bordered
-//! input** (Username / Device name / Paper key, the last masked unless
-//! F2-revealed); below them two action buttons: "Log in" (non-interactive
-//! paper-key login) and "Log in in terminal" (cede the terminal to interactive
-//! `keybase login` for an already-provisioned device).
+//! Login screen (signed-out) — a form over the figlet/starfield backdrop.
+//! Each field is a labelled, full-width bordered input (Username / Device name
+//! / Paper key, the last masked unless F2-revealed); below them two action
+//! buttons: "Log in" (non-interactive paper-key login) and "Log in in terminal"
+//! (cede the terminal to interactive `keybase login` for a provisioned device).
 
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Padding, Paragraph},
 };
 
 use crate::domain::LineEditor;
+use crate::tui::action::ActionState;
 use crate::tui::app::{App, LoginField};
 use crate::tui::theme::Theme;
+use crate::tui::view::starfield::fill_stars;
 use crate::tui::view::widgets::{editor_spans, editor_spans_masked, rounded_block};
-use crate::tui::view::{action, logo};
+use crate::tui::view::{logo, splash};
 
-/// Rows the content-sized `Login` block occupies (borders + top pad + three
-/// label/bordered-input pairs + spacer + buttons + hint).
-const FORM_ROWS: u16 = 18;
+/// Fixed form-block height: padding(1) + three label(1)+input(3) pairs +
+/// spacer(1) + buttons(1) + hint(1) + feedback strip(2) + borders(2).
+const FORM_ROWS: u16 = 20;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let area = frame.area();
+    // While a login / status check is in flight the form has nothing
+    // actionable — show the same centered logo + spinner as the boot splash.
+    if matches!(app.action_state, ActionState::Running(_)) {
+        splash::draw(frame, app);
+        return;
+    }
+
     let t = app.theme.clone();
+    let area = frame.area();
 
-    let outer = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(area);
-    let body = outer[0];
-    let bar = outer[1];
+    // Stars above the form (2/3) and below (1/3); the hint strip at the bottom.
+    let c = Layout::vertical([
+        Constraint::Fill(2),
+        Constraint::Length(FORM_ROWS),
+        Constraint::Fill(1),
+        Constraint::Length(1),
+    ])
+    .split(area);
+    let (logo_chunk, form_chunk, lower_chunk, bar_chunk) = (c[0], c[1], c[2], c[3]);
 
-    // Starfield + figlet backdrop across the whole body; the form sits over its
-    // lower portion (cleared, opaque), leaving the wordmark up top.
-    logo::render(frame, app, body);
+    if logo_chunk.height >= 6 {
+        logo::render(frame, app, logo_chunk);
+    } else {
+        fill_stars(frame, logo_chunk, &t);
+    }
+    fill_stars(frame, lower_chunk, &t);
+
+    // Center the form; fill the gutters either side with starfield so the
+    // backdrop is continuous without the panel losing readability.
+    let form_w = area.width.saturating_sub(8).clamp(44, 72);
+    let fr = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(form_w),
+        Constraint::Fill(1),
+    ])
+    .split(form_chunk);
+    fill_stars(frame, fr[0], &t);
+    fill_stars(frame, fr[2], &t);
+    let form_area = fr[1];
+
+    let border = if matches!(app.action_state, ActionState::Error(_)) {
+        t.error
+    } else {
+        t.accent
+    };
+    let block = Block::default()
+        .title(Span::styled(
+            " Login ",
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(border))
+        .padding(Padding::horizontal(2));
+    let inner = block.inner(form_area);
+    frame.render_widget(block, form_area);
 
     let focus = app.login_focus;
     let reveal = app.login_reveal;
-
-    // The Login block is **content-sized** and placed in the lower ~58% of the
-    // body, top-aligned so it starts just below the wordmark (the reference
-    // layout) — never stretched to fill, so there's no dead space inside.
-    let block_w = (body.width * 82 / 100).clamp(40, body.width.saturating_sub(4));
-    let zones = Layout::vertical([Constraint::Percentage(42), Constraint::Fill(1)]).split(body);
-    let fz = zones[1];
-    let block_h = FORM_ROWS.min(fz.height);
-    let form = Rect {
-        x: fz.x + fz.width.saturating_sub(block_w) / 2,
-        y: fz.y,
-        width: block_w,
-        height: block_h,
-    };
-    frame.render_widget(Clear, form);
-
-    let block = rounded_block(Style::default().fg(t.accent)).title(Span::styled(
-        " Login ",
-        Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-    ));
-    let inner = block.inner(form);
-    frame.render_widget(block, form);
-
-    let rows = Layout::vertical([
-        Constraint::Length(1), // top padding
-        Constraint::Length(1), // Username label
-        Constraint::Length(3), // Username input
-        Constraint::Length(1), // Device label
-        Constraint::Length(3), // Device input
-        Constraint::Length(1), // Paper key label
-        Constraint::Length(3), // Paper key input
-        Constraint::Length(1), // spacer
-        Constraint::Length(1), // buttons
-        Constraint::Length(1), // hint
+    let f = Layout::vertical([
+        Constraint::Length(1), // [0] padding
+        Constraint::Length(1), // [1] username label
+        Constraint::Length(3), // [2] username input
+        Constraint::Length(1), // [3] device label
+        Constraint::Length(3), // [4] device input
+        Constraint::Length(1), // [5] paper key label
+        Constraint::Length(3), // [6] paper key input
+        Constraint::Length(1), // [7] spacer
+        Constraint::Length(1), // [8] buttons
+        Constraint::Length(1), // [9] hint
+        Constraint::Length(2), // [10] feedback strip
     ])
-    .horizontal_margin(2)
     .split(inner);
 
     render_label(
         frame,
-        rows[1],
+        f[1],
         "Username",
         None,
         focus == LoginField::Username,
@@ -85,7 +109,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
     render_input(
         frame,
-        rows[2],
+        f[2],
         &app.login_username,
         focus == LoginField::Username,
         false,
@@ -93,7 +117,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
     render_label(
         frame,
-        rows[3],
+        f[3],
         "Device name",
         None,
         focus == LoginField::Device,
@@ -101,7 +125,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
     render_input(
         frame,
-        rows[4],
+        f[4],
         &app.login_device,
         focus == LoginField::Device,
         false,
@@ -109,7 +133,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
     render_label(
         frame,
-        rows[5],
+        f[5],
         "Paper key",
         Some(if reveal { "(F2: hide)" } else { "(F2: reveal)" }),
         focus == LoginField::PaperKey,
@@ -117,7 +141,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
     render_input(
         frame,
-        rows[6],
+        f[6],
         &app.login_paperkey,
         focus == LoginField::PaperKey,
         !reveal,
@@ -132,28 +156,55 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             button("Log in in terminal", focus == LoginField::SubmitNative, &t),
         ]))
         .alignment(Alignment::Center),
-        rows[8],
+        f[8],
     );
 
-    // A short, centered hint that always fits — which button to pick.
+    // Short, centered hint — which button to pick.
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
             "new device → paper key · already logged out → terminal",
             Style::default().fg(t.dim),
         )))
         .alignment(Alignment::Center),
-        rows[9],
+        f[9],
     );
 
-    render_footer(frame, bar, &t);
+    // Feedback strip: a top-bordered separator carrying the last error / result.
+    render_strip(frame, f[10], app, &t);
 
-    // Spinner / toast (e.g. "Logging in…", errors) over the body.
-    action::render(frame, app, body);
+    // Bottom hint bar, split left (navigation) / right (F1 help).
+    render_bar(frame, bar_chunk, &t);
 }
 
-/// Bottom hint strip, split left (navigation) / right (`F1 help`) like the
-/// reference — so neither half runs off the edge.
-fn render_footer(frame: &mut Frame, bar: Rect, t: &Theme) {
+/// The in-form feedback row: a `─` separator with the last error/result (blank
+/// when idle), matching the rest of the form's chrome.
+fn render_strip(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
+    let sep = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(t.muted));
+    let line = match &app.action_state {
+        ActionState::Error(msg) => Line::from(vec![
+            Span::styled(
+                " ✕ ",
+                Style::default().fg(t.error).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(msg.clone(), Style::default().fg(t.error)),
+        ]),
+        ActionState::Done(msg) => Line::from(vec![
+            Span::styled(
+                " ✓ ",
+                Style::default().fg(t.success).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(msg.clone(), Style::default().fg(t.success)),
+        ]),
+        _ => Line::from(""),
+    };
+    frame.render_widget(Paragraph::new(line).block(sep), area);
+}
+
+/// Bottom hint strip, split left (navigation) / right (`F1 help`) so neither
+/// half runs off the edge.
+fn render_bar(frame: &mut Frame, bar: Rect, t: &Theme) {
     let cols = Layout::horizontal([Constraint::Fill(1), Constraint::Length(9)]).split(bar);
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(

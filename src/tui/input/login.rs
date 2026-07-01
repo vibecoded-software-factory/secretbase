@@ -1,6 +1,6 @@
 //! Input handling for the Login screen (signed-out).
 //!
-//! A bytewarden-style form: Username / Device / Paper key fields plus two
+//! A form: Username / Device / Paper key fields plus two
 //! action buttons ("Log in" = paper-key login, "Log in in terminal" =
 //! interactive native login). Because the fields are **text inputs** they own
 //! bare letters as typed text, so the screen's actions live on non-text keys

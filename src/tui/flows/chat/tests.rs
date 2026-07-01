@@ -2649,7 +2649,7 @@ fn buffer_text(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>) -> S
 
 #[test]
 fn login_form_renders_at_every_supported_width() {
-    // The login screen is a content-sized form (bytewarden-style). It must
+    // The login screen is a form. It must
     // render its fields + buttons without panicking or clipping the labels at
     // every width the app draws it (≥ 70×18, the too-small guard; below that
     // the resize notice shows instead of the login).

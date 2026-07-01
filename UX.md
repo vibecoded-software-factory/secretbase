@@ -176,7 +176,7 @@ the hit's `ctime`, formatted by `message_time`) for context. `↑/↓` pick,
 `Enter` jumps to + highlights the message (via `pending_search_jump`,
 paginating older if needed), `Esc` closes. The **login** screen
 (`view::login`) is the signed-out exception: it omits the identity bar and
-shows a **bytewarden-style form** over the figlet/starfield backdrop — a
+shows a **login form** over the figlet/starfield backdrop — a
 rounded `Login` block (cleared so the starfield doesn't bleed through) with
 three fields (**Username** / **Device name** / **Paper key**) and two action
 buttons (**Log in** / **Log in in terminal**). Fields render via
@@ -185,11 +185,16 @@ reveals it. Focus (`App::login_focus`, [`LoginField`]) is shown by an accent
 label / highlighted button; `Tab`/`↑↓` cycle, `Enter` submits, `F2` reveals,
 `F5` retries status, `Esc`/`Ctrl+C` quit. As a **text-entry** screen it owns
 bare letters as typed text (the gradient rule), so its actions live on
-non-text keys. Layout: the `Login` block is bottom-aligned (wordmark keeps the
-top), and a `Layout::vertical` splits its inner into label + 3-row bordered
-input per field, a flexible `Min(0)` spacer, the buttons row and a wrapped
-hint — so it fills a tall terminal like the reference and collapses gracefully
-on a short one.
+non-text keys. Layout: a whole-screen `Layout::vertical([Fill(2), Length(20),
+Fill(1), Length(1)])` puts the wordmark up top (2/3 of the stars above the
+form, 1/3 below) with the form block in a fixed 20-row chunk and the hint bar
+at the bottom; `fill_stars` paints every non-form chunk (incl. the gutters
+either side of the centred `width−8`, clamped `[44,72]`, form) so the backdrop
+is continuous. Inside, a `Layout::vertical` gives each field a label row + a
+3-row bordered input, then the buttons, a short centred hint, and a
+top-bordered **feedback strip** carrying the last error/result. While a login
+or status check is `Running`, the screen shows the shared `splash` (spinner)
+instead of the form.
 
 Login maps to the two real `keybase login` paths (see `CLI.md`): **Log in**
 runs the non-interactive **paper-key** login on the worker

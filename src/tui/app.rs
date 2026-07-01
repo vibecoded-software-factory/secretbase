@@ -34,7 +34,7 @@ pub const INBOX_VIEWPORT_ROWS: usize = 20;
 /// Step size in rows for PgUp/PgDn navigation.
 pub const PAGE_STEP: usize = 10;
 
-/// Focusable element on the **Login** screen (bytewarden-style form). Tab /
+/// Focusable element on the **Login** screen form. Tab /
 /// Shift+Tab cycle through the three fields then the two action buttons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoginField {
