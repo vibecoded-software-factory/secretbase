@@ -1,8 +1,8 @@
 //! Per-screen Ratatui renderers.
 //!
 //! `draw` is the single entry point called from the run loop. It draws
-//! the active base screen and overlays any popup on top, mirroring
-//! jewel's layout system (`split_main` stack + `titled_block`).
+//! the active base screen and overlays any popup on top, via the
+//! `split_main` stack + `titled_block` layout system.
 
 pub mod action;
 pub mod channels;
@@ -175,9 +175,9 @@ fn draw_screen(frame: &mut Frame, app: &mut App, screen: Screen) {
 }
 
 /// Renders the centred "terminal too small" notice — the only thing we
-/// draw below [`MIN_W`]/[`MIN_H`]. Shared design with bytewarden and
-/// jewel: an accent-error title, a dim line stating the required and
-/// current size, and a `Ctrl+C to quit` hint, vertically centred.
+/// draw below [`MIN_W`]/[`MIN_H`]: an accent-error title, a dim line
+/// stating the required and current size, and a `Ctrl+C to quit` hint,
+/// vertically centred.
 fn draw_too_small(frame: &mut Frame, area: Rect, theme: &crate::tui::theme::Theme) {
     let header = Line::from(Span::styled(
         "Terminal too small",

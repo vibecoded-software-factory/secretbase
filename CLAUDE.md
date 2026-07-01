@@ -102,6 +102,21 @@ JSON (`keybase chat api` / `keybase team api`); there is **no** Keybase
 SDK dependency. Keybase owns all cryptography — this app only wraps the
 CLI.
 
+## No cross-project references (hard rule)
+
+secretbase is a standalone public repository. **Never name or cite a sibling
+project** — jewel, bytewarden, termcord, or any other repo — in code,
+comments, commit messages, PR bodies, or docs. Describe every pattern as
+*this app's own* ("the `split_main` stack", "the shared confirm overlay"),
+not as "ported from X" or "mirrors X". Naming another repo in a public
+project leaks the private multi-project setup and reads as unprofessional.
+
+The **only** exception is a real, declared dependency or a shared component we
+actually import and use — cite that precisely by its published identity (the
+crate name + version from `Cargo.toml`), never by the sibling repo it also
+happens to live in. You may still *learn from* a sibling project's approach;
+just don't reference it in what ships here.
+
 ## Before every commit (no exceptions)
 
 ```sh

@@ -1,7 +1,6 @@
 //! Shared widgets — the single list/table renderer, identity bar,
 //! command-log panel, status strip, search box, line-editor spans and
-//! the y/n confirm overlay. Ported from jewel so all three TUIs share
-//! the same chrome and implementation.
+//! the y/n confirm overlay — the shared chrome every screen reuses.
 
 use ratatui::{
     Frame,

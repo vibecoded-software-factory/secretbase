@@ -1,8 +1,7 @@
 //! Shared input helpers — the mechanics every per-screen handler used
 //! to repeat (list movement, focus cycling, the search box, line-editor
 //! key routing, and the y/n confirm overlay). Handlers stay thin and
-//! consistent by delegating here. Ported from jewel so all three TUIs
-//! share the same input plumbing.
+//! consistent by delegating here — the shared input plumbing.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 

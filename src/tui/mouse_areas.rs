@@ -39,7 +39,7 @@ pub struct MouseAreas {
 
 impl MouseAreas {
     /// Resets every rect and stamps the frame size. Called once at the
-    /// top of each render (mirrors jewel's `MouseAreas::reset`).
+    /// top of each render.
     pub fn reset(&mut self, width: u16, height: u16) {
         *self = Self {
             frame_size: (width, height),
@@ -66,7 +66,7 @@ impl MouseAreas {
 }
 
 /// True when `(x, y)` falls inside `r`. Shared by [`crate::tui::input`]
-/// helpers (mirrors jewel's `mouse_areas::hit_test`).
+/// helpers.
 pub fn hit_test(x: u16, y: u16, r: Rect) -> bool {
     rect_contains(r, x, y)
 }
