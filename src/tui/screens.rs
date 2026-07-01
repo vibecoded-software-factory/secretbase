@@ -29,7 +29,7 @@ pub enum Screen {
     /// Unhide popup (Alt+H) — restore a blocked/reported conversation by
     /// name (it's gone from the inbox `list`, so it can't be selected).
     UnhideConversation,
-    /// Channel browser (Alt+K on a team) — lists every channel of a team
+    /// Channel browser (`c` on a team) — lists every channel of a team
     /// (`listconvsonname`) to join / open / leave.
     ChannelBrowser,
     /// Members view (`m` in the channel browser, or `Alt+P` on an open team

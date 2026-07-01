@@ -397,7 +397,7 @@ pub struct App {
     /// Currently selected row inside [`Self::teams`].
     pub teams_selected: usize,
 
-    // ── Channel browser (Alt+K on a team) ───────────────────────────────
+    // ── Channel browser (`c` on a team) ───────────────────────────────
     /// Team whose channels the browser is showing (`None` while closed).
     pub channel_browser_team: Option<String>,
     /// Channels of `channel_browser_team` from `listconvsonname` — **all** of

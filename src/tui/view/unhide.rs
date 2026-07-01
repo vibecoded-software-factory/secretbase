@@ -1,4 +1,4 @@
-//! Unhide popup (Alt+H from the inbox).
+//! Unhide popup (Shift+H from the inbox).
 //!
 //! Restores a blocked / reported conversation by name — they're gone from the
 //! inbox `list`, so they can't be selected. Enter confirms

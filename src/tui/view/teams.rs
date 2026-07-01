@@ -34,7 +34,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         frame,
         app,
         chunks[2],
-        "↑/↓ nav · Enter channels · Alt+R refresh · Alt+I/Esc inbox",
+        "↑/↓ nav · Enter channels · r refresh · Esc inbox",
     );
 }
 

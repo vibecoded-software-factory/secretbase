@@ -104,7 +104,7 @@ pub(crate) fn chat_hint(app: &App) -> &'static str {
     if app.conv_search_active {
         "type · Enter search/jump · ↑/↓ pick · Esc close"
     } else if app.selected_msg_idx.is_some() {
-        "↑/↓ move · Space mark · y/c copy · o/l link · + react · Esc back"
+        "↑/↓ move · Space mark · e edit · Shift+X del · + react · y copy · Esc back"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
@@ -1008,7 +1008,7 @@ fn select_actions_lines(
         }
         if is_me {
             actions.push(("e", "edit"));
-            actions.push(("d", "delete"));
+            actions.push(("Shift+X", "delete"));
         }
         actions.push(("p", "pin"));
         if is_attachment {

@@ -75,7 +75,7 @@ fn footer_hint(app: &App) -> &'static str {
         Focus::Search => "type to filter chats · Enter/Esc leave",
         // Only panel-local actions here — the go-to keys already live in each
         // section's border tag, so don't repeat them.
-        Focus::Tree => "↑/↓ nav · l/→ open · h/← close/fold · Alt+N new · Tab cycle",
+        Focus::Tree => "↑/↓ nav · l open · n new · r refresh · Shift+I ignore · / filter · Tab",
         Focus::Chat => "Enter send · Esc back · Tab focus",
         Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
         Focus::CmdLog => "↑/↓ move · Alt+Shift+K/J range · Space mark · y/c copy · Tab",
@@ -122,7 +122,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
             Line::from(Span::styled(format!("  {err}"), Style::default().fg(t.dim))),
             Line::from(""),
             Line::from(Span::styled(
-                "  Alt+R / F5 to retry",
+                "  r / F5 to retry",
                 Style::default().fg(t.foreground),
             )),
         ];

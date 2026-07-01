@@ -1,4 +1,4 @@
-//! New-conversation popup (Alt+N from the inbox).
+//! New-conversation popup (`n` from the inbox).
 //!
 //! Centered modal that asks for a comma-separated user list. Enter
 //! confirms (`keybase chat api newconv`), Esc cancels.

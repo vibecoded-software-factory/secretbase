@@ -114,7 +114,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("↑/↓ k/j · PgUp/Dn", "move cursor"),
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
-            ("d / +", "delete / react — ALL marked (or the cursor)"),
+            ("Shift+X / +", "delete / react — ALL marked (or the cursor)"),
             ("y", "copy selection (author + time + body)"),
             (
                 "c",
@@ -134,22 +134,26 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 for (k, d) in [
                     ("↑/↓ k/j", "navigate"),
                     ("Enter / → / l", "browse the team's channels"),
-                    ("Alt+R / F5", "refresh"),
-                    ("Alt+I / Esc", "back to inbox"),
+                    ("r / F5", "refresh"),
+                    ("Esc", "back to inbox"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
             }
             Screen::ChannelBrowser => {
-                lines.push(section("Channel browser (Alt+K)", t));
+                lines.push(section("Channel browser (c)", t));
                 for (k, d) in [
                     ("↑/↓ k/j · PgUp/Dn", "navigate"),
-                    ("Enter / → / l", "open a joined channel · join one you're not in"),
-                    ("x", "leave a joined channel"),
-                    ("r / d", "rename / delete the channel"),
+                    (
+                        "Enter / → / l",
+                        "open a joined channel · join one you're not in",
+                    ),
+                    ("n", "create a new channel"),
+                    ("r", "rename the channel"),
                     ("t", "toggle as a team default (new members auto-join)"),
                     ("m", "members of the channel"),
-                    ("Alt+N", "create a new channel"),
+                    ("Shift+L", "leave a joined channel"),
+                    ("Shift+X", "delete the channel"),
                     ("F5 / Esc", "refresh / close"),
                 ] {
                     lines.push(help_line(k, d, t));
@@ -160,7 +164,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 for (k, d) in [
                     ("↑/↓ k/j · PgUp/Dn", "navigate"),
                     ("a", "add member(s) (comma/space-separated)"),
-                    ("x / d", "remove the selected member"),
+                    ("Shift+X", "remove the selected member"),
                     ("F5 / Esc", "refresh / back"),
                 ] {
                     lines.push(help_line(k, d, t));
@@ -186,38 +190,51 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 }
             }
             _ => {
-                lines.push(section("Inbox", t));
+                lines.push(section("Inbox — navigate", t));
                 for (k, d) in [
                     ("↑/↓ k/j", "navigate"),
                     ("PgUp/PgDn", "page"),
                     ("g / G", "top / bottom"),
-                    ("Tab / Shift+Tab", "cycle focus"),
-                    ("Ctrl+W then h/j/k/l", "move between panels (or arrows)"),
-                    ("Alt+F", "[Alt+F] filter chats"),
-                    ("Alt+C / Alt+M", "go to [Alt+C] chats / [Alt+M] messages"),
-                    (
-                        "Ctrl+F / Alt+L",
-                        "go to [Ctrl+F] in-chat find / [Alt+L] log",
-                    ),
                     ("Enter / → / l", "open conversation / expand group"),
                     ("← / h", "close chat / collapse group"),
-                    ("Alt+N", "new conversation"),
-                    ("Alt+Y", "yank (copy) label"),
-                    ("Alt+E", "mark as seen (read)"),
-                    ("Alt+R / F5", "refresh inbox"),
-                    ("Alt+U", "mute (local only — toggle; hides unread badge)"),
-                    ("Alt+S", "★ favorite (local only — toggle)"),
-                    ("Alt+I", "ignore conversation"),
-                    ("Alt+B", "block conversation"),
-                    ("Alt+G", "report conversation"),
-                    ("Alt+H", "unhide — restore a blocked/reported chat by name"),
-                    (
-                        "Alt+K",
-                        "channel browser (team) — join/leave/new/rename/del/default/members",
-                    ),
-                    ("Alt+T", "teams"),
+                    ("/", "filter chats (or Alt+F)"),
+                    ("Tab / Shift+Tab", "cycle focus"),
+                    ("Ctrl+W then h/j/k/l", "move between panels (or arrows)"),
+                ] {
+                    lines.push(help_line(k, d, t));
+                }
+                lines.push(Line::raw(""));
+                lines.push(section("Inbox — go to panel / global", t));
+                for (k, d) in [
+                    ("Alt+C / Alt+M", "go to [Alt+C] chats / [Alt+M] messages"),
+                    ("Alt+F / Alt+L", "go to [Alt+F] filter / [Alt+L] log"),
+                    ("Ctrl+F", "in-chat find (open conversation)"),
                     ("Ctrl+G", "global search"),
                     ("Ctrl+K", "quick switcher — jump to a conversation"),
+                ] {
+                    lines.push(help_line(k, d, t));
+                }
+                lines.push(Line::raw(""));
+                lines.push(section("Inbox — actions (lower = safe · Shift = loud)", t));
+                for (k, d) in [
+                    ("n", "new conversation"),
+                    ("r", "refresh inbox (or F5)"),
+                    ("y", "yank (copy) label"),
+                    ("e", "mark as seen (read)"),
+                    ("u", "mute (local only — toggle; hides unread badge)"),
+                    ("s", "★ favorite (local only — toggle)"),
+                    ("t", "teams"),
+                    (
+                        "c",
+                        "channels (team) — join/leave/new/rename/del/default/members",
+                    ),
+                    ("Shift+I", "ignore conversation"),
+                    ("Shift+B", "block conversation"),
+                    ("Shift+R", "report conversation"),
+                    (
+                        "Shift+H",
+                        "unhide — restore a blocked/reported chat by name",
+                    ),
                     ("Shift+L", "logout"),
                 ] {
                     lines.push(help_line(k, d, t));

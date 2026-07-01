@@ -1016,6 +1016,31 @@ fn delete_selected_calls_adapter_with_correct_id() {
 }
 
 #[test]
+fn input_shift_x_in_select_opens_delete_confirm() {
+    // Gradient: in Select mode the destructive delete is Shift+X (Char('X')),
+    // matching Shift-remove in the channel browser / members — not bare `d`.
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.identity.username = "me".into();
+    rig.app.messages = vec![text_msg(7, "me", "doomed")];
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Chat;
+    rig.app.selected_msg_idx = Some(0);
+    press(&mut rig.app, KeyCode::Char('X'), KeyModifiers::SHIFT);
+    assert_eq!(rig.app.screen, Screen::ConfirmDeleteMessage);
+    // A bare `d` must NOT delete anymore (it's inert in Select).
+    rig.app.screen = Screen::Inbox;
+    press(&mut rig.app, KeyCode::Char('d'), KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Inbox);
+}
+
+#[test]
 fn delete_acts_on_the_whole_marked_selection_sequentially() {
     let mut rig = build_rig();
     preload_inbox(
@@ -2792,24 +2817,78 @@ fn input_f5_on_inbox_queues_load_inbox() {
 }
 
 #[test]
-fn input_alt_r_on_inbox_queues_load_inbox() {
+fn input_r_on_inbox_tree_queues_load_inbox() {
+    // Gradient: bare `r` refreshes the focused inbox tree (Alt is reserved
+    // for panel jumps; the tree isn't a text field, so its letters act).
+    use crate::tui::screens::Focus;
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
-    press(&mut rig.app, KeyCode::Char('r'), KeyModifiers::ALT);
+    rig.app.focus = Focus::Tree;
+    press(&mut rig.app, KeyCode::Char('r'), KeyModifiers::NONE);
     assert!(matches!(rig.app.in_flight, Some(InFlight::LoadInbox)));
 }
 
 #[test]
-fn input_alt_e_on_inbox_queues_mark_read() {
+fn input_e_on_inbox_tree_queues_mark_read() {
+    use crate::tui::screens::Focus;
     let mut rig = build_rig();
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
     reveal_first(&mut rig.app);
     rig.app.screen = Screen::Inbox;
-    // Alt+E = mark as sEEn/read (Alt+S focuses the filter, Alt+M jumps to chat).
-    press(&mut rig.app, KeyCode::Char('e'), KeyModifiers::ALT);
+    rig.app.focus = Focus::Tree;
+    // Bare `e` = mark as sEEn/read.
+    press(&mut rig.app, KeyCode::Char('e'), KeyModifiers::NONE);
     assert!(matches!(rig.app.in_flight, Some(InFlight::MarkRead { .. })));
+}
+
+#[test]
+fn input_n_on_inbox_tree_opens_new_conversation() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Tree;
+    press(&mut rig.app, KeyCode::Char('n'), KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::NewConversation);
+}
+
+#[test]
+fn input_shift_i_on_inbox_tree_opens_ignore_confirm() {
+    // Destructive tier: Shift+I (Char('I')) opens the ignore confirmation —
+    // moved off the old Alt+I so Alt stays purely panel-jumps.
+    use crate::tui::app::ConvAction;
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    reveal_first(&mut rig.app);
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Tree;
+    press(&mut rig.app, KeyCode::Char('I'), KeyModifiers::SHIFT);
+    assert_eq!(rig.app.screen, Screen::ConfirmConvAction);
+    assert!(matches!(
+        rig.app.pending_conv_action,
+        Some(ConvAction::Ignore)
+    ));
+}
+
+#[test]
+fn input_bare_i_on_inbox_tree_is_inert() {
+    // Only Shift+I ignores; a bare `i` must do nothing destructive (it isn't
+    // a tree action), so the screen stays put.
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
+    request_load_inbox(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    reveal_first(&mut rig.app);
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Tree;
+    press(&mut rig.app, KeyCode::Char('i'), KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Inbox);
+    assert!(rig.app.pending_conv_action.is_none());
 }
 
 #[test]

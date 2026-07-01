@@ -233,7 +233,7 @@ on their own:
   catalogue), collapsed under the message.
 - **Select mode** (`Alt+V`) shows a contextual **action bar** under the
   highlighted message listing what you can do with it and the key for each
-  (`+ react`, `r reply`, `e edit`/`d delete` on your own messages,
+  (`+ react`, `r reply`, `e edit`/`Shift+X delete` on your own messages,
   `p pin`, `s download` on attachments, `o open link`/`l copy link` when the
   message contains a URL) — visual feedback that accompanies the direct keybindings, it doesn't
   replace them. `o` opens the first `http(s)` link
@@ -309,8 +309,9 @@ Conventions:
   `/`): `[Alt+F]` chat Filter, `[Alt+C]` Chats, `[Alt+M]` Messages, `[Ctrl+F]`
   in-chat search (classic find), `[Alt+L]` command Log. The jumps are
   **global** — they fire from any focus, even mid-compose (weechat-style
-  modifier chords), so the tag always tells the truth. Re-homed to free the
-  section letters: copy label `Alt+Y` (yank), mark read `Alt+E` (seen).
+  modifier chords), so the tag always tells the truth. The `Alt` prefix is
+  reserved for these panel jumps; list *actions* are bare letters (the gradient
+  convention above) routed by the focused panel's handler.
   `Tab`/`Shift+Tab` also cycle focus via `input::common::cycle_focus`.
 - **Positional pane navigation** — a `Ctrl+W` leader (vim window-nav) arms
   `App::pending_pane_nav`; each following `h/j/k/l` or arrow moves to the
@@ -436,7 +437,7 @@ under react/delete/download).
   actions (`App::ConvAction`: `Ignore` / `Block` / `Report`) — each variant
   supplies its own title/note and maps to a `setstatus` value
   (`ignored`/`blocked`/`reported`), so adding one is a single enum arm.
-  **Favourite (`Alt+S`) and mute (`Alt+U`) are local-only toggles** — neither
+  **Favourite (`s`) and mute (`u`) are local-only toggles** — neither
   uses Keybase's conversation `status` (the chat `list` JSON has no `status`
   field, verified on `ConvSummary`, so it can't be read back and a synced state
   would drift). Both are synchronous, no worker call, fully owned by us
@@ -449,17 +450,17 @@ under react/delete/download).
   notifications, so a local mute can't silence your phone — see README →
   *Not supported*.) **Ignore / block / report** stay server-side (`setstatus`)
   because their effect *is* observable (the conv leaves the inbox).
-- **Channel browser** (`ChannelBrowser`, `Alt+K` on a team row) — a standard
+- **Channel browser** (`ChannelBrowser`, `c` on a team row) — a standard
   centered modal (`view::channels`, `MODAL_*` geometry) listing **every**
   channel of the team via `keybase chat api listconvsonname` (same `ConvSummary`
   shape as `list`, so the tolerant parser is reused; `member_status == Active`
   marks the ones you're in, sorted joined-first). `↑/↓` pick, `Enter` opens a
-  joined channel or **joins** one you aren't in (`join`), `x` **leaves** a
-  joined one (`leave`), `Alt+N` enters an inline **create** mode (a channel-name
+  joined channel or **joins** one you aren't in (`join`), `Shift+L` **leaves** a
+  joined one (`leave`), `n` enters an inline **create** mode (a channel-name
   input → `newconv` on a team channel, reusing the `NewConversation` request
   routed by an `InFlight::CreateChannel` slot), `r` an inline **rename** mode
-  (pre-filled → `rename-channel`), `d` an inline **delete** confirm (destructive
-  + irreversible → `y`/`n`, error-red → `delete-channel`), `t` toggles the
+  (pre-filled → `rename-channel`), `Shift+X` an inline **delete** confirm
+  (destructive + irreversible → `y`/`n`, error-red → `delete-channel`), `t` toggles the
   channel as a team **default** (new members auto-join; a `★ default` badge,
   `#general` always), `F5` refreshes, `Esc` closes. The inline modes share one
   bottom row + the `channel_new_name` editor; `rename-channel`/`delete-channel`/
@@ -475,7 +476,7 @@ under react/delete/download).
   `ChatMembersDetails` role buckets flattened to `domain::ChatMember`, sorted
   higher-privilege-role first then by name, with the role label dimmed). `a`
   enters an inline **add** mode (comma/space-separated usernames, validated →
-  `addtochannel`), `x`/`d` an inline **remove** confirm (→ `removefromchannel`),
+  `addtochannel`), `Shift+X` an inline **remove** confirm (→ `removefromchannel`),
   `F5` reloads, `Esc` returns to wherever it was opened from (`members_return`).
   Add/remove reload the list on success. DMs/non-team convs are refused (fixed
   membership). Flows in `chat::*member*`; input in `input::popups::members`.
@@ -512,23 +513,41 @@ filter box, `input::common::search_key`/`SearchAction`. Rendering is always
 `widgets::editor_spans`. Empty boxes show a dim placeholder
 (`theme.placeholder`).
 
-## Keybindings (global conventions)
+## Keybindings — the gradient convention (hard rule)
 
-- `/` focus search · `Esc`/`h` back · `F1` help · `F10` Settings ·
-  `Tab`/`Shift+Tab` cycle
-  focus · **only `Ctrl+C` quits** (everything else is free for navigation /
-  type-to-search).
-- `j/k` + `↑/↓` navigate · `PgUp/PgDn` page · `g/G` top/bottom ·
-  `Enter`/`l` open.
-- **Actions use the `Alt+<letter>` convention**: `Alt+N` new conversation,
-  `Alt+Y` copy label, `Alt+E` mark read, `Alt+U` local mute (toggle),
-  `Alt+S` local ★ favorite (toggle), `Alt+I` ignore, `Alt+B` block, `Alt+G`
-  report, `Alt+H` unhide (restore a blocked/reported chat by name), `Alt+T` teams,
-  `Ctrl+G` global search, `Shift+L` logout. In the conversation's **select
-  mode** (`Alt+V`), the message actions are plain letters — `e`/`d` edit/delete
-  own, `r` reply, `+` react, `p` pin, `s` download. The footer shows only a few;
-  the full per-screen list lives in the help popup and the `README.md` tables —
-  **keep both in sync**.
+Keys are assigned by a **gradient of tiers**, so the modifier tells you the
+weight of the action before you press it. Every screen follows the same tiers:
+
+- **bare lowercase letter = the frequent, safe action on the focused list**
+  (`n` new, `r` refresh, `y` yank label, `e` mark read, `u` mute, `s` ★
+  favorite, `t` teams, `c` channels). In a popup list the same tier holds its
+  own vocabulary (`a` add, `r` rename, `m` members, …). This is the lazygit /
+  aerc / mutt model: the list is "command mode", letters act on the cursor row.
+- **`Shift+letter` = the loud / destructive / irreversible tier**: `Shift+I`
+  ignore, `Shift+B` block, `Shift+R` report, `Shift+H` unhide, `Shift+L`
+  logout (inbox); `Shift+X` delete/remove and `Shift+L` leave (select mode,
+  channel browser, members). One rule everywhere: **if it removes, hides, or
+  can't be undone in-app, it's `Shift`** (and still guarded by a confirm).
+- **`Ctrl` = global** — works from any focus, never confused with typed text:
+  `Ctrl+C` quit (the **only** quit), `Ctrl+F` in-chat find, `Ctrl+G` global
+  search, `Ctrl+K` quick switcher, `Ctrl+W` positional pane nav.
+- **`Alt+letter` = jump to a panel** — each combo matches that panel's border
+  tag: `Alt+F` Filter, `Alt+C` Chats, `Alt+M` Messages, `Alt+L` Log. These fire
+  from any focus (even mid-compose), so a text field can't trap you. Compose
+  also parks its *non-text* actions on `Alt` (`Alt+V` select, `Alt+A` attach,
+  `Alt+U` unpin, `Alt+R` resend, `Alt+P` members) because bare letters there are
+  typed text.
+- **`/` = focus search** · `Esc`/`h` back · `F1` help · `F10` Settings ·
+  `Tab`/`Shift+Tab` cycle focus · `j/k`+`↑/↓` navigate · `PgUp/PgDn` page ·
+  `g/G` top/bottom · `Enter`/`l` open.
+
+**Why the tiers, not `Alt` for everything.** A text field (compose, the filter
+box) owns bare letters as typed text; a list doesn't type, so its letters are
+free to act. Putting actions on bare letters in lists (and only shifting to
+`Alt`/`Ctrl` where text input would collide) is what makes the app feel like a
+pro TUI instead of a chord soup. The footer shows only a few keys; the full
+per-screen list lives in the help popup and the `README.md` tables — **keep all
+three in sync**.
 
 ## Theme (`tui::theme`)
 

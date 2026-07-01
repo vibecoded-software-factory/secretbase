@@ -1,8 +1,8 @@
-//! Channel browser (Alt+K on a team).
+//! Channel browser (`c` on the inbox, or Enter on a team in the Teams view).
 //!
 //! Lists **every** channel of a team (`keybase chat api listconvsonname`),
 //! marking the ones you're in. `Enter` opens a joined channel or joins one you
-//! aren't in; `x` leaves; `Esc` closes.
+//! aren't in; `Shift+L` leaves; `Esc` closes.
 
 use ratatui::{
     Frame,
@@ -107,7 +107,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         ])
     } else {
         Line::from(Span::styled(
-            " Enter open/join · x leave · r rename · d delete · t default · Alt+N new · F5 · Esc ",
+            " Enter open/join · n new · r rename · t default · m members · Shift+L leave · Shift+X del · F5 · Esc ",
             Style::default().fg(t.dim),
         ))
     };
