@@ -144,6 +144,19 @@ The **command log** (Tab to focus it) has the same visual multi-select:
 `↑/↓` move · `Shift+↑/↓` range · `Space` mark · `y` copy full line(s) · `c`
 copy detail only · `Esc` clear / leave.
 
+### Teams (`Alt+T`) & modals
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` · `k`/`j` · `PgUp`/`PgDn` · `g`/`G` | Navigate any list |
+| `Enter` / `→` / `l` (Teams) | Browse the selected team's channels |
+| `Alt+R` / `F5`          | Refresh · `Esc` back to inbox |
+
+**Channel browser** (`Alt+K` on a team): `Enter` open/join · `x` leave · `r`/`d`
+rename/delete · `t` toggle team-default · `m` members · `Alt+N` new · `F5`
+refresh. **Members** (`m` in the browser, or `Alt+P` on an open team channel):
+`a` add · `x`/`d` remove · `F5` refresh.
+
 ### Global
 
 | Key | Action |
