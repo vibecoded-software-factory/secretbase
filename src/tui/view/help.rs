@@ -111,16 +111,17 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
         lines.push(Line::raw(""));
         lines.push(section("Conversation — Select", t));
         for (k, d) in [
-            ("↑/↓ k/j", "move cursor"),
+            ("↑/↓ k/j · PgUp/Dn", "move cursor"),
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
+            ("d / +", "delete / react — ALL marked (or the cursor)"),
             ("y", "copy selection (author + time + body)"),
             (
                 "c",
                 "copy body — or the image itself, for an image attachment",
             ),
             ("o / l", "open / copy the first link in the message"),
-            ("e / d / + / p", "edit / del / react / pin"),
+            ("e / p", "edit / pin the cursor message"),
             ("r / s", "reply / download"),
             ("i / Enter / Esc", "back to compose"),
         ] {

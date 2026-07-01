@@ -127,7 +127,16 @@ conversation on normal terminals.
   marks messages, `Alt+Shift+K/J` (or `Alt+Shift+↑/↓`) shades a range, `y` copies author + time + body
   and `c` copies bodies only (`chat::do_copy_messages(full)`), separated by a
   blank line / newline; with a selection active the action bar collapses to
-  the reduced copy / react set.
+  the reduced copy / react set. **`d` delete and `+` react operate on the whole
+  marked set** (or the cursor if nothing's marked). Because the worker is serial,
+  a multi-message action runs as a **sequential batch** (`App::pending_batch` /
+  `chat::PendingBatch`) — one request at a time, advanced by each response —
+  *not* N concurrent requests the busy-guard would drop; a `Deleting… 3/10`
+  toast shows progress. Delete only targets your **own** messages. When the batch
+  finishes it clears the shading, **stays in Select mode**, and reloads — the read
+  handler re-anchors the cursor (deleted rows are gone). Single-message verbs
+  (`e` edit, `p` pin, `r` reply, `s` download) act on the cursor and clear the
+  marks.
   Worker ops carry their duration (request → response), formatted by
   `domain::format_duration` as a single smallest-unit value
   (`ms`/`s`/`m`/`h`/`d`/`y`).

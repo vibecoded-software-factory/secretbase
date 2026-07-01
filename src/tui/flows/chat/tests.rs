@@ -1004,12 +1004,66 @@ fn delete_selected_calls_adapter_with_correct_id() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
+    rig.app.identity.username = "me".into();
     rig.app.messages = vec![text_msg(7, "me", "doomed")];
     rig.app.selected_msg_idx = Some(0);
     request_delete_selected_message(&mut rig.app);
     pump_one(&mut rig.app);
     assert_eq!(rig.mock.st().deletes, vec![7]);
-    assert!(rig.app.selected_msg_idx.is_none());
+    // Stays in Select mode after deleting (you can delete more).
+    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    assert!(rig.app.pending_batch.is_none());
+}
+
+#[test]
+fn delete_acts_on_the_whole_marked_selection_sequentially() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.identity.username = "me".into();
+    rig.app.messages = vec![
+        text_msg(10, "me", "a"),
+        text_msg(11, "me", "b"),
+        text_msg(12, "me", "c"),
+    ];
+    // Mark all three; the batch must delete every one, not just the cursor.
+    rig.app.selected_msg_idx = Some(2);
+    rig.app.msg_marks = [0usize, 1, 2].into_iter().collect();
+    request_delete_selected_message(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let mut deleted = rig.mock.st().deletes.clone();
+    deleted.sort_unstable();
+    assert_eq!(
+        deleted,
+        vec![10, 11, 12],
+        "all marked deleted, not just cursor"
+    );
+    // Shading cleared, still in Select mode.
+    assert!(rig.app.msg_marks.is_empty());
+    assert!(rig.app.pending_batch.is_none());
+}
+
+#[test]
+fn delete_skips_other_peoples_messages() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.identity.username = "me".into();
+    rig.app.messages = vec![text_msg(20, "me", "mine"), text_msg(21, "alice", "theirs")];
+    rig.app.selected_msg_idx = Some(0);
+    rig.app.msg_marks = [0usize, 1].into_iter().collect();
+    request_delete_selected_message(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Only the own message is deleted; alice's is left alone.
+    assert_eq!(rig.mock.st().deletes, vec![20]);
 }
 
 // ── do_send_reaction → request_send_reaction ─────────────────────────
@@ -1043,10 +1097,10 @@ fn react_with_empty_query_sends_the_highlighted_emoji() {
 }
 
 #[test]
-fn react_failure_preserves_react_input_and_selection() {
-    // Same symmetry: a failed reaction keeps `react_input` and
-    // `selected_msg_idx` so the user can retry. Returning to the
-    // Conversation screen would silently lose the typed shortcode.
+fn react_failure_surfaces_error_and_stays_in_select() {
+    // Committing a reaction closes the picker and runs it over the selection;
+    // a failure surfaces an error and keeps the reader in Select mode (cursor
+    // preserved) so they can retry from the picker.
     let mut rig = build_rig();
     preload_inbox(
         &mut rig.app,
@@ -1055,15 +1109,15 @@ fn react_failure_preserves_react_input_and_selection() {
         "c1",
     );
     rig.app.messages = vec![text_msg(5, "me", "x")];
+    rig.mock.st().messages = vec![text_msg(5, "me", "x")]; // reload returns it
     rig.app.selected_msg_idx = Some(0);
     rig.app.react.set(":fire:");
     rig.app.screen = Screen::React;
     rig.mock.st().fail_next = Some(KeybaseError::api_message("reaction not allowed"));
     request_send_reaction(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    // Inputs preserved.
-    assert_eq!(rig.app.react.text(), ":fire:");
     assert_eq!(rig.app.selected_msg_idx, Some(0));
+    assert!(rig.app.pending_batch.is_none());
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
 

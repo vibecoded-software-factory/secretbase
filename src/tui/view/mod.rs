@@ -86,16 +86,25 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             app.logout_yes,
         ),
         Screen::ConfirmDeleteMessage => {
-            let label = app
-                .selected_msg_idx
-                .and_then(|i| app.messages.get(i))
-                .map(|m| format!("msg #{} by {}", m.id, m.sender))
-                .unwrap_or_else(|| "(none)".to_string());
+            let n = crate::tui::flows::chat::delete_selection_count(app);
+            let (title, label) = if n > 1 {
+                (
+                    format!(" Delete {n} messages? "),
+                    "This can't be undone.".to_string(),
+                )
+            } else {
+                let one = app
+                    .selected_msg_idx
+                    .and_then(|i| app.messages.get(i))
+                    .map(|m| format!("msg #{} by {}", m.id, m.sender))
+                    .unwrap_or_else(|| "(none)".to_string());
+                (" Delete this message? ".to_string(), one)
+            };
             widgets::draw_confirm_popup(
                 frame,
                 frame.area(),
                 &app.theme,
-                " Delete this message? ",
+                &title,
                 vec![Line::from(Span::styled(
                     label,
                     Style::default().fg(app.theme.dim),
