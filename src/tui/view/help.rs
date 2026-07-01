@@ -132,6 +132,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 lines.push(section("Teams", t));
                 for (k, d) in [
                     ("↑/↓ k/j", "navigate"),
+                    ("Enter / → / l", "browse the team's channels"),
                     ("Alt+R / F5", "refresh"),
                     ("Alt+I / Esc", "back to inbox"),
                 ] {

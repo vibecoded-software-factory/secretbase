@@ -200,7 +200,12 @@ pub enum WorkerRequest {
         path: String,
     },
     ListEmojis,
-    ListSelfMemberships,
+    /// The local user's teams. Carries the self `username` because it queries
+    /// `list-user-memberships` (one row per team) rather than
+    /// `list-self-memberships` (one row per teammate — see the port doc).
+    ListSelfMemberships {
+        username: String,
+    },
     /// Terminates the worker. Sent automatically on drop of
     /// [`WorkerHandle`].
     Shutdown,
@@ -448,7 +453,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crate::domain::{Conversation, IdentityInfo, InboxHit, Message, TeamMembership};
-    use crate::ports::keybase::{ListConversationsOk, ListTeamsOk, ParallelSessionData};
+    use crate::ports::keybase::{ListConversationsOk, ListTeamsOk};
     use zeroize::Zeroizing;
 
     /// Port stub whose `status()` panics on the first call and
@@ -585,7 +590,7 @@ mod tests {
         fn list_emojis(&mut self) -> Result<Vec<crate::domain::Emoji>, KeybaseError> {
             Ok(Vec::new())
         }
-        fn list_self_memberships(&mut self) -> Result<ListTeamsOk, KeybaseError> {
+        fn list_self_memberships(&mut self, _: &str) -> Result<ListTeamsOk, KeybaseError> {
             Ok(ListTeamsOk {
                 teams: Vec::<TeamMembership>::new(),
                 skipped: Vec::new(),
@@ -596,14 +601,6 @@ mod tests {
         }
         fn leave_team(&mut self, _: &str, _: bool) -> Result<(), KeybaseError> {
             Ok(())
-        }
-        fn parallel_session_data(&mut self) -> ParallelSessionData {
-            ParallelSessionData {
-                teams: Ok(ListTeamsOk {
-                    teams: Vec::new(),
-                    skipped: Vec::new(),
-                }),
-            }
         }
         fn search_inbox_hits(&mut self, _: &str, _: u32) -> Result<Vec<InboxHit>, KeybaseError> {
             Ok(Vec::new())
@@ -860,8 +857,10 @@ fn run_worker(
             WorkerRequest::ListEmojis => {
                 WorkerResponse::Emojis(run_caught(|| keybase.list_emojis()))
             }
-            WorkerRequest::ListSelfMemberships => {
-                WorkerResponse::ListSelfMemberships(run_caught(|| keybase.list_self_memberships()))
+            WorkerRequest::ListSelfMemberships { username } => {
+                WorkerResponse::ListSelfMemberships(run_caught(|| {
+                    keybase.list_self_memberships(&username)
+                }))
             }
         };
         if resp_tx.send(resp).is_err() {

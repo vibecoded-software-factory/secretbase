@@ -876,6 +876,11 @@ pub fn open_channel_browser(app: &mut App) {
         ));
         return;
     };
+    open_channel_browser_for_team(app, team);
+}
+
+/// Opens the channel browser for a named team (e.g. from the Teams screen).
+pub fn open_channel_browser_for_team(app: &mut App, team: String) {
     app.channel_browser_team = Some(team);
     app.channels.clear();
     app.channel_selected = 0;

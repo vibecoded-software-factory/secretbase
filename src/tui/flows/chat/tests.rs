@@ -20,9 +20,7 @@ use crate::domain::{
     MembersType, Message, MessageContent, TeamMembership, TeamRole, TopicType,
 };
 use crate::ports::KeybaseError;
-use crate::ports::keybase::{
-    KeybasePort, ListConversationsOk, ListTeamsOk, ParallelSessionData, ReadChannel,
-};
+use crate::ports::keybase::{KeybasePort, ListConversationsOk, ListTeamsOk, ReadChannel};
 use crate::ports::{ClipboardPort, SettingsPort, UserSettings};
 use crate::tui::action::ActionState;
 use crate::tui::app::App;
@@ -371,7 +369,7 @@ impl KeybasePort for MockKeybase {
         s.downloads.push((id, output.to_string()));
         Ok(())
     }
-    fn list_self_memberships(&mut self) -> Result<ListTeamsOk, KeybaseError> {
+    fn list_self_memberships(&mut self, _: &str) -> Result<ListTeamsOk, KeybaseError> {
         let mut s = self.0.lock().unwrap();
         if let Some(e) = s.fail_next.take() {
             return Err(e);
@@ -386,15 +384,6 @@ impl KeybasePort for MockKeybase {
     }
     fn leave_team(&mut self, _: &str, _: bool) -> Result<(), KeybaseError> {
         Ok(())
-    }
-    fn parallel_session_data(&mut self) -> ParallelSessionData {
-        let s = self.0.lock().unwrap();
-        ParallelSessionData {
-            teams: Ok(ListTeamsOk {
-                teams: s.teams.clone(),
-                skipped: s.teams_skipped.clone(),
-            }),
-        }
     }
 }
 
@@ -1789,6 +1778,7 @@ fn rebuild_pinned_yields_none_when_no_pin_in_history() {
 fn do_load_teams_populates_and_clamps_selection() {
     use crate::tui::flows::teams::{open_teams, request_load_teams};
     let mut rig = build_rig();
+    rig.app.identity.username = "me".into(); // list-user-memberships needs it
     rig.mock.st().teams = vec![
         TeamMembership {
             name: "phoenix".into(),
@@ -1815,9 +1805,38 @@ fn do_load_teams_populates_and_clamps_selection() {
 }
 
 #[test]
+fn load_teams_collapses_duplicate_rows() {
+    // Regression: list-self-memberships returned one row per teammate, so a
+    // team appeared many times. The handler must collapse to one row per team.
+    use crate::tui::flows::teams::request_load_teams;
+    let mut rig = build_rig();
+    rig.app.identity.username = "me".into();
+    let dup = |name: &str, role| TeamMembership {
+        name: name.into(),
+        is_implicit_team: false,
+        member_count: 0,
+        role,
+    };
+    rig.mock.st().teams = vec![
+        dup("acme", crate::domain::TeamRole::Writer),
+        dup("acme", crate::domain::TeamRole::Admin),
+        dup("acme", crate::domain::TeamRole::Writer),
+        dup("globex", crate::domain::TeamRole::Owner),
+        dup("globex", crate::domain::TeamRole::Writer),
+    ];
+    request_load_teams(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.teams.len(), 2, "one row per team");
+    // Sorted by name.
+    assert_eq!(rig.app.teams[0].name, "acme");
+    assert_eq!(rig.app.teams[1].name, "globex");
+}
+
+#[test]
 fn load_teams_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
     use crate::tui::flows::teams::request_load_teams;
     let mut rig = build_rig();
+    rig.app.identity.username = "me".into();
     rig.mock.st().teams = vec![TeamMembership {
         name: "phoenix".into(),
         is_implicit_team: false,

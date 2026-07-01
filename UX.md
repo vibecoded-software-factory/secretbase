@@ -618,9 +618,11 @@ one is backed by code; the file/function is named so you can find it.
 (1)`. The **body flexes**; the **command log is height-responsive** —
 `widgets::cmdlog_height(area.height)` yields rows to the body as the terminal
 gets short (6 when roomy → 3 at the floor) **monotonically** (a taller terminal
-never shrinks the body). The Home (`view::inbox`) drops the identity row and uses
-its own 4-row layout; Teams keeps it; `view::mod::split_main` is the shared
-helper both follow. Below **70×18** every screen is replaced by the centered
+never shrinks the body). The Home (`view::inbox`) and **Teams** (`view::teams`)
+both drop the identity row — Teams is a focused drill-down, so the identity /
+unread chrome (which belongs on Home) is omitted, giving the list the full
+height. `Enter`/`→`/`l` on a team opens the **channel browser** for it
+(`chat::open_channel_browser_for_team`). Below **70×18** every screen is replaced by the centered
 "terminal too small" notice (`view::mod::draw_too_small`, states required +
 current size).
 
