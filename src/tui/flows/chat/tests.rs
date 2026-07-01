@@ -69,6 +69,8 @@ struct MockState {
     channels: Vec<Conversation>,
     joined: Vec<String>,
     left: Vec<String>,
+    renames: Vec<(String, String, String)>,
+    deleted_channels: Vec<String>,
     /// Next adapter call returning a Result returns this error then
     /// clears the slot.
     fail_next: Option<KeybaseError>,
@@ -257,6 +259,23 @@ impl KeybasePort for MockKeybase {
             return Err(e);
         }
         s.left.push(ch.topic_name.clone().unwrap_or_default());
+        Ok(())
+    }
+    fn rename_channel(&mut self, team: &str, old: &str, new: &str) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.renames
+            .push((team.to_string(), old.to_string(), new.to_string()));
+        Ok(())
+    }
+    fn delete_channel(&mut self, _team: &str, channel: &str) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.deleted_channels.push(channel.to_string());
         Ok(())
     }
     fn set_conversation_status(
@@ -1097,6 +1116,54 @@ fn channel_browser_create_fires_newconv_and_exits_create_mode() {
     assert!(rig.mock.st().new_convs.contains(&"phoenix".to_string()));
     // Create mode exits on success.
     assert!(!rig.app.channel_creating);
+}
+
+#[test]
+fn channel_browser_rename_calls_adapter() {
+    let mut rig = build_rig();
+    let mut general = conv("c-general", "phoenix", MembersType::Team);
+    general.channel.topic_name = Some("general".into());
+    general.member_status = MemberStatus::Active;
+    rig.mock.st().channels = vec![general];
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Enter rename mode, type a new name, submit.
+    open_channel_rename(&mut rig.app);
+    assert_eq!(rig.app.channel_renaming.as_deref(), Some("general"));
+    rig.app.channel_new_name.set("lobby");
+    request_rename_channel(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(
+        rig.mock.st().renames,
+        vec![(
+            "phoenix".to_string(),
+            "general".to_string(),
+            "lobby".to_string()
+        )]
+    );
+    assert!(rig.app.channel_renaming.is_none());
+}
+
+#[test]
+fn channel_browser_delete_needs_confirm_then_calls_adapter() {
+    let mut rig = build_rig();
+    let mut random = conv("c-random", "phoenix", MembersType::Team);
+    random.channel.topic_name = Some("random".into());
+    random.member_status = MemberStatus::Active;
+    rig.mock.st().channels = vec![random];
+    rig.app.channel_browser_team = Some("phoenix".into());
+    request_load_channels(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // `d` opens the inline confirm — nothing deleted yet.
+    open_channel_delete_confirm(&mut rig.app);
+    assert_eq!(rig.app.channel_confirm_delete.as_deref(), Some("random"));
+    assert!(rig.mock.st().deleted_channels.is_empty());
+    // Confirm → delete fires.
+    confirm_channel_delete(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.mock.st().deleted_channels, vec!["random".to_string()]);
+    assert!(rig.app.channel_confirm_delete.is_none());
 }
 
 // ── do_create_new_conversation → request_create_new_conversation ─────

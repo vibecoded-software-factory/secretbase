@@ -564,6 +564,33 @@ impl KeybasePort for KeybaseCliAdapter {
         Ok(())
     }
 
+    fn rename_channel(&mut self, team: &str, old: &str, new: &str) -> Result<(), KeybaseError> {
+        // CLI subcommand (not api-mode): one-shot spawn like `logout`.
+        let out = keybase_run_timeout(
+            &["chat", "rename-channel", team, old, new],
+            QUICK_OP_TIMEOUT,
+        )?;
+        if !out.status.success() {
+            return Err(KeybaseError::Exit {
+                stderr: stderr_str(&out),
+                status: out.status.code().unwrap_or(-1),
+            });
+        }
+        Ok(())
+    }
+
+    fn delete_channel(&mut self, team: &str, channel: &str) -> Result<(), KeybaseError> {
+        let out =
+            keybase_run_timeout(&["chat", "delete-channel", team, channel], QUICK_OP_TIMEOUT)?;
+        if !out.status.success() {
+            return Err(KeybaseError::Exit {
+                stderr: stderr_str(&out),
+                status: out.status.code().unwrap_or(-1),
+            });
+        }
+        Ok(())
+    }
+
     fn set_conversation_status(
         &mut self,
         channel: &ReadChannel,

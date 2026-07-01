@@ -274,6 +274,11 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   and **create** reuses `newconv` on a team channel (`{name:TEAM,members_type:
   "team",topic_name:NEW}`) — there's no dedicated `create-channel` API method
   (that's a CLI subcommand), and `newconv` creates the channel just the same.
+- **`keybase chat rename-channel <team> <old> <new>`** / **`delete-channel
+  <team> <channel>`** — CLI subcommands (no API method), so one-shot spawns.
+  `delete-channel` is **non-interactive** (verified: resolves non-interactively +
+  `DeleteConversationLocal`, no prompt) but destructive → secretbase confirms
+  inline first. Both are driven from the channel browser (`r` / `d`).
 - `searchregexp` `{"channel":…,"query":…,"is_regex":false,"max_hits":N}` —
   server-side search **within one conversation** (full history). Result shape
   is `result.hits[]`, each `{hitMessage.valid{messageID, bodySummary,

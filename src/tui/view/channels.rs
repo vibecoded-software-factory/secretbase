@@ -73,7 +73,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         &mut state,
     );
 
-    // Bottom row: the create-channel input in create mode, else the hint.
+    // Bottom row: create / rename input, delete confirm, else the hint.
     let bottom = if app.channel_creating {
         let mut spans = vec![Span::styled(" new channel #", Style::default().fg(t.dim))];
         spans.extend(editor_spans(&app.channel_new_name, true, t));
@@ -82,9 +82,28 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Style::default().fg(t.dim),
         ));
         Line::from(spans)
+    } else if app.channel_renaming.is_some() {
+        let mut spans = vec![Span::styled(" rename to #", Style::default().fg(t.dim))];
+        spans.extend(editor_spans(&app.channel_new_name, true, t));
+        spans.push(Span::styled(
+            "   (Enter rename · Esc cancel)",
+            Style::default().fg(t.dim),
+        ));
+        Line::from(spans)
+    } else if let Some(topic) = &app.channel_confirm_delete {
+        Line::from(vec![
+            Span::styled(
+                format!(" Delete #{topic}? "),
+                Style::default().fg(t.error).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "irreversible — y: delete · n/Esc: cancel",
+                Style::default().fg(t.dim),
+            ),
+        ])
     } else {
         Line::from(Span::styled(
-            " Enter: open / join   |   x: leave   |   Alt+N: new   |   F5: refresh   |   Esc: close ",
+            " Enter open/join · x leave · r rename · d delete · Alt+N new · F5 · Esc ",
             Style::default().fg(t.dim),
         ))
     };

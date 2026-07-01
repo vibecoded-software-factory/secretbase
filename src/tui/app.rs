@@ -408,8 +408,14 @@ pub struct App {
     /// new channel name is shown; `Enter` creates it (`newconv` on a team
     /// channel), `Esc` cancels back to the list.
     pub channel_creating: bool,
-    /// New-channel name typed in create mode.
+    /// New-channel name typed in create/rename mode (shared input).
     pub channel_new_name: LineEditor,
+    /// `Some(old)` while the browser is **renaming** a channel (`r`): the old
+    /// channel name; the new name is typed into [`Self::channel_new_name`].
+    pub channel_renaming: Option<String>,
+    /// `Some(topic)` while an inline **delete** confirm (`d`) is showing —
+    /// destructive + irreversible, so `y` confirms / `n`/`Esc` cancels.
+    pub channel_confirm_delete: Option<String>,
 
     // ── Conversation detail ──────────────────────────────────────────────
     /// Conversation id currently open on the detail screen. `None`
@@ -779,6 +785,8 @@ impl App {
             channel_selected: 0,
             channel_creating: false,
             channel_new_name: LineEditor::default(),
+            channel_renaming: None,
+            channel_confirm_delete: None,
             open_conv_id: None,
             messages: Vec::new(),
             outbox: Vec::new(),

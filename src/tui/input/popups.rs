@@ -46,6 +46,28 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         }
         return;
     }
+    // Rename mode: the new-name input owns the keys.
+    if app.channel_renaming.is_some() {
+        match key.code {
+            KeyCode::Esc => chat::cancel_channel_rename(app),
+            KeyCode::Enter => chat::request_rename_channel(app),
+            _ => {
+                common::route_line_editor(&mut app.channel_new_name, key);
+            }
+        }
+        return;
+    }
+    // Inline delete confirm (destructive): y confirms, n / Esc cancels.
+    if app.channel_confirm_delete.is_some() {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => chat::confirm_channel_delete(app),
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                chat::cancel_channel_delete(app)
+            }
+            _ => {}
+        }
+        return;
+    }
     let alt = key.modifiers.contains(crossterm::event::KeyModifiers::ALT);
     match key.code {
         KeyCode::Esc => chat::close_channel_browser(app),
@@ -61,6 +83,9 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => chat::channel_browser_activate(app),
         // Leave a joined channel.
         KeyCode::Char('x') | KeyCode::Char('X') => chat::request_leave_selected_channel(app),
+        // Rename / delete the selected channel (admin).
+        KeyCode::Char('r') | KeyCode::Char('R') => chat::open_channel_rename(app),
+        KeyCode::Char('d') | KeyCode::Char('D') => chat::open_channel_delete_confirm(app),
         KeyCode::F(5) => chat::request_load_channels(app),
         _ => {}
     }

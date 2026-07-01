@@ -137,6 +137,15 @@ pub enum WorkerRequest {
     LeaveChannel {
         channel: ReadChannel,
     },
+    RenameChannel {
+        team: String,
+        old: String,
+        new: String,
+    },
+    DeleteChannel {
+        team: String,
+        channel: String,
+    },
     SetConvStatus {
         channel: ReadChannel,
         status: String,
@@ -204,6 +213,8 @@ pub enum WorkerResponse {
     LoadChannels(Result<ListConversationsOk, KeybaseError>),
     JoinChannel(Result<(), KeybaseError>),
     LeaveChannel(Result<(), KeybaseError>),
+    RenameChannel(Result<(), KeybaseError>),
+    DeleteChannel(Result<(), KeybaseError>),
     SetConvStatus(Result<(), KeybaseError>),
     PinMessage(Result<(), KeybaseError>),
     UnpinMessage(Result<(), KeybaseError>),
@@ -270,6 +281,14 @@ pub enum InFlight {
     },
     /// Leave a team channel; `topic` is the channel name (for the toast).
     LeaveChannel {
+        topic: String,
+    },
+    /// Rename a channel; `topic` is the new name (for the toast).
+    RenameChannel {
+        topic: String,
+    },
+    /// Delete a channel; `topic` is the channel name (for the toast).
+    DeleteChannel {
         topic: String,
     },
     /// Any `setstatus` call (mute / unmute / ignore / block / report /
@@ -476,6 +495,12 @@ mod tests {
         fn leave_channel(&mut self, _: &ReadChannel) -> Result<(), KeybaseError> {
             Ok(())
         }
+        fn rename_channel(&mut self, _: &str, _: &str, _: &str) -> Result<(), KeybaseError> {
+            Ok(())
+        }
+        fn delete_channel(&mut self, _: &str, _: &str) -> Result<(), KeybaseError> {
+            Ok(())
+        }
         fn set_conversation_status(
             &mut self,
             _: &ReadChannel,
@@ -607,6 +632,8 @@ mod tests {
                 Self::LoadChannels(_) => f.write_str("LoadChannels(..)"),
                 Self::JoinChannel(r) => write!(f, "JoinChannel({r:?})"),
                 Self::LeaveChannel(r) => write!(f, "LeaveChannel({r:?})"),
+                Self::RenameChannel(r) => write!(f, "RenameChannel({r:?})"),
+                Self::DeleteChannel(r) => write!(f, "DeleteChannel({r:?})"),
                 Self::SetConvStatus(r) => write!(f, "SetConvStatus({r:?})"),
                 Self::PinMessage(r) => write!(f, "PinMessage({r:?})"),
                 Self::UnpinMessage(r) => write!(f, "UnpinMessage({r:?})"),
@@ -697,6 +724,16 @@ fn run_worker(
             }
             WorkerRequest::LeaveChannel { channel } => {
                 WorkerResponse::LeaveChannel(run_caught(|| keybase.leave_channel(&channel)))
+            }
+            WorkerRequest::RenameChannel { team, old, new } => {
+                WorkerResponse::RenameChannel(run_caught(|| {
+                    keybase.rename_channel(&team, &old, &new)
+                }))
+            }
+            WorkerRequest::DeleteChannel { team, channel } => {
+                WorkerResponse::DeleteChannel(run_caught(|| {
+                    keybase.delete_channel(&team, &channel)
+                }))
             }
             WorkerRequest::SetConvStatus { channel, status } => {
                 WorkerResponse::SetConvStatus(run_caught(|| {

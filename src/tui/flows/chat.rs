@@ -878,8 +878,7 @@ pub fn open_channel_browser(app: &mut App) {
     app.channel_browser_team = Some(team);
     app.channels.clear();
     app.channel_selected = 0;
-    app.channel_creating = false;
-    app.channel_new_name.clear();
+    clear_channel_input(app);
     app.screen = crate::tui::screens::Screen::ChannelBrowser;
     request_load_channels(app);
 }
@@ -888,9 +887,16 @@ pub fn close_channel_browser(app: &mut App) {
     app.channel_browser_team = None;
     app.channels.clear();
     app.channel_selected = 0;
-    app.channel_creating = false;
-    app.channel_new_name.clear();
+    clear_channel_input(app);
     app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+/// Clears every inline browser mode (create / rename / delete-confirm).
+fn clear_channel_input(app: &mut App) {
+    app.channel_creating = false;
+    app.channel_renaming = None;
+    app.channel_confirm_delete = None;
+    app.channel_new_name.clear();
 }
 
 /// Enters create mode in the browser (`Alt+N`): the new-channel-name input.
@@ -898,14 +904,136 @@ pub fn open_channel_create(app: &mut App) {
     if app.channel_browser_team.is_none() {
         return;
     }
+    clear_channel_input(app);
     app.channel_creating = true;
-    app.channel_new_name.clear();
 }
 
 /// Cancels create mode, back to the channel list.
 pub fn cancel_channel_create(app: &mut App) {
-    app.channel_creating = false;
-    app.channel_new_name.clear();
+    clear_channel_input(app);
+}
+
+// ── Rename channel (r) ───────────────────────────────────────────────
+
+/// Enters rename mode on the selected channel (`r`), pre-filling its name.
+pub fn open_channel_rename(app: &mut App) {
+    let Some(c) = app.channels.get(app.channel_selected) else {
+        return;
+    };
+    let old = channel_topic(c);
+    clear_channel_input(app);
+    app.channel_new_name.set(old.clone());
+    app.channel_renaming = Some(old);
+}
+
+pub fn cancel_channel_rename(app: &mut App) {
+    clear_channel_input(app);
+}
+
+pub fn request_rename_channel(app: &mut App) {
+    let Some(team) = app.channel_browser_team.clone() else {
+        return;
+    };
+    let Some(old) = app.channel_renaming.clone() else {
+        return;
+    };
+    let new = app.channel_new_name.text().trim().to_lowercase();
+    if new.is_empty() {
+        app.set_action(ActionState::Error("New channel name is empty".into()));
+        return;
+    }
+    if new == old {
+        cancel_channel_rename(app);
+        return;
+    }
+    if !app.begin(InFlight::RenameChannel { topic: new.clone() }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Renaming #{old} → #{new}…")));
+    let _ = app
+        .worker_tx
+        .send(WorkerRequest::RenameChannel { team, old, new });
+}
+
+pub fn handle_rename_channel_response(
+    app: &mut App,
+    result: Result<(), KeybaseError>,
+    topic: String,
+) {
+    match result {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Renamed to #{topic}")));
+            app.push_cmd("keybase chat rename-channel", true, format!("#{topic}"));
+            clear_channel_input(app);
+            request_load_inbox_silent(app);
+            if app.screen == crate::tui::screens::Screen::ChannelBrowser {
+                request_load_channels(app);
+            }
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat rename-channel", false, e.to_string());
+        }
+    }
+}
+
+// ── Delete channel (d, inline confirm) ───────────────────────────────
+
+/// Opens the inline delete confirm for the selected channel (`d`).
+pub fn open_channel_delete_confirm(app: &mut App) {
+    let Some(c) = app.channels.get(app.channel_selected) else {
+        return;
+    };
+    let topic = channel_topic(c);
+    clear_channel_input(app);
+    app.channel_confirm_delete = Some(topic);
+}
+
+pub fn cancel_channel_delete(app: &mut App) {
+    clear_channel_input(app);
+}
+
+/// Commits the pending channel delete (`y`). Destructive + irreversible.
+pub fn confirm_channel_delete(app: &mut App) {
+    let Some(team) = app.channel_browser_team.clone() else {
+        return;
+    };
+    let Some(topic) = app.channel_confirm_delete.clone() else {
+        return;
+    };
+    app.channel_confirm_delete = None;
+    if !app.begin(InFlight::DeleteChannel {
+        topic: topic.clone(),
+    }) {
+        return;
+    }
+    app.set_action(ActionState::Running(format!("Deleting #{topic}…")));
+    let _ = app.worker_tx.send(WorkerRequest::DeleteChannel {
+        team,
+        channel: topic,
+    });
+}
+
+pub fn handle_delete_channel_response(
+    app: &mut App,
+    result: Result<(), KeybaseError>,
+    topic: String,
+) {
+    match result {
+        Ok(()) => {
+            app.set_action(ActionState::Done(format!("Deleted #{topic}")));
+            app.push_cmd("keybase chat delete-channel", true, format!("#{topic}"));
+            clear_channel_input(app);
+            request_load_inbox_silent(app);
+            if app.screen == crate::tui::screens::Screen::ChannelBrowser {
+                request_load_channels(app);
+            }
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("keybase chat delete-channel", false, e.to_string());
+        }
+    }
 }
 
 /// Creates a new channel on the browsed team (`newconv` with a team channel).

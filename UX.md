@@ -439,10 +439,14 @@ under react/delete/download).
   joined channel or **joins** one you aren't in (`join`), `x` **leaves** a
   joined one (`leave`), `Alt+N` enters an inline **create** mode (a channel-name
   input → `newconv` on a team channel, reusing the `NewConversation` request
-  routed by an `InFlight::CreateChannel` slot), `F5` refreshes, `Esc` closes.
-  Join/leave/create then resync the inbox (silent) so the channel
-  appears/disappears in the tree, and reload the browser so its membership
-  flips. Flows in `chat::*channel*`; input in `input::popups::channel_browser`.
+  routed by an `InFlight::CreateChannel` slot), `r` an inline **rename** mode
+  (pre-filled → `rename-channel`), `d` an inline **delete** confirm (destructive
+  + irreversible → `y`/`n`, error-red → `delete-channel`), `F5` refreshes, `Esc`
+  closes. The inline modes share one bottom row + the `channel_new_name` editor;
+  `rename-channel`/`delete-channel` are **CLI subcommands** (one-shot spawn, no
+  API method), the rest are chat-api methods. Every mutation resyncs the inbox
+  (silent) so the tree tracks it and reloads the browser. Flows in
+  `chat::*channel*`; input in `input::popups::channel_browser`.
 - **Input popups** (`NewConversation`, `UnhideConversation`, `React`,
   `DownloadAttachment`, `SearchGlobal`): a centered box with an `editor_spans`
   field and

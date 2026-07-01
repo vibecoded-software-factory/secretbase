@@ -182,7 +182,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     ("Alt+B", "block conversation"),
                     ("Alt+G", "report conversation"),
                     ("Alt+H", "unhide — restore a blocked/reported chat by name"),
-                    ("Alt+K", "channel browser (team) — join/open/leave/create"),
+                    (
+                        "Alt+K",
+                        "channel browser (team) — join/leave/new/rename/del",
+                    ),
                     ("Alt+T", "teams"),
                     ("Ctrl+G", "global search"),
                     ("Ctrl+K", "quick switcher — jump to a conversation"),

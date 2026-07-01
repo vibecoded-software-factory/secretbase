@@ -287,6 +287,16 @@ pub trait KeybasePort {
     /// team channel.
     fn leave_channel(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError>;
 
+    /// `keybase chat rename-channel <team> <old> <new>` — renames a team
+    /// channel. A **CLI subcommand** (no API method), so a one-shot spawn.
+    fn rename_channel(&mut self, team: &str, old: &str, new: &str) -> Result<(), KeybaseError>;
+
+    /// `keybase chat delete-channel <team> <channel>` — deletes a channel.
+    /// CLI subcommand (one-shot); **non-interactive** (verified: resolves
+    /// non-interactively + `DeleteConversationLocal`, no prompt). Destructive +
+    /// irreversible, so the caller confirms first.
+    fn delete_channel(&mut self, team: &str, channel: &str) -> Result<(), KeybaseError>;
+
     /// `{"method":"setstatus","params":{"options":{"channel":...,"status":STATUS}}}`.
     /// `status` is one of `"unfiled"`, `"favorite"`, `"muted"`,
     /// `"ignored"`. Used to mute / unmute (`"muted"` / `"unfiled"`).
