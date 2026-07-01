@@ -590,7 +590,11 @@ pub fn handle_load_messages_response(
             app.messages_next = next;
             app.messages_loading_older = false;
             app.rebuild_pinned();
-            app.messages_scroll = 0;
+            // A control-op re-read (delete/edit/react) keeps the reader where
+            // they were; a fresh open/refresh snaps to the latest message.
+            if !std::mem::take(&mut app.preserve_msg_scroll) {
+                app.messages_scroll = 0;
+            }
             // This fresh read includes any optimistic send that just
             // succeeded, so drop the Delivered bubbles for this
             // conversation — the real messages now stand in for them.
@@ -663,6 +667,9 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
         // (text, attachment, system, pin, join, …) is appended in place,
         // which is instant and needs no round-trip.
         if is_control {
+            // A live edit/delete/reaction reprojects in place — don't yank the
+            // reader to the bottom.
+            app.preserve_msg_scroll = true;
             request_load_messages(app);
         } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
             app.messages.push(message);
@@ -2126,6 +2133,7 @@ pub fn handle_save_edit_response(app: &mut App, result: Result<(), KeybaseError>
             app.edit_target_id = None;
             app.set_action(ActionState::Done("Edit saved".into()));
             app.push_cmd("keybase chat api edit", true, format!("msg #{target_id}"));
+            app.preserve_msg_scroll = true; // stay where the reader was
             request_load_messages(app);
         }
         Err(e) => {
@@ -2513,6 +2521,7 @@ pub fn handle_delete_response(app: &mut App, result: Result<(), KeybaseError>, m
             app.selected_msg_idx = None;
             app.select_from_compose = false;
             app.compose_open = true;
+            app.preserve_msg_scroll = true; // stay where the reader was
             request_load_messages(app);
         }
         Err(e) => {
@@ -2659,6 +2668,7 @@ pub fn handle_react_response(app: &mut App, result: Result<(), KeybaseError>, bo
             app.selected_msg_idx = None;
             app.select_from_compose = false;
             app.compose_open = true;
+            app.preserve_msg_scroll = true; // stay where the reader was
             request_load_messages(app);
         }
         Err(e) => {

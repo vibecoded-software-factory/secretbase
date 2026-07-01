@@ -452,6 +452,11 @@ pub struct App {
     /// "latest" line to the bottom of the panel by default; this
     /// offset lets the user scroll back to read history.
     pub messages_scroll: usize,
+    /// When set, the next `read` reply **keeps** the current scroll offset
+    /// instead of snapping to the latest message. Set by control-op re-reads
+    /// (delete / edit / react) so acting on a message you scrolled up to
+    /// doesn't yank you back to the bottom. Consumed by the read handler.
+    pub preserve_msg_scroll: bool,
     /// Cursor for the next *older* page of messages, supplied by the
     /// Keybase service in the previous `read` reply. `None` once the
     /// service signals it has reached the bottom of history.
@@ -824,6 +829,7 @@ impl App {
             outbox: Vec::new(),
             file_picker: None,
             messages_scroll: 0,
+            preserve_msg_scroll: false,
             messages_next: None,
             messages_loading_older: false,
             messages_max_back: 0,

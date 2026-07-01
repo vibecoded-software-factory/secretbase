@@ -710,6 +710,42 @@ fn load_messages_remembers_next_cursor() {
 }
 
 #[test]
+fn control_op_reread_keeps_scroll_position() {
+    let mut rig = build_rig();
+    rig.mock.st().messages = vec![text_msg(1, "me", "x")];
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    // Reader has scrolled up; a delete/edit/react re-read sets the flag.
+    rig.app.messages_scroll = 7;
+    rig.app.preserve_msg_scroll = true;
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.messages_scroll, 7, "scroll preserved");
+    assert!(!rig.app.preserve_msg_scroll, "flag consumed");
+}
+
+#[test]
+fn fresh_read_snaps_to_latest() {
+    let mut rig = build_rig();
+    rig.mock.st().messages = vec![text_msg(1, "me", "x")];
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages_scroll = 7;
+    // No preserve flag → a plain read snaps to the bottom.
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.messages_scroll, 0);
+}
+
+#[test]
 fn load_messages_without_open_conv_id_errors() {
     let mut rig = build_rig();
     request_load_messages(&mut rig.app);
