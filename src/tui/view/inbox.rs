@@ -1,4 +1,4 @@
-//! Main inbox renderer — jewel-style `split_main` stack:
+//! Main inbox renderer — the `split_main` stack:
 //! identity · search · (filters | list) · command log · status.
 
 use ratatui::{

@@ -602,7 +602,7 @@ pub struct App {
     /// renderer against the real content/viewport overflow.
     pub help_scroll: u16,
 
-    // ── Confirm overlays (navigable y/n, jewel-style) ─────────────────────
+    // ── Confirm overlays (navigable y/n) ──────────────────────────────────
     /// Whether "confirm" is the highlighted button in the logout
     /// overlay. Defaults to `false` (cancel highlighted) for the
     /// destructive action.

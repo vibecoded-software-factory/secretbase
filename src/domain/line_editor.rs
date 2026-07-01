@@ -5,15 +5,14 @@
 //! instead of append-only typing. UTF-8 safe: the cursor is a byte
 //! index kept on a char boundary.
 //!
-//! **secretbase-specific:** unlike the sibling TUIs' `LineEditor`, this
-//! one derives `ZeroizeOnDrop` so the buffer is overwritten with zeroes
+//! This `LineEditor` derives `ZeroizeOnDrop` so the buffer is overwritten
+//! with zeroes
 //! when it is dropped. Every text input here can carry sensitive chat
 //! content (a message draft, a participant username, a global-search
 //! query), so the buffer should not linger on the heap after the editor
 //! is dropped. This restores — and extends — the hygiene the
 //! `compose`/`new-conversation` drafts had before they moved onto the
-//! shared editor. (jewel doesn't need this and keeps its editor
-//! plain — not every decision applies to every app equally.)
+//! shared editor.
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

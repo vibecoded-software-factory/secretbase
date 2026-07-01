@@ -392,8 +392,7 @@ impl WorkerHandle {
     /// Spawns a **background** worker owning its own `keybase` port and
     /// shipping onto the shared response channel. Used for the idle
     /// inbox auto-refresh so it never head-of-line-blocks the user's
-    /// lane. Returns the request sender for that lane. (Mirrors jewel's
-    /// `spawn_extra`.)
+    /// lane. Returns the request sender for that lane.
     pub fn spawn_extra(
         &mut self,
         mut keybase: Box<dyn KeybasePort + Send>,

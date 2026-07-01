@@ -6,11 +6,10 @@
 //! the environment and force the matching format (chafa's own probing does not
 //! apply when its stdout is captured by us).
 //!
-//! Ported from jewel's single-image preview, adapted for the chat's different
-//! use case: **many** images visible at once, scrolling. The improvement over
-//! jewel is a per-`(path, w, h)` **render cache** ([`RenderCache`]) so that
-//! repainting on every scroll is just writing cached bytes — chafa runs once
-//! per image size, not once per frame.
+//! Built for the chat's use case: **many** images visible at once, scrolling.
+//! A per-`(path, w, h)` **render cache** ([`RenderCache`]) means repainting on
+//! every scroll is just writing cached bytes — chafa runs once per image size,
+//! not once per frame.
 //!
 //! Lives in the TUI layer, not `adapters/`: it is terminal rendering (like the
 //! clipboard), not a Keybase call, and it writes image bytes straight to

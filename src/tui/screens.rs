@@ -49,7 +49,7 @@ pub enum Screen {
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.
 ///
 /// The identity bar (top) and the status strip (bottom) are chrome,
-/// not focus targets — they mirror jewel's `split_main` stack.
+/// not focus targets — they belong to the `split_main` stack.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Focus {
     /// Search / filter box.

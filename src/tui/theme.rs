@@ -65,11 +65,9 @@ pub struct Theme {
 
 /// A named base palette — the raw colors a [`Preset`] is built from.
 ///
-/// The same 13 roles exist verbatim in all three sibling TUIs
-/// (bytewarden, jewel, secretbase), so the shared/core `Theme` fields
-/// map identically across them; each app maps the remaining roles to
-/// its own domain colors in [`Theme::from_palette`]. This is what keeps
-/// the palettes coherent across the three apps.
+/// The 13 core roles are the raw colors a [`Preset`] is built from;
+/// [`Theme::from_palette`] maps them — plus the app's domain-specific
+/// roles — into the concrete [`Theme`] used at render time.
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
     pub base: Color,

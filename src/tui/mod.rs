@@ -55,7 +55,7 @@ const POLL_BUSY_MS: u64 = 80;
 
 /// Max input events processed per frame. Coalesces held-key repeats so
 /// they don't pile up faster than we redraw, while still bounding the
-/// work done between frames (mirrors jewel).
+/// work done between frames.
 const EVENT_BATCH_CAP: u16 = 256;
 
 /// Composition entry point — installs a terminal, spawns the worker

@@ -82,7 +82,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     }
     // While a worker request is in flight, swallow every key but Esc so
     // a second `request_*` can't overwrite `in_flight` / queue a stray
-    // `WorkerRequest` (mirrors jewel's `busy_blocks` gate). Esc still
+    // `WorkerRequest` (the `busy_blocks` gate). Esc still
     // passes so the user can always back out.
     if common::busy_blocks(app.is_busy(), &key) {
         return;

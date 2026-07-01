@@ -2,7 +2,7 @@
 //! panel, centered over the originating screen. Identity is read-only; the
 //! other sections expose editable rows (toggle / number / choice). Theme keeps
 //! its preset list. New sections slot into the sidebar without changing the
-//! layout. Mirrors jewel's Settings overlay layout.
+//! layout.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};

@@ -1,5 +1,5 @@
 //! Help popup — a scrollable overlay scoped to the screen it was opened
-//! from (`App::help_from`). Mirrors jewel's context-aware help.
+//! from (`App::help_from`) — context-aware help.
 
 use ratatui::{
     Frame,
