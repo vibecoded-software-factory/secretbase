@@ -174,14 +174,33 @@ message viewport (`render_conv_search_results`) — each hit is **two rows**:
 the sender + snippet, then a dim **day/time** line (`InboxHit::sent_at` from
 the hit's `ctime`, formatted by `message_time`) for context. `↑/↓` pick,
 `Enter` jumps to + highlights the message (via `pending_search_jump`,
-paginating older if needed), `Esc` closes. The **login** screen is the signed-out exception: it omits the
-identity bar and shows the figlet/starfield backdrop with a "run `keybase
-login`, then R" hint. That hint box is **content-sized, not a fixed
-percentage**: `widgets::center_rect_abs(w, h, …)` centers it at the width its
-text actually needs (clamped to the terminal) and the message renders with
-`Wrap { trim: true }`, its box height driven by `widgets::wrapped_line_count`
-— so the hint never clips near the 70-col floor. Prefer this pair over a
-fixed-`width_pct` `center_rect` for any short, content-sized notice.
+paginating older if needed), `Esc` closes. The **login** screen
+(`view::login`) is the signed-out exception: it omits the identity bar and
+shows a **bytewarden-style form** over the figlet/starfield backdrop — a
+rounded `Login` block (cleared so the starfield doesn't bleed through) with
+three fields (**Username** / **Device name** / **Paper key**) and two action
+buttons (**Log in** / **Log in in terminal**). Fields render via
+`editor_spans`; the paper key uses `editor_spans_masked` (`●`) unless F2
+reveals it. Focus (`App::login_focus`, [`LoginField`]) is shown by an accent
+label / highlighted button; `Tab`/`↑↓` cycle, `Enter` submits, `F2` reveals,
+`F5` retries status, `Esc`/`Ctrl+C` quit. As a **text-entry** screen it owns
+bare letters as typed text (the gradient rule), so its actions live on
+non-text keys. The box is content-sized via `widgets::center_rect_abs(w, h,
+…)` (clamped to the terminal); prefer that pair (with `wrapped_line_count`
+when wrapping) over a fixed-`width_pct` `center_rect` for any content-sized
+notice.
+
+Login maps to the two real `keybase login` paths (see `CLI.md`): **Log in**
+runs the non-interactive **paper-key** login on the worker
+(`KeybasePort::login_paperkey` → `keybase login --devicename <d> <user>` with
+the paper key on stdin, held in a `Zeroizing` buffer), for a device not yet
+provisioned. **Log in in terminal** handles the already-provisioned
+(passphrase) case, which keybase collects via pinentry/terminal and **can't**
+be scripted: the run loop **cedes the terminal** (`run_native_login` —
+leave alt-screen + raw mode, run interactive `keybase login`, restore) then
+re-checks status. This terminal hand-off is the one place a subprocess runs on
+the render thread rather than the worker, precisely because it needs the real
+TTY.
 
 ## Boot & loading
 

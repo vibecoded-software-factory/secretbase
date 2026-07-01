@@ -515,6 +515,34 @@ pub fn draw_search_box(
     frame.render_widget(p, area);
 }
 
+/// Like [`editor_spans`] but renders every character as `●` — for a secret
+/// field (the Login paper key) shown masked unless the user reveals it. The
+/// block cursor still tracks the real cursor position so editing feels normal.
+pub fn editor_spans_masked(
+    editor: &LineEditor,
+    focused: bool,
+    theme: &Theme,
+) -> Vec<Span<'static>> {
+    let text = editor.text();
+    let total = text.chars().count();
+    let base = Style::default().fg(theme.foreground);
+    if !focused {
+        return vec![Span::styled("●".repeat(total), base)];
+    }
+    let cursor = Style::default().add_modifier(Modifier::REVERSED);
+    let cur_byte = editor.cursor().min(text.len());
+    let cur = text[..cur_byte].chars().count(); // cursor as a char index
+    let before = "●".repeat(cur);
+    if cur >= total {
+        return vec![Span::styled(before, base), Span::styled(" ", cursor)];
+    }
+    vec![
+        Span::styled(before, base),
+        Span::styled("●".to_string(), cursor),
+        Span::styled("●".repeat(total - cur - 1), base),
+    ]
+}
+
 /// Renders a [`LineEditor`]'s content as spans, drawing a block cursor
 /// (reverse-video) at the cursor position when `focused`. The one
 /// text-input renderer.

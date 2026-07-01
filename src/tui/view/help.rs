@@ -144,7 +144,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 lines.push(section("Channel browser (Alt+K)", t));
                 for (k, d) in [
                     ("↑/↓ k/j · PgUp/Dn", "navigate"),
-                    ("Enter / → / l", "open a joined channel · join one you're not in"),
+                    (
+                        "Enter / → / l",
+                        "open a joined channel · join one you're not in",
+                    ),
                     ("x", "leave a joined channel"),
                     ("r / d", "rename / delete the channel"),
                     ("t", "toggle as a team default (new members auto-join)"),
@@ -168,8 +171,28 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             }
             Screen::Login => {
                 lines.push(section("Login", t));
-                for (k, d) in [("R / F5", "retry status"), ("Q / Esc", "quit")] {
+                for (k, d) in [
+                    ("Tab / ↑↓", "move between fields / buttons"),
+                    ("(typing)", "edit the focused field"),
+                    ("F2", "reveal / hide the paper key"),
+                    (
+                        "Enter",
+                        "Log in — paper key (new device) · terminal button (already provisioned)",
+                    ),
+                    ("F5", "retry the status check"),
+                    ("Esc / Ctrl+C", "quit"),
+                ] {
                     lines.push(help_line(k, d, t));
+                }
+                let note = Style::default().fg(t.dim);
+                for n in [
+                    "",
+                    "  Paper-key login works only on a device never",
+                    "  provisioned for this account. A device you merely",
+                    "  logged out of is still provisioned → use \"Log in in",
+                    "  terminal\", which hands off to keybase for the passphrase.",
+                ] {
+                    lines.push(Line::from(Span::styled(n.to_string(), note)));
                 }
             }
             Screen::Settings => {

@@ -108,6 +108,10 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         (InFlight::Logout, WorkerResponse::Logout(r)) => {
             auth::handle_logout_response(app, r);
         }
+        // ── Paper-key login ───────────────────────────────────────
+        (InFlight::LoginPaperkey, WorkerResponse::LoginPaperkey(r)) => {
+            auth::handle_login_paperkey_response(app, r);
+        }
         // ── Inbox load ────────────────────────────────────────────
         (InFlight::LoadInbox, WorkerResponse::ListConversations(r)) => {
             chat::handle_load_inbox_response(app, r, false);

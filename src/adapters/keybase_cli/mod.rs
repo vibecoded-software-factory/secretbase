@@ -83,7 +83,7 @@ use crate::ports::keybase::{KeybasePort, ListConversationsOk, ListTeamsOk, ReadC
 
 use codec::{channel_object, encode_request, request_no_params, request_with_options};
 use json::extract_error;
-use process::{keybase_run_timeout, stderr_str, stdout_str};
+use process::{keybase_run_timeout, keybase_run_with_stdin_timeout, stderr_str, stdout_str};
 use session::ApiSession;
 
 /// Timeout for `keybase status --json`. Local-only — should return in
@@ -92,6 +92,11 @@ const STATUS_TIMEOUT: u64 = 5;
 
 /// Timeout for short write-only chat/team calls (mark, send, react, …).
 const QUICK_OP_TIMEOUT: u64 = 15;
+
+/// Timeout for `keybase login` (paper-key provisioning): contacts the
+/// server to provision the device, so it needs more headroom than a
+/// quick local write.
+const LOGIN_TIMEOUT: u64 = 60;
 
 /// Timeout for a chat `read` (potentially fetches up to 200 messages).
 const READ_TIMEOUT: u64 = 30;
@@ -292,6 +297,31 @@ impl KeybasePort for KeybaseCliAdapter {
 
     fn logout(&mut self) -> Result<(), KeybaseError> {
         let out = keybase_run_timeout(&["logout"], QUICK_OP_TIMEOUT)?;
+        if !out.status.success() {
+            return Err(KeybaseError::Exit {
+                stderr: stderr_str(&out),
+                status: out.status.code().unwrap_or(-1),
+            });
+        }
+        Ok(())
+    }
+
+    fn login_paperkey(
+        &mut self,
+        username: &str,
+        device: &str,
+        paperkey: &str,
+    ) -> Result<(), KeybaseError> {
+        // `keybase login --devicename <device> <username>`, paper key on
+        // stdin (the documented automation path; the CLI reads a scripted
+        // paper key via `PromptPasswordMaybeScripted`). A trailing newline
+        // terminates the prompt read. Provisioning contacts the server, so
+        // it gets the generous login timeout, not the quick-op one.
+        let out = keybase_run_with_stdin_timeout(
+            &["login", "--devicename", device, username],
+            &format!("{paperkey}\n"),
+            LOGIN_TIMEOUT,
+        )?;
         if !out.status.success() {
             return Err(KeybaseError::Exit {
                 stderr: stderr_str(&out),

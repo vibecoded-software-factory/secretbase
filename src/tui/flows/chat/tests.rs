@@ -76,6 +76,8 @@ struct MockState {
     members: Vec<ChatMember>,
     added_members: Vec<Vec<String>>,
     removed_members: Vec<Vec<String>>,
+    /// Recorded paper-key login calls: (username, device, paperkey).
+    logins: Vec<(String, String, String)>,
     /// Next adapter call returning a Result returns this error then
     /// clears the slot.
     fail_next: Option<KeybaseError>,
@@ -103,6 +105,20 @@ impl KeybasePort for MockKeybase {
         if let Some(e) = s.fail_next.take() {
             return Err(e);
         }
+        Ok(())
+    }
+    fn login_paperkey(
+        &mut self,
+        username: &str,
+        device: &str,
+        paperkey: &str,
+    ) -> Result<(), KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.logins
+            .push((username.into(), device.into(), paperkey.into()));
         Ok(())
     }
     fn list_conversations(&mut self) -> Result<ListConversationsOk, KeybaseError> {
@@ -2632,17 +2648,18 @@ fn buffer_text(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>) -> S
 }
 
 #[test]
-fn login_message_is_readable_when_terminal_is_narrow() {
-    // Regression: the login hint box was a fixed 60%-width, single centered
-    // line with no wrap — near the minimum renderable width (70 cols) 60% is
-    // only ~42 cols, so the 48-char message clipped to "…then p". Now the box
-    // is content-sized (and wraps), so the whole message (incl. the "press R."
-    // tail) renders at every width the app draws the login at (≥ 70×18, the
-    // too-small guard). Widths below that show the resize guard, not login.
+fn login_form_renders_at_every_supported_width() {
+    // The login screen is a content-sized form (bytewarden-style). It must
+    // render its fields + buttons without panicking or clipping the labels at
+    // every width the app draws it (≥ 70×18, the too-small guard; below that
+    // the resize notice shows instead of the login).
+    use crate::domain::LineEditor;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
+    rig.app.login_username = LineEditor::from_text("alice");
+    rig.app.login_device = LineEditor::from_text("secretbase");
 
     for (w, h) in [(70u16, 18u16), (80, 24), (120, 40)] {
         let mut terminal = Terminal::new(TestBackend::new(w, h)).expect("backend");
@@ -2650,10 +2667,12 @@ fn login_message_is_readable_when_terminal_is_narrow() {
             .draw(|f| crate::tui::view::draw(f, &mut rig.app))
             .expect("draw must not panic");
         let text = buffer_text(&terminal);
-        assert!(
-            text.contains("press") && text.contains("R."),
-            "login message clipped at {w}x{h}:\n{text}"
-        );
+        for needle in ["Login", "Username", "Device", "Paper key", "Log in"] {
+            assert!(
+                text.contains(needle),
+                "login form missing {needle:?} at {w}x{h}:\n{text}"
+            );
+        }
     }
 }
 
@@ -3188,19 +3207,100 @@ fn input_conversation_enter_with_empty_buffer_errors() {
 }
 
 #[test]
-fn input_login_r_retries_status_check() {
+fn input_login_f5_retries_status_check() {
+    // The login screen is now a form, so bare letters type into fields —
+    // retry-status moved to F5 (`r` would land in the Username field).
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    press(&mut rig.app, KeyCode::Char('r'), KeyModifiers::NONE);
+    press(&mut rig.app, KeyCode::F(5), KeyModifiers::NONE);
     assert!(matches!(rig.app.in_flight, Some(InFlight::Status)));
 }
 
 #[test]
-fn input_login_q_quits() {
+fn input_login_esc_quits() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    press(&mut rig.app, KeyCode::Char('q'), KeyModifiers::NONE);
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
     assert!(rig.app.should_quit);
+}
+
+#[test]
+fn input_login_letters_type_into_focused_field() {
+    // A bare letter on the login form is text, not an action.
+    use crate::tui::app::LoginField;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+    rig.app.login_focus = LoginField::Username;
+    for c in "alice".chars() {
+        press(&mut rig.app, KeyCode::Char(c), KeyModifiers::NONE);
+    }
+    assert_eq!(rig.app.login_username.text(), "alice");
+    assert!(!rig.app.should_quit);
+}
+
+#[test]
+fn input_login_enter_submits_paperkey_and_records_call() {
+    // Filled form + Enter → non-interactive paper-key login.
+    use crate::domain::LineEditor;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+    rig.app.login_username = LineEditor::from_text("alice");
+    rig.app.login_device = LineEditor::from_text("secretbase");
+    rig.app.login_paperkey = LineEditor::from_text("word ".repeat(9).trim());
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(matches!(rig.app.in_flight, Some(InFlight::LoginPaperkey)));
+    pump_one(&mut rig.app);
+    let logins = &rig.mock.st().logins;
+    assert_eq!(logins.len(), 1);
+    assert_eq!(logins[0].0, "alice");
+    assert_eq!(logins[0].1, "secretbase");
+}
+
+#[test]
+fn login_paperkey_requires_all_fields() {
+    // Empty username → validation error, no worker call, focus moves to it.
+    use crate::domain::LineEditor;
+    use crate::tui::app::LoginField;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+    rig.app.login_device = LineEditor::from_text("secretbase");
+    rig.app.login_paperkey = LineEditor::from_text("word word word");
+    crate::tui::flows::auth::request_login_paperkey(&mut rig.app);
+    assert!(rig.app.in_flight.is_none());
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert_eq!(rig.app.login_focus, LoginField::Username);
+}
+
+#[test]
+fn login_paperkey_failure_surfaces_error_and_stays_on_login() {
+    use crate::domain::LineEditor;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+    rig.app.login_username = LineEditor::from_text("alice");
+    rig.app.login_device = LineEditor::from_text("secretbase");
+    rig.app.login_paperkey = LineEditor::from_text("word word word");
+    rig.mock.st().fail_next = Some(KeybaseError::Exit {
+        stderr: "already provisioned this device".into(),
+        status: 1,
+    });
+    crate::tui::flows::auth::request_login_paperkey(&mut rig.app);
+    pump_one(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    assert_eq!(rig.app.screen, Screen::Login);
+    // The paper-key field is kept so the user can switch to native login.
+    assert!(!rig.app.login_paperkey.is_empty());
+}
+
+#[test]
+fn input_login_native_button_sets_pending_native_login() {
+    use crate::domain::LineEditor;
+    use crate::tui::app::LoginField;
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Login;
+    rig.app.login_username = LineEditor::from_text("alice");
+    rig.app.login_focus = LoginField::SubmitNative;
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(rig.app.pending_native_login.as_deref(), Some("alice"));
 }
 
 #[test]

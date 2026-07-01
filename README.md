@@ -22,6 +22,12 @@ A working terminal client for everyday Keybase chat. Highlights:
 
 * `keybase status --json` on boot to detect the session; logout with
   confirmation.
+* **Login screen** (signed out): a form to **log in from the app** — a
+  non-interactive **paper-key** login (`keybase login --devicename <d> <user>`,
+  paper key on stdin) for a new device, and a **"Log in in terminal"** button
+  that cedes the terminal to interactive `keybase login` for the passphrase
+  path when the device is already provisioned. (Keybase has no scriptable
+  username+password login; see `CLI.md`.)
 * Discord-style unified two-pane Home: a collapsible **conversation tree**
   (Direct messages + a group per team; unread in bold) on the left, the open
   **chat** on the right; the header search fuzzy-filters the tree.
@@ -156,6 +162,17 @@ copy detail only · `Esc` clear / leave.
 rename/delete · `t` toggle team-default · `m` members · `Alt+N` new · `F5`
 refresh. **Members** (`m` in the browser, or `Alt+P` on an open team channel):
 `a` add · `x`/`d` remove · `F5` refresh.
+
+### Login (signed out)
+
+| Key | Action |
+|---|---|
+| `Tab` / `Shift+Tab` · `↑`/`↓` | Move between fields / buttons |
+| typing                  | Edit the focused field |
+| `F2`                    | Reveal / hide the paper key |
+| `Enter`                 | Log in (paper key on a field/`Log in`; native on `Log in in terminal`) |
+| `F5`                    | Retry the status check |
+| `Esc` / `Ctrl+C`        | Quit |
 
 ### Global
 

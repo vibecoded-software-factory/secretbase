@@ -61,6 +61,23 @@ pub trait KeybasePort {
     /// purging it.
     fn logout(&mut self) -> Result<(), KeybaseError>;
 
+    /// Non-interactive **paper-key** login: `keybase login --devicename
+    /// <device> <username>` with the paper key written to the child's
+    /// stdin. This is the *only* scripted login the CLI supports (per
+    /// `keybase login`'s own docs) and only works on a device that has
+    /// **never** been provisioned for this account — a device that was
+    /// merely logged out is still provisioned and rejects it with "already
+    /// provisioned this device", in which case the interactive
+    /// (passphrase) flow is required instead (the TUI cedes the terminal
+    /// to `keybase login` for that). The paper key is secret material and
+    /// must be zeroized by the caller.
+    fn login_paperkey(
+        &mut self,
+        username: &str,
+        device: &str,
+        paperkey: &str,
+    ) -> Result<(), KeybaseError>;
+
     // ── Chat — inbox / read ───────────────────────────────────────────────
 
     /// `{"method":"list"}` — returns every conversation the user can
