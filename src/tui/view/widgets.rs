@@ -42,50 +42,6 @@ pub fn rounded_block(border_style: Style) -> Block<'static> {
 pub const MODAL_WIDTH_PCT: u16 = 80;
 pub const MODAL_HEIGHT: u16 = 22;
 
-/// Centered sub-rectangle with **absolute** dimensions, each clamped to what
-/// `area` actually offers (never wider/taller than available). For
-/// content-sized boxes that must stay readable on a narrow terminal — a fixed
-/// `width_pct` either overflows (clips text) or wastes space; this sizes to the
-/// content and only shrinks when the terminal can't fit it.
-pub fn center_rect_abs(width: u16, height: u16, area: Rect) -> Rect {
-    let w = width.min(area.width);
-    let h = height.min(area.height);
-    Rect {
-        x: area.x + area.width.saturating_sub(w) / 2,
-        y: area.y + area.height.saturating_sub(h) / 2,
-        width: w,
-        height: h,
-    }
-}
-
-/// Number of rows `text` needs when word-wrapped to `width` columns — a greedy,
-/// whitespace-splitting count that matches ratatui's `Wrap { trim: true }`
-/// closely enough to size a box around it. A word longer than `width` spills
-/// onto extra rows. Always ≥ 1.
-pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
-    if width == 0 {
-        return 1;
-    }
-    let width = width as usize;
-    let mut lines: u16 = 1;
-    let mut col = 0usize; // columns used on the current row
-    for word in text.split_whitespace() {
-        let wlen = word.chars().count();
-        let sep = usize::from(col > 0); // a space before the word, unless row start
-        if col > 0 && col + sep + wlen > width {
-            lines += 1;
-            col = 0;
-        }
-        col += usize::from(col > 0) + wlen;
-        // A single word wider than the row wraps onto further rows.
-        while col > width {
-            lines += 1;
-            col -= width;
-        }
-    }
-    lines.max(1)
-}
-
 /// Returns a sub-rectangle centered horizontally and vertically inside
 /// `area`. `width_pct` is a percentage (0–100), `height` is in rows.
 pub fn center_rect(width_pct: u16, height: u16, area: Rect) -> Rect {
@@ -515,6 +471,34 @@ pub fn draw_search_box(
     frame.render_widget(p, area);
 }
 
+/// Like [`editor_spans`] but renders every character as `●` — for a secret
+/// field (the Login paper key) shown masked unless the user reveals it. The
+/// block cursor still tracks the real cursor position so editing feels normal.
+pub fn editor_spans_masked(
+    editor: &LineEditor,
+    focused: bool,
+    theme: &Theme,
+) -> Vec<Span<'static>> {
+    let text = editor.text();
+    let total = text.chars().count();
+    let base = Style::default().fg(theme.foreground);
+    if !focused {
+        return vec![Span::styled("●".repeat(total), base)];
+    }
+    let cursor = Style::default().add_modifier(Modifier::REVERSED);
+    let cur_byte = editor.cursor().min(text.len());
+    let cur = text[..cur_byte].chars().count(); // cursor as a char index
+    let before = "●".repeat(cur);
+    if cur >= total {
+        return vec![Span::styled(before, base), Span::styled(" ", cursor)];
+    }
+    vec![
+        Span::styled(before, base),
+        Span::styled("●".to_string(), cursor),
+        Span::styled("●".repeat(total - cur - 1), base),
+    ]
+}
+
 /// Renders a [`LineEditor`]'s content as spans, drawing a block cursor
 /// (reverse-video) at the cursor position when `focused`. The one
 /// text-input renderer.
@@ -805,6 +789,31 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
     );
 }
 
+/// A minimal bottom hint bar — `footer_hint` fit to the width (whole `·`
+/// segments only, same rule as [`draw_status_strip`]) on the left, an `F1 help`
+/// anchor on the right. For signed-out / no-mode screens (the Login form),
+/// where the mode badge and action feedback of `draw_status_strip` don't apply.
+pub fn draw_hint_bar(frame: &mut Frame, area: Rect, footer_hint: &str, t: &Theme) {
+    const HELP_ANCHOR: &str = "F1 help";
+    let anchor_block = HELP_ANCHOR.chars().count() + 2;
+    let avail = (area.width as usize).saturating_sub(anchor_block);
+    let hint = fit_segments(footer_hint, avail);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(t.dim)))),
+        area,
+    );
+    frame.render_widget(
+        Paragraph::new(
+            Line::from(Span::styled(
+                HELP_ANCHOR,
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+            ))
+            .right_aligned(),
+        ),
+        area,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -819,39 +828,6 @@ mod tests {
         assert!(out.ends_with(" …"));
         assert!(!out.contains("Alt+N ne")); // no mid-item cut
         assert!(out.chars().count() <= 20);
-    }
-
-    #[test]
-    fn wrapped_line_count_wraps_and_never_zero() {
-        let msg = "Run keybase login in a terminal, then press R.";
-        // Wide enough → one line.
-        assert_eq!(wrapped_line_count(msg, 60), 1);
-        // Narrow → wraps to more than one line, never clips silently.
-        assert!(wrapped_line_count(msg, 24) >= 2);
-        assert!(wrapped_line_count(msg, 14) >= 3);
-        // Degenerate widths stay ≥ 1.
-        assert_eq!(wrapped_line_count("", 10), 1);
-        assert_eq!(wrapped_line_count("hi", 0), 1);
-        // A word longer than the row spills onto extra rows.
-        assert!(wrapped_line_count("supercalifragilistic", 5) >= 4);
-    }
-
-    #[test]
-    fn center_rect_abs_clamps_to_area() {
-        let area = Rect {
-            x: 0,
-            y: 0,
-            width: 40,
-            height: 10,
-        };
-        // Fits → centered at the requested size.
-        let r = center_rect_abs(20, 4, area);
-        assert_eq!((r.width, r.height), (20, 4));
-        assert_eq!(r.x, 10);
-        // Bigger than area → clamped, never overflows.
-        let big = center_rect_abs(100, 100, area);
-        assert_eq!((big.width, big.height), (40, 10));
-        assert_eq!((big.x, big.y), (0, 0));
     }
 
     #[test]

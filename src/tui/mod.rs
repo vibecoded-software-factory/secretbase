@@ -270,11 +270,58 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
             maybe_auto_refresh(app);
         }
 
+        // Interactive login: the handler asked us to cede the terminal to
+        // `keybase login` (the passphrase path can't be scripted). Do it
+        // between frames — suspend the TUI, run it, restore, re-check status.
+        if let Some(username) = app.pending_native_login.take() {
+            run_native_login(terminal, &username);
+            drain_pending_events();
+            terminal.clear()?;
+            flows::auth::request_status(app);
+            done_ticks = 0;
+        }
+
         if app.should_quit {
             break;
         }
     }
     Ok(())
+}
+
+/// Cedes the terminal to interactive `keybase login [username]` — the only
+/// login path once the device is already provisioned (keybase collects the
+/// passphrase through its own pinentry/terminal prompt, which can't be fed
+/// over stdin). Leaves the alternate screen + raw mode + mouse capture so
+/// keybase owns the real TTY, runs it to completion, then restores the TUI.
+/// Best-effort: a spawn/terminal error is swallowed and reflected by the
+/// follow-up `status` re-check.
+fn run_native_login(terminal: &mut ratatui::DefaultTerminal, username: &str) {
+    use crossterm::terminal::{
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    };
+
+    // Suspend the TUI: hand the real terminal to keybase.
+    let _ = execute!(std::io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
+    let _ = disable_raw_mode();
+
+    let suffix = if username.is_empty() {
+        String::new()
+    } else {
+        format!(" {username}")
+    };
+    println!("\n  Running `keybase login{suffix}` — follow the prompts below.\n");
+    let mut cmd = std::process::Command::new("keybase");
+    cmd.arg("login");
+    if !username.is_empty() {
+        cmd.arg(username);
+    }
+    let _ = cmd.status(); // inherits stdio; the user interacts directly
+    println!("\n  Returning to secretbase…");
+
+    // Restore the TUI.
+    let _ = enable_raw_mode();
+    let _ = execute!(std::io::stdout(), EnterAlternateScreen, EnableMouseCapture);
+    let _ = terminal.clear();
 }
 
 /// Returns the next event-poll timeout — fast during animation or

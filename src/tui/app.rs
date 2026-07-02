@@ -34,6 +34,35 @@ pub const INBOX_VIEWPORT_ROWS: usize = 20;
 /// Step size in rows for PgUp/PgDn navigation.
 pub const PAGE_STEP: usize = 10;
 
+/// Focusable element on the **Login** screen form. Tab /
+/// Shift+Tab cycle through the three fields then the two action buttons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginField {
+    /// The keybase username (the `[username]` argument).
+    Username,
+    /// Unique device name (`--devicename`), pre-filled with a default.
+    Device,
+    /// The paper key (secret, masked unless F2-revealed) — fed to `keybase
+    /// login` on stdin.
+    PaperKey,
+    /// "Log in" button — runs the non-interactive paper-key login.
+    SubmitPaperkey,
+    /// "Log in in terminal" button — cedes the terminal to interactive
+    /// `keybase login` (the only path when the device is already provisioned).
+    SubmitNative,
+}
+
+impl LoginField {
+    /// Cycle order for Tab / Shift+Tab.
+    pub const ORDER: [LoginField; 5] = [
+        LoginField::Username,
+        LoginField::Device,
+        LoginField::PaperKey,
+        LoginField::SubmitPaperkey,
+        LoginField::SubmitNative,
+    ];
+}
+
 /// A status-changing action on a single conversation, shown behind the
 /// shared y/n confirm popup ([`Screen::ConfirmConvAction`]). Each maps to
 /// a `keybase chat api {"method":"setstatus"}` status value.
@@ -583,6 +612,25 @@ pub struct App {
     /// name instead of by tree selection.
     pub unhide_input: LineEditor,
 
+    // ── Login screen (signed-out) ───────────────────────────────────────
+    /// Username field on the Login form (the `keybase login [username]`
+    /// argument). Pre-filled from `identity.default_username` when known.
+    pub login_username: LineEditor,
+    /// Device-name field (`--devicename`), pre-filled with a sensible default.
+    pub login_device: LineEditor,
+    /// Paper-key field — secret material, so it rides the `ZeroizeOnDrop`
+    /// `LineEditor` like every other input and is masked unless revealed.
+    pub login_paperkey: LineEditor,
+    /// Which login element has focus (Tab cycles [`LoginField::ORDER`]).
+    pub login_focus: LoginField,
+    /// Whether the paper-key field is shown in clear (F2 toggles it).
+    pub login_reveal: bool,
+    /// Set by the Login handler to ask the run loop to **cede the terminal**
+    /// to interactive `keybase login <username>` (empty = no username arg).
+    /// The run loop consumes it, suspends the TUI, runs the command, restores,
+    /// and re-checks status.
+    pub pending_native_login: Option<String>,
+
     // ── Server-side search popup ────────────────────────────────────────
     /// Query box in the Ctrl+G popup.
     pub search_global_input: LineEditor,
@@ -913,6 +961,12 @@ impl App {
             conv_search_selected: 0,
             new_conv: LineEditor::default(),
             unhide_input: LineEditor::default(),
+            login_username: LineEditor::default(),
+            login_device: LineEditor::default(),
+            login_paperkey: LineEditor::default(),
+            login_focus: LoginField::Username,
+            login_reveal: false,
+            pending_native_login: None,
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
             search_global_selected: 0,

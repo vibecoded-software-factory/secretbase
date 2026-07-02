@@ -34,10 +34,31 @@ keybase help prove
 |---|---|
 | `keybase version` | Display the version number |
 | `keybase signup` | Create a new account |
-| `keybase login` | Authenticate an existing account (device provisioning) |
+| `keybase login [username]` | Authenticate an existing account (device provisioning) |
 | `keybase logout` | Log out the current device |
 | `keybase status` | Show session / device / login status (`--json` for machine-readable) |
 | `keybase help` | Access help documentation |
+
+### `keybase login` — two paths (what the CLI actually supports)
+
+Login is **device provisioning**, not a username+password call. Verified
+against `keybase/client` `go/client/cmd_login.go` + `ui.go`:
+
+- **Non-interactive (paper key)** — the *only* scriptable path, and only on a
+  device **never** provisioned for the account:
+  `keybase login --devicename <device> <username>` with the **paper key on
+  stdin** (or `KEYBASE_PAPERKEY` / `KEYBASE_DEVICENAME` env). The CLI reads it
+  via `PromptPasswordMaybeScripted`, which falls back to stdin when stdin is
+  not a TTY. secretbase drives this from the Login form
+  (`KeybasePort::login_paperkey`, one-shot spawn, paper key held in a
+  `Zeroizing` buffer). A device that was merely logged out is **still
+  provisioned** and rejects this with *"already provisioned this device"*.
+- **Interactive (passphrase)** — for an already-provisioned device (e.g. after
+  logout), keybase asks for the passphrase through `SecretUI` →
+  pinentry/terminal (`SecretEntry.Get`), which **never reads stdin**, so it
+  can't be scripted. secretbase therefore **cedes the terminal** to interactive
+  `keybase login <username>` (suspends the TUI, runs it, restores) — the "Log
+  in in terminal" button.
 
 ## Identity proofs
 

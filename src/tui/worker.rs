@@ -81,6 +81,14 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
 pub enum WorkerRequest {
     Status,
     Logout,
+    /// Non-interactive paper-key login. The paper key is secret material,
+    /// held in a `Zeroizing` buffer so it is wiped when the request is
+    /// consumed by the worker.
+    LoginPaperkey {
+        username: String,
+        device: String,
+        paperkey: zeroize::Zeroizing<String>,
+    },
     ListConversations,
     /// Inbox list issued by the idle auto-refresh on the **background**
     /// lane. Identical to [`Self::ListConversations`] but its response
@@ -219,6 +227,7 @@ pub enum WorkerRequest {
 pub enum WorkerResponse {
     Status(Result<IdentityInfo, KeybaseError>),
     Logout(Result<(), KeybaseError>),
+    LoginPaperkey(Result<(), KeybaseError>),
     ListConversations(Result<ListConversationsOk, KeybaseError>),
     /// Response for [`WorkerRequest::ListConversationsSilent`] — routed
     /// in `apply_response` before the `in_flight` match.
@@ -271,6 +280,7 @@ pub enum InFlight {
     /// Login. Fired once at boot and from the Login screen's retry.
     Status,
     Logout,
+    LoginPaperkey,
     LoadInbox,
     LoadMessages,
     LoadOlderMessages,
@@ -475,6 +485,9 @@ mod tests {
         fn logout(&mut self) -> Result<(), KeybaseError> {
             Ok(())
         }
+        fn login_paperkey(&mut self, _: &str, _: &str, _: &str) -> Result<(), KeybaseError> {
+            Ok(())
+        }
         fn list_conversations(&mut self) -> Result<ListConversationsOk, KeybaseError> {
             Ok(ListConversationsOk {
                 conversations: Vec::<Conversation>::new(),
@@ -666,6 +679,7 @@ mod tests {
             match self {
                 Self::Status(r) => write!(f, "Status({r:?})"),
                 Self::Logout(r) => write!(f, "Logout({r:?})"),
+                Self::LoginPaperkey(r) => write!(f, "LoginPaperkey({r:?})"),
                 Self::ListConversations(_) => f.write_str("ListConversations(..)"),
                 Self::ListConversationsSilent(_) => f.write_str("ListConversationsSilent(..)"),
                 Self::ReadMessages(_) => f.write_str("ReadMessages(..)"),
@@ -710,6 +724,13 @@ fn run_worker(
             WorkerRequest::Shutdown => break,
             WorkerRequest::Status => WorkerResponse::Status(run_caught(|| keybase.status())),
             WorkerRequest::Logout => WorkerResponse::Logout(run_caught(|| keybase.logout())),
+            WorkerRequest::LoginPaperkey {
+                username,
+                device,
+                paperkey,
+            } => WorkerResponse::LoginPaperkey(run_caught(|| {
+                keybase.login_paperkey(&username, &device, &paperkey)
+            })),
             WorkerRequest::ListConversations => {
                 WorkerResponse::ListConversations(run_caught(|| keybase.list_conversations()))
             }

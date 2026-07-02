@@ -174,14 +174,39 @@ message viewport (`render_conv_search_results`) — each hit is **two rows**:
 the sender + snippet, then a dim **day/time** line (`InboxHit::sent_at` from
 the hit's `ctime`, formatted by `message_time`) for context. `↑/↓` pick,
 `Enter` jumps to + highlights the message (via `pending_search_jump`,
-paginating older if needed), `Esc` closes. The **login** screen is the signed-out exception: it omits the
-identity bar and shows the figlet/starfield backdrop with a "run `keybase
-login`, then R" hint. That hint box is **content-sized, not a fixed
-percentage**: `widgets::center_rect_abs(w, h, …)` centers it at the width its
-text actually needs (clamped to the terminal) and the message renders with
-`Wrap { trim: true }`, its box height driven by `widgets::wrapped_line_count`
-— so the hint never clips near the 70-col floor. Prefer this pair over a
-fixed-`width_pct` `center_rect` for any short, content-sized notice.
+paginating older if needed), `Esc` closes. The **login** screen
+(`view::login`) is the signed-out exception: it omits the identity bar and
+shows a **login form** over the figlet/starfield backdrop — a
+rounded `Login` block (cleared so the starfield doesn't bleed through) with
+three fields (**Username** / **Device name** / **Paper key**) and two action
+buttons (**Log in** / **Log in in terminal**). Fields render via
+`editor_spans`; the paper key uses `editor_spans_masked` (`●`) unless F2
+reveals it. Focus (`App::login_focus`, [`LoginField`]) is shown by an accent
+label / highlighted button; `Tab`/`↑↓` cycle, `Enter` submits, `F2` reveals,
+`F5` retries status, `Esc`/`Ctrl+C` quit. As a **text-entry** screen it owns
+bare letters as typed text (the gradient rule), so its actions live on
+non-text keys. Layout: a whole-screen `Layout::vertical([Fill(2), Length(20),
+Fill(1), Length(1)])` puts the wordmark up top (2/3 of the stars above the
+form, 1/3 below) with the form block in a fixed 20-row chunk and the hint bar
+at the bottom; `fill_stars` paints every non-form chunk (incl. the gutters
+either side of the centred `width−8`, clamped `[44,72]`, form) so the backdrop
+is continuous. Inside, a `Layout::vertical` gives each field a label row + a
+3-row bordered input, then the buttons, a short centred hint, and a
+top-bordered **feedback strip** carrying the last error/result. While a login
+or status check is `Running`, the screen shows the shared `splash` (spinner)
+instead of the form.
+
+Login maps to the two real `keybase login` paths (see `CLI.md`): **Log in**
+runs the non-interactive **paper-key** login on the worker
+(`KeybasePort::login_paperkey` → `keybase login --devicename <d> <user>` with
+the paper key on stdin, held in a `Zeroizing` buffer), for a device not yet
+provisioned. **Log in in terminal** handles the already-provisioned
+(passphrase) case, which keybase collects via pinentry/terminal and **can't**
+be scripted: the run loop **cedes the terminal** (`run_native_login` —
+leave alt-screen + raw mode, run interactive `keybase login`, restore) then
+re-checks status. This terminal hand-off is the one place a subprocess runs on
+the render thread rather than the worker, precisely because it needs the real
+TTY.
 
 ## Boot & loading
 
@@ -415,10 +440,8 @@ decision.
 - `widgets::draw_confirm_popup(frame, area, theme, title, body, confirmed)` —
   the shared navigable y/n overlay.
 - `widgets::center_rect` / `rounded_block` / `help_line` — popup chrome.
-  `widgets::center_rect_abs(w, h, area)` is the **content-sized** sibling
-  (absolute dims clamped to the area, for short notices that must not clip on a
-  narrow terminal); `widgets::wrapped_line_count(text, w)` sizes such a box's
-  height around wrapped text.
+  `widgets::editor_spans` / `editor_spans_masked` render a `LineEditor` (the
+  latter as `●` for secret fields like the Login paper key).
 - `widgets::MODAL_WIDTH_PCT` / `widgets::MODAL_HEIGHT` — **the standard
   centered-modal geometry** (currently 80% wide × 22 rows). Every list / picker
   overlay imitates it via `center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, …)` so
