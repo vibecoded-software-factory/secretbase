@@ -251,10 +251,15 @@ http://keybase5wmilwokqirssclfnsqrjdsi7jdir5wy7y7iu3tanwmtp6oid.onion
 
 ## Related — the chat JSON API secretbase drives (verified from source)
 
-The chat/team/wallet **stdin/stdout JSON API** is what this app wraps.
-Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
-(fetch via `gh api repos/keybase/client/contents/go/client/chat_api_doc.go
--H "Accept: application/vnd.github.raw"`).
+The chat / team / wallet / kvstore / contact-settings **stdin/stdout JSON
+API** is what this app wraps. This section is the **complete** reference for
+every `keybase … api` family (not only the parts secretbase wires today), so
+a future feature can look up the exact method + options here first. Each
+family's doc is verbatim from its `*_api_doc.go` in `keybase/client`
+(`go/client/{chat,team,wallet,kvstore,contact_settings}_api_doc.go`), fetched
+via e.g. `gh api repos/keybase/client/contents/go/client/chat_api_doc.go -H
+"Accept: application/vnd.github.raw"`. Where a method/subcommand is **not**
+wired yet, it's flagged as a future-feature candidate.
 
 ### `keybase chat api` methods (verbatim from `chat_api_doc.go`)
 
@@ -353,6 +358,38 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
 - **No bulk "delete conversation/history" method exists in the api** —
   `delete` is per-message. Bulk delete is a CLI subcommand (below).
 
+#### chat-api methods NOT yet wired in secretbase (available for future features)
+
+The list above is the **complete** `chat_api_doc.go` surface; these are the
+methods secretbase does not call yet — each is a candidate for a future flow
+(build the request in `codec.rs`, add a `WorkerRequest`/`InFlight` pair):
+
+- `get` `{"channel":…,"message_ids":[314,315,342]}` — fetch specific messages
+  by id (vs `read`'s paginated window). Useful for jump-to-message / reply
+  context without a full page.
+- **search filters** (both `searchinbox` and `searchregexp`): `sent_by`,
+  `sent_to`, `sent_after`/`sent_before` (dates, e.g. `"09/10/2017"`), `max_hits`;
+  `searchinbox` also takes a free `query`, `searchregexp` an `is_regex` bool.
+  secretbase currently passes only `query`/`max_hits` (+ `is_regex:false`).
+- `loadflip` `{"conversation_id","flip_conversation_id","msg_id","game_id"}` —
+  resolves a `/flip` game's result.
+- `getunfurlsettings` / `setunfurlsettings`
+  `{"mode":"always"|"never"|"whitelisted","whitelist":["example.com"]}` — the
+  link-preview (unfurl) policy for sent links.
+- `advertisecommands` / `clearcommands` / `listcommands` — bot command
+  advertisement. `advertisecommands` `{"alias","advertisements":[{"type":…,
+  "commands":[{"name","description"}]}]}` with `type` ∈ `public` ·
+  `teammembers` (needs `team_name`) · `teamconvs` (needs `team_name`) · `conv`
+  (needs `conv_id`); `clearcommands` takes an optional `{"filter":{"type",…}}`;
+  `listcommands` takes a `{"channel":…}`.
+- `getdeviceinfo` `{"username":…}` — a user's device info by username.
+- `getresetconvmembers` / `addresetconvmember` `{"username","conversation_id"}`
+  — list / re-add members who reset their account in your conversations.
+- `emojiadd` `{"channel","alias","filename"}` (upload a custom emoji),
+  `emojiaddalias` `{"channel","new_alias","existing_alias"}`,
+  `emojiremove` `{"channel","alias"}` — secretbase reads `emojilist` but does
+  not add/alias/remove yet.
+
 ### `keybase chat` CLI subcommands (verified from `cmd_chat_*.go`)
 
 These are NOT api-mode (run as one-shot `keybase chat <sub>` spawns):
@@ -372,9 +409,36 @@ These are NOT api-mode (run as one-shot `keybase chat <sub>` spawns):
   to a file/backup on disk (async job: `archive-list` / `archive-delete` /
   `archive-pause` / `archive-resume`). It does **NOT** remove the conv from
   the inbox or change its status.
-- Other relevant subcommands present: `createchannel`, `delete-channel`,
-  `addtochannel`, `conv-info`, `mute`, `report`, `download`, `upload`,
-  emoji*, `default-channels`.
+- **Complete `keybase chat` subcommand list** (verified from the
+  `go/client/cmd_chat_*.go` files present in the repo). Most map 1:1 to an
+  api-mode method above; the ones with **no** api equivalent are the only
+  reason to shell a subcommand. Grouped by area:
+  - *messaging:* `send` · `read` · `list` · `list-unread` · `mark-as-read` ·
+    `search-inbox` · `search-regexp` · `search-profile` · `fwdmsg` (forward a
+    message to another conversation — **no api method**, subcommand only) ·
+    `conv-info` · `upload` · `download`.
+  - *channels & membership:* `createchannel` · `listchannels` · `joinchannel` ·
+    `leavechannel` · `renamechannel` · `delete-channel` · `default-channels` ·
+    `addtochannel` · `removefromchannel` · `readd-member` (re-add a reset
+    member) · `min-writer-role` (set the minimum role that can post — **no api
+    method**).
+  - *status & retention:* `hide` (ignore/`--block`/`--unhide`) · `mute` ·
+    `report` · `retention` (+ `retention-dev`; set the conversation/team
+    message-retention policy — **no api method**) · `delete-history` (+
+    `delete-history-dev`).
+  - *archive (async export job):* `archive` · `archive-list` ·
+    `archive-delete` · `archive-pause` · `archive-resume`.
+  - *bots:* `add-bot-member` · `edit-bot-member` · `remove-bot-member` ·
+    `bot-member-settings` · `featured-bots` · `search-bots` — bot management
+    (**no api-mode equivalents**; only `advertise/clear/listcommands` are api).
+  - *emoji:* `emojiadd` · `emojiaddalias` · `emojiremove` · `emojilist` (these
+    *do* have api methods).
+  - *notifications & misc:* `notification-settings` (per-conversation
+    notification policy — **no api method**) · `kbfs-upgrade`.
+  Everything secretbase currently drives is api-mode except `rename-channel`,
+  `delete-channel` and `default-channels` (documented above). The rest are
+  future-feature candidates — `retention`, `notification-settings`, `fwdmsg`,
+  `min-writer-role`, `conv-info`, `archive`, bot management, emoji add/remove.
 
 ### `keybase chat api-listen` — push stream
 
@@ -402,11 +466,80 @@ notifications are printed; **typing, read-state, edits-as-deltas, and the
 other `NotifyChat` callbacks return `nil`** in the source, so they are *not*
 available over the CLI — only the lower-level service RPC exposes them.
 
-### Other JSON APIs
-- `keybase team api` — team JSON API (`list-self-memberships`,
-  `create-team`, `add-members`, `list-team-memberships`, …). Verify against
-  `go/client/cmd_team_api.go` / the team api doc in source.
-- `keybase wallet api` — Stellar wallet JSON API.
+### `keybase team api` methods (verbatim from `team_api_doc.go`)
+
+secretbase wires only `list-user-memberships` (via `list_self_memberships`,
+which queries it with the caller's own username — see the port doc — because
+the api's `list-self-memberships` maps to `TeamListTeammates` and returns one
+row *per teammate* across every team) and `create-team` / `leave-team`. The
+**full** method set:
+
+- `list-self-memberships` — every team you're in (one row per teammate; noisy,
+  so secretbase uses `list-user-memberships` instead).
+- `list-team-memberships` `{"team":"phoenix"}` — the members of one team.
+- `list-user-memberships` `{"username":"cleo"}` — one row per team a user is in
+  (what secretbase actually calls, with its own username → one row per team).
+- `create-team` `{"team":"phoenix"}` — also creates a **subteam** when the name
+  is dotted (`"phoenix.bots"`).
+- `add-members` `{"team":…,"emails":[{"email","role"}],"usernames":[{"username",
+  "role"}]}` — add members by username/email/social-proof with a role.
+- `edit-member` `{"team":…,"username":…,"role":…}` — change a member's role.
+- `remove-member` `{"team":…,"username":…}`.
+- `rename-subteam` `{"team":"phoenix.bots","new-team-name":"phoenix.humans"}`.
+- `leave-team` `{"team":…,"permanent":true}` — secretbase's `leave_team` wraps
+  this.
+- `list-requests` `{"team":"phoenix"}` — pending access requests to a team.
+
+The team CLI also has non-api subcommands (verified from `cmd_team_*.go`):
+`accept-invite` · `add-member` · `add-members-bulk` · `bot-settings` ·
+`create` · `delete` · `edit-member` · `ftl` · `generate-invitelink` ·
+`generate-seitan` · `ignore-request` · `leave` · `list-memberships` ·
+`list-requests` · `profile-load` · `remove-member` · `rename` ·
+`request-access` · `rotate-key` · `search` · `settings` · `show-tree`.
+
+### `keybase wallet api` methods (verbatim from `wallet_api_doc.go`)
+
+Stellar wallet JSON API — **not wired** in secretbase (chat only shows the
+pre-rendered `SendPayment` / `RequestPayment` message text). Documented for
+completeness:
+
+- `balances` — balances across all your accounts.
+- `history` `{"account-id":…}` — payment history for an account.
+- `details` `{"txid":…}` — one transaction's details.
+- `lookup` `{"name":"patrick"}` — a user's primary Stellar account id.
+- `get-inflation` / `set-inflation` `{"account-id":…,"destination":…}` —
+  inflation destination (`"lumenaut"` / an account id / `"self"`).
+- `send` `{"recipient":…,"amount":…,"currency":"USD","message":…}` — **no
+  confirmation**, be careful.
+- `find-payment-path` / `send-path-payment`
+  `{"recipient","amount","source-asset","destination-asset","source-max-amount"}`
+  — cross-asset path payments.
+- `cancel` `{"txid":…}` — cancel an unclaimed payment (recipient has no wallet
+  yet); the XLM returns to your account.
+- `setup-wallet` — initialise the wallet for an account.
+
+### `keybase kvstore api` methods (verbatim from `kvstore_api_doc.go`)
+
+Fast, encrypted key-value storage (per-team-key encrypted `entryValue`;
+`namespace`/`entryKey` are server-visible). **Not wired** in secretbase.
+Defaults to your implicit self-team when `team` is omitted.
+
+- `put` `{"team":…,"namespace":…,"entryKey":…,"entryValue":…,"revision":N?}` —
+  a non-zero `revision` gives optimistic-concurrency (e.g. `1` errors if the
+  entry already exists).
+- `get` `{"team":…,"namespace":…,"entryKey":…}` — latest revision (a
+  non-existent entry has revision `0`).
+- `list` `{"team":…,"namespace":…?}` — namespaces, or entryKeys in a namespace.
+- `del` `{"team":…,"namespace":…,"entryKey":…,"revision":N?}` — delete an entry.
+
+### `keybase contact-settings api` methods (verbatim from `contact_settings_api_doc.go`)
+
+Who may message you. **Not wired** in secretbase.
+
+- `get` — current contact settings.
+- `set` `{"settings":{"enabled":bool,"allow_followee_degrees":1|2,
+  "allow_good_teams":bool,"teams":[{"team_name","enabled"}]}}` — restrict DMs to
+  people you follow (degree 1) / follow-of-follows (degree 2) and/or teammates.
 
 In-repo, every API call is built in `adapters/keybase_cli/codec.rs`, run
 over the persistent stream in `adapters/keybase_cli/session.rs` (one-shot
