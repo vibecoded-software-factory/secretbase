@@ -81,11 +81,20 @@ restrained night-sky splash. When in doubt, reuse the documented component.
      `LoweredConversation` projection. The tree cursor (`tree_selected`)
      indexes the visible `tree_rows()`, which are built from the **filtered**
      cache, never the raw `conversations` vec.
-   - Global keys are consistent across screens (`/` focus search, `Esc`
-     back, `F1` help, `Tab` cycle focus). **Only `Ctrl+C` quits**
-     (everything else is free for navigation / type-to-search). Per-list
-     actions use the **`Alt+<letter>`** convention (e.g. `Alt+N` new,
-     `Alt+C` copy, `Alt+M` mark read, `Alt+T` teams) — see `UX.md`.
+   - Keybindings follow the **gradient convention** (see `UX.md`): a **bare
+     lowercase letter** is the frequent/safe action on the focused list
+     (`n` new, `r` refresh, `e` mark read, `t` teams, `c` channels…);
+     **`Shift+letter`** is the loud/destructive tier (`Shift+I` ignore,
+     `Shift+B` block, `Shift+X` delete/remove, `Shift+L` leave/logout);
+     **`Ctrl`** is global (`Ctrl+C` quit — the **only** quit — `Ctrl+F` find,
+     `Ctrl+G` search, `Ctrl+K` switcher, `Ctrl+W` panes); **`Alt+letter`**
+     jumps to a panel (`Alt+F` filter, `Alt+C` chats, `Alt+M` messages,
+     `Alt+L` log — each matches that panel's border tag); **`/`** focuses
+     search; `Esc` back, `F1` help, `Tab` cycles focus. A **text field**
+     (compose, the filter box) owns bare letters as typed text, so its actions
+     move to `Alt`/`Ctrl`; a **list** doesn't type, so its letters act. Adding
+     an action means picking the tier by weight, wiring it in the focused
+     panel's handler, and keeping the help popup + `README.md` tables in sync.
 
 3. **Verify before declaring done.** Run `cargo build`, `cargo clippy
    --all-targets -- -D warnings` (must be warning-free) and `cargo test`

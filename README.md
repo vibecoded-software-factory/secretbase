@@ -43,16 +43,16 @@ A working terminal client for everyday Keybase chat. Highlights:
   folder, and inline image thumbnails / animated-GIF playback via `chafa`.
 * **Search**: local fuzzy filter, server-side inbox search (`Ctrl+G`),
   in-conversation regexp search (`Ctrl+F`), and a quick switcher (`Ctrl+K`).
-* **Teams**: list your memberships with role and member count (`Alt+T`); a
-  **channel browser** (`Alt+K` on a team) lists every channel to join / open /
+* **Teams**: list your memberships with role and member count (`t`); a
+  **channel browser** (`c` on a team) lists every channel to join / open /
   leave, plus create / rename / delete and toggle a channel as a team **default**
   (`listconvsonname` · `join` · `leave` · `newconv` · `rename-channel` ·
   `delete-channel` · `default-channels`). A **members** view (`m` in the browser,
   or `Alt+P` on an open team channel) lists members by role and adds / removes
   them (`listmembers` · `addtochannel` · `removefromchannel`).
-* New conversation (`Alt+N`), mark read, ignore / block / report, unhide
-  (restore blocked/reported by name), copy label, plus **local-only** ★ favorite
-  (`Alt+S`) and mute (`Alt+U`).
+* New conversation (`n`), mark read (`e`), ignore / block / report (`Shift+I` /
+  `Shift+B` / `Shift+R`), unhide (restore blocked/reported by name), copy label,
+  plus **local-only** ★ favorite (`s`) and mute (`u`).
 * Full **Settings** screen (`F10`): your identity, a live theme picker, and
   every preference below — edited in place and saved immediately.
 
@@ -79,10 +79,13 @@ cargo run --release
 
 ## Keybindings
 
-Actions use the `Alt+<letter>` convention; **only `Ctrl+C` quits**
-(every other key is free for navigation / type-to-search). The help
-popup (`F1`) is the in-app source of truth and stays in sync with these
-tables.
+Keys follow a **gradient** convention: a **lowercase letter** acts on the
+focused list (frequent, safe), **`Shift+letter`** is the loud/destructive
+tier, **`Ctrl`** is global (search, switcher, quit), **`Alt`** jumps to a
+panel, and **`/`** focuses search. A text field (compose, the filter box)
+owns bare letters as typed text — its actions move to `Alt`/`Ctrl`. **Only
+`Ctrl+C` quits.** The help popup (`F1`) is the in-app source of truth and
+stays in sync with these tables.
 
 ### Inbox
 
@@ -91,26 +94,30 @@ tables.
 | `↑` / `↓` · `k` / `j`   | Navigate |
 | `PgUp` / `PgDn`         | Page |
 | `g` / `G`               | Top / bottom |
+| `Enter` / `→` / `l`     | Open conversation / expand group |
+| `←` / `h`               | Close chat / collapse group |
+| `/`                     | Focus the chat **F**ilter (or `Alt+F`) |
 | `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
 | `Ctrl+W` then `h`/`j`/`k`/`l` (or arrows) | Move between panels **positionally** (vim window-nav); stays armed so two keys do a diagonal (`Esc` exits) |
-| `Alt+F`                 | `[Alt+F]` Focus the chat **F**ilter |
 | `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Messages (works mid-compose) |
-| `Ctrl+F` / `Alt+L`      | Go to `[Ctrl+F]` in-chat search / `[Alt+L]` Command log |
-| `Enter` / `l`           | Open conversation |
-| `Alt+N`                 | New conversation |
-| `Alt+Y`                 | Yank (copy) label to clipboard |
-| `Alt+E`                 | Mark as sEEn (read) |
-| `Alt+R` / `F5`          | Refresh inbox |
-| `Alt+U`                 | Toggle mute (local only — hides the unread badge; not synced) |
-| `Alt+S`                 | Toggle ★ favorite (local only — not synced to Keybase) |
-| `Alt+I`                 | Ignore conversation (hidden until next message) |
-| `Alt+B`                 | Block conversation (hide for good) |
-| `Alt+G`                 | Report conversation (flag to Keybase + hide) |
-| `Alt+H`                 | Unhide — restore a blocked/reported chat by name |
-| `Alt+K`                 | Channel browser (on a team) — join/open/leave, new/rename/delete, `t` default |
-| `Alt+T`                 | Teams |
+| `Alt+F` / `Alt+L`       | Go to `[Alt+F]` Filter / `[Alt+L]` Command log |
+| `Ctrl+F`                | In-chat search (open conversation) |
 | `Ctrl+G`                | Global search |
 | `Ctrl+K`                | Quick switcher — jump to a conversation |
+| **lowercase = frequent, safe** | |
+| `n`                     | New conversation |
+| `r` / `F5`              | Refresh inbox |
+| `y`                     | Yank (copy) label to clipboard |
+| `e`                     | Mark as sEEn (read) |
+| `u`                     | Toggle mute (local only — hides the unread badge; not synced) |
+| `s`                     | Toggle ★ favorite (local only — not synced to Keybase) |
+| `t`                     | Teams |
+| `c`                     | Channel browser (on a team) — join/open/leave, new/rename/delete, `t` default |
+| **`Shift` = loud / destructive** | |
+| `Shift+I`               | Ignore conversation (hidden until next message) |
+| `Shift+B`               | Block conversation (hide for good) |
+| `Shift+R`               | Report conversation (flag to Keybase + hide) |
+| `Shift+H`               | Unhide — restore a blocked/reported chat by name |
 | `Shift+L`               | Logout (confirmation) |
 
 In the **Chats** tree, `↑` / `↓` move; `Enter` / `→` / `l` open the selected
@@ -139,29 +146,29 @@ collapse a group); the header search fuzzy-filters it.
 | `Esc`                   | Cancel / back |
 
 In **Select** mode: `↑` / `↓` (·`PgUp`/`PgDn`) move the cursor · `Shift+↑/↓`
-shade a range · `Space` mark / unmark. **`d` delete and `+` react act on the
-whole marked set** (or the cursor if nothing's marked) — a multi-message action
-runs one at a time and you stay in Select mode with the shading cleared. `y`
-copy selection (author + time + body) · `c` copy bodies only · `o` / `l` open /
-copy the first link · `e` / `p` edit / pin the cursor message · `r` / `s` reply /
-download · `i` / `Enter` / `Esc` return to Compose.
+shade a range · `Space` mark / unmark. **`Shift+X` delete and `+` react act on
+the whole marked set** (or the cursor if nothing's marked) — a multi-message
+action runs one at a time and you stay in Select mode with the shading cleared.
+`y` copy selection (author + time + body) · `c` copy bodies only · `o` / `l`
+open / copy the first link · `e` / `p` edit / pin the cursor message · `r` / `s`
+reply / download · `i` / `Enter` / `Esc` return to Compose.
 
 The **command log** (Tab to focus it) has the same visual multi-select:
 `↑/↓` move · `Shift+↑/↓` range · `Space` mark · `y` copy full line(s) · `c`
 copy detail only · `Esc` clear / leave.
 
-### Teams (`Alt+T`) & modals
+### Teams (`t`) & modals
 
 | Key | Action |
 |---|---|
 | `↑` / `↓` · `k`/`j` · `PgUp`/`PgDn` · `g`/`G` | Navigate any list |
 | `Enter` / `→` / `l` (Teams) | Browse the selected team's channels |
-| `Alt+R` / `F5`          | Refresh · `Esc` back to inbox |
+| `r` / `F5`              | Refresh · `Esc` back to inbox |
 
-**Channel browser** (`Alt+K` on a team): `Enter` open/join · `x` leave · `r`/`d`
-rename/delete · `t` toggle team-default · `m` members · `Alt+N` new · `F5`
-refresh. **Members** (`m` in the browser, or `Alt+P` on an open team channel):
-`a` add · `x`/`d` remove · `F5` refresh.
+**Channel browser** (`c` on a team): `Enter` open/join · `n` new · `r` rename ·
+`t` toggle team-default · `m` members · `Shift+L` leave · `Shift+X` delete ·
+`F5` refresh. **Members** (`m` in the browser, or `Alt+P` on an open team
+channel): `a` add · `Shift+X` remove · `F5` refresh.
 
 ### Login (signed out)
 
@@ -196,8 +203,8 @@ never a half-synced state that silently drifts.
   it). So secretbase **doesn't touch the server status at all** and keeps its
   own **local-only** state instead, persisted in `config.toml`
   (`favorites` / `muted`), never synced:
-    * `Alt+S` toggles a local ★.
-    * `Alt+U` toggles a local mute, which only suppresses secretbase's own
+    * `s` toggles a local ★.
+    * `u` toggles a local mute, which only suppresses secretbase's own
       unread indicators (the `●` dot, bold, the unread count + filter) — the TUI
       has no notifications to silence, so that *is* what "mute" means here.
       ⚠️ It does **not** silence Keybase notifications on your phone / desktop

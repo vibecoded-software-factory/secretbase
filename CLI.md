@@ -290,7 +290,7 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   lists **every channel of a team** (joined or not), same `result.conversations[]`
   (`ConvSummary`) shape as `list` (verified: `ListConvsOnNameV1` → `ExportToSummary`),
   so the tolerant parser is reused. `member_status == Active` = you're a member.
-  secretbase drives it from the **channel browser** (`Alt+K`); `join`/`leave`
+  secretbase drives it from the **channel browser** (`c`); `join`/`leave`
   `{"channel":{name:TEAM,members_type:"team",topic_name:CH}}` join/leave a channel,
   and **create** reuses `newconv` on a team channel (`{name:TEAM,members_type:
   "team",topic_name:NEW}`) — there's no dedicated `create-channel` API method
@@ -337,7 +337,7 @@ Source of truth: `keybase/client` → `go/client/chat_api_doc.go`
   `cmd_chat_hide.go` (`--block`→`BLOCKED`, `--unhide`→`UNFILED`).
   **`favorite` and `muted` are intentionally NOT wired to Keybase**: the status
   can't be read back (see below), so a synced state would drift. secretbase
-  keeps **local-only** ★ favourite (`Alt+S`) and mute (`Alt+U`) instead —
+  keeps **local-only** ★ favourite (`s`) and mute (`u`) instead —
   persisted config keys (`favorites`/`muted`), no `setstatus` call. (Local mute
   only hides secretbase's unread indicators; it can't silence Keybase's push
   notifications, which is what the server-side `muted` does.) ⚠️

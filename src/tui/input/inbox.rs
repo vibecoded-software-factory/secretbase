@@ -123,10 +123,12 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    // Modifier-gated actions and focus cycling work regardless of focus,
-    // INCLUDING while the search box is focused — they can't be confused
-    // with text input, and the hint bar promises the action is always
-    // one keystroke away.
+    // Only the truly cross-focus keys live here — the pane jumps (Alt), the
+    // global find/search (Ctrl) and focus cycling. They must fire even while
+    // the filter box or compose has focus, so they carry a modifier that can't
+    // be confused with typed text. Per-list *actions* are bare letters routed
+    // by the focused panel's own handler (`handle_tree` / compose / cmdlog),
+    // the gradient convention (bare = act on this list, Shift = destructive).
     match key.code {
         // ── Go-to focus: each panel's border tag is its Alt+letter combo,
         // working from any focus (even mid-compose). ─────────────────────────
@@ -152,60 +154,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             set_focus(app, Focus::CmdLog);
             return;
         }
-        // ── Conversation actions ─────────────────────────────────────────────
-        KeyCode::Char('y') | KeyCode::Char('Y') if alt => {
-            chat::do_copy_conversation_label(app);
-            return;
-        }
-        KeyCode::Char('e') | KeyCode::Char('E') if alt => {
-            chat::request_mark_read(app);
-            return;
-        }
-        KeyCode::Char('r') | KeyCode::Char('R') if alt => {
-            chat::request_load_inbox(app);
-            return;
-        }
-        KeyCode::Char('n') | KeyCode::Char('N') if alt => {
-            chat::open_new_conversation(app);
-            return;
-        }
-        KeyCode::Char('u') | KeyCode::Char('U') if alt => {
-            // Local-only mute toggle (no Keybase call).
-            chat::toggle_muted_conversation(app);
-            return;
-        }
         KeyCode::Char('g') | KeyCode::Char('G') if ctrl => {
             chat::open_search_global(app);
-            return;
-        }
-        KeyCode::Char('t') | KeyCode::Char('T') if alt => {
-            crate::tui::flows::teams::open_teams(app);
-            return;
-        }
-        KeyCode::Char('i') | KeyCode::Char('I') if alt => {
-            chat::open_conv_action(app, crate::tui::app::ConvAction::Ignore);
-            return;
-        }
-        KeyCode::Char('b') | KeyCode::Char('B') if alt => {
-            chat::open_conv_action(app, crate::tui::app::ConvAction::Block);
-            return;
-        }
-        KeyCode::Char('g') | KeyCode::Char('G') if alt => {
-            chat::open_conv_action(app, crate::tui::app::ConvAction::Report);
-            return;
-        }
-        KeyCode::Char('s') | KeyCode::Char('S') if alt => {
-            // Local-only star toggle (no Keybase call).
-            chat::toggle_favorite_conversation(app);
-            return;
-        }
-        KeyCode::Char('k') | KeyCode::Char('K') if alt => {
-            // Channel browser for the selected team (join / open / leave).
-            chat::open_channel_browser(app);
-            return;
-        }
-        KeyCode::Char('h') | KeyCode::Char('H') if alt => {
-            chat::open_unhide(app);
             return;
         }
         // Tab cycles focus — unless the @-mention popup is open, where it
@@ -226,17 +176,11 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         return handle_search(app, key);
     }
 
-    match key.code {
-        KeyCode::F(5) => {
-            chat::request_load_inbox(app);
-            return;
-        }
-        KeyCode::Char('L') => {
-            app.logout_yes = false;
-            app.screen = Screen::ConfirmLogout;
-            return;
-        }
-        _ => {}
+    // F5 refreshes the inbox from any focus (a plain function key, safe over a
+    // text field). Every other action is bare and belongs to the focused list.
+    if key.code == KeyCode::F(5) {
+        chat::request_load_inbox(app);
+        return;
     }
 
     match app.focus {
@@ -310,7 +254,9 @@ fn handle_cmdlog(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_tree(app: &mut App, key: KeyEvent) {
+    use crate::tui::app::ConvAction;
     match key.code {
+        // ── navigation (bare letters + arrows) ────────────────────────────
         KeyCode::Up | KeyCode::Char('k') => chat::tree_move(app, -1),
         KeyCode::Down | KeyCode::Char('j') => chat::tree_move(app, 1),
         KeyCode::PageUp => chat::tree_move(app, -10),
@@ -324,6 +270,28 @@ fn handle_tree(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Right | KeyCode::Char('l') => chat::tree_forward(app),
         KeyCode::Left | KeyCode::Char('h') => chat::tree_back(app),
+        // `/` jumps to the filter box (the gradient search key).
+        KeyCode::Char('/') => app.focus = Focus::Search,
+
+        // ── common actions (bare — the gradient's frequent/safe tier) ──────
+        KeyCode::Char('n') => chat::open_new_conversation(app),
+        KeyCode::Char('r') => chat::request_load_inbox(app),
+        KeyCode::Char('y') => chat::do_copy_conversation_label(app),
+        KeyCode::Char('e') => chat::request_mark_read(app),
+        KeyCode::Char('u') => chat::toggle_muted_conversation(app), // local-only
+        KeyCode::Char('s') => chat::toggle_favorite_conversation(app), // local-only
+        KeyCode::Char('t') => crate::tui::flows::teams::open_teams(app),
+        KeyCode::Char('c') => chat::open_channel_browser(app), // team channels
+
+        // ── destructive / loud actions (Shift — the gradient's danger tier) ─
+        KeyCode::Char('I') => chat::open_conv_action(app, ConvAction::Ignore),
+        KeyCode::Char('B') => chat::open_conv_action(app, ConvAction::Block),
+        KeyCode::Char('R') => chat::open_conv_action(app, ConvAction::Report),
+        KeyCode::Char('H') => chat::open_unhide(app),
+        KeyCode::Char('L') => {
+            app.logout_yes = false;
+            app.screen = Screen::ConfirmLogout;
+        }
         _ => {}
     }
 }
