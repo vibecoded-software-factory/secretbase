@@ -44,6 +44,10 @@ pub struct UserSettings {
     /// or `shortcode` (the `:alias:` text — always legible even when the
     /// terminal's font renders the emoji as tofu / monochrome).
     pub emoji_style: String,
+    /// Which glyph set the UI's font-dependent icons use: `unicode` (default —
+    /// renders on any font, the right choice for a headless/SSH terminal without
+    /// a patched font) or `nerd` (prettier nerd-font glyphs where available).
+    pub icon_style: String,
     /// **Local-only** favourited conversation ids. secretbase deliberately does
     /// *not* use Keybase's `favorite` status (the CLI can't read it back, so it
     /// would drift). This is our own star, owned and persisted entirely
@@ -68,6 +72,7 @@ impl Default for UserSettings {
             image_protocol: "auto".to_string(),
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
+            icon_style: "unicode".to_string(),
             favorites: Vec::new(),
             muted: Vec::new(),
         }

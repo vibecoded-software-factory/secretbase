@@ -234,6 +234,9 @@ image_symbols = "sextant+block+space"  # chafa --symbols set (symbol path only):
 emoji_style = "glyph"              # reaction display: glyph (default) | shortcode
                                     # (`:alias:` text — legible when the terminal
                                     # renders emoji as tofu; a TUI can't set fonts)
+icon_style = "unicode"             # UI icons: unicode (default, renders on any
+                                    # font — right for a headless/SSH terminal)
+                                    # | nerd (needs a patched Nerd Font)
 
 [theme]
 name         = "nord"              # bundled preset: nord (default),
