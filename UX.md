@@ -176,7 +176,12 @@ the hit's `ctime`, formatted by `message_time`) for context. `↑/↓` pick,
 `Enter` jumps to + highlights the message (via `pending_search_jump`,
 paginating older if needed), `Esc` closes. The **login** screen is the signed-out exception: it omits the
 identity bar and shows the figlet/starfield backdrop with a "run `keybase
-login`, then R" hint.
+login`, then R" hint. That hint box is **content-sized, not a fixed
+percentage**: `widgets::center_rect_abs(w, h, …)` centers it at the width its
+text actually needs (clamped to the terminal) and the message renders with
+`Wrap { trim: true }`, its box height driven by `widgets::wrapped_line_count`
+— so the hint never clips near the 70-col floor. Prefer this pair over a
+fixed-`width_pct` `center_rect` for any short, content-sized notice.
 
 ## Boot & loading
 
@@ -410,6 +415,10 @@ decision.
 - `widgets::draw_confirm_popup(frame, area, theme, title, body, confirmed)` —
   the shared navigable y/n overlay.
 - `widgets::center_rect` / `rounded_block` / `help_line` — popup chrome.
+  `widgets::center_rect_abs(w, h, area)` is the **content-sized** sibling
+  (absolute dims clamped to the area, for short notices that must not clip on a
+  narrow terminal); `widgets::wrapped_line_count(text, w)` sizes such a box's
+  height around wrapped text.
 - `widgets::MODAL_WIDTH_PCT` / `widgets::MODAL_HEIGHT` — **the standard
   centered-modal geometry** (currently 80% wide × 22 rows). Every list / picker
   overlay imitates it via `center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, …)` so
