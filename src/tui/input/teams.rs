@@ -1,14 +1,12 @@
 //! Input for the Teams screen.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::tui::app::App;
 use crate::tui::flows::{chat, teams};
 use crate::tui::input::common;
 
 pub fn handle(app: &mut App, key: KeyEvent) {
-    let alt = key.modifiers.contains(KeyModifiers::ALT);
-
     // Universal list movement (↑↓/j k, PgUp/PgDn, g/G, Home/End).
     let (len, sel) = (app.teams.len(), app.teams_selected);
     if common::list_nav(&key, len, sel, |i| app.teams_selected = i) {
@@ -23,9 +21,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
                 chat::open_channel_browser_for_team(app, team);
             }
         }
-        KeyCode::F(5) => teams::request_load_teams(app),
-        KeyCode::Char('r') | KeyCode::Char('R') if alt => teams::request_load_teams(app),
-        KeyCode::Char('i') | KeyCode::Char('I') if alt => teams::close_teams(app),
+        // Refresh — bare `r` (gradient), or F5.
+        KeyCode::Char('r') | KeyCode::F(5) => teams::request_load_teams(app),
         _ => {}
     }
 }

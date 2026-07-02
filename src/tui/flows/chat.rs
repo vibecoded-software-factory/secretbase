@@ -875,7 +875,7 @@ pub fn request_unhide_conversation(app: &mut App) {
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
-// ── Channel browser (Alt+K on a team) ───────────────────────────────
+// ── Channel browser (`c` on a team) ───────────────────────────────
 
 /// The channel name of a team-channel conversation (its `topic_name`), used for
 /// display and to build the `join`/`leave` channel.

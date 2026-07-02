@@ -32,7 +32,7 @@ pub fn unhide_conversation(app: &mut App, key: KeyEvent) {
     }
 }
 
-// ── Channel browser (Alt+K on a team) ──────────────────────────────────
+// ── Channel browser (`c` on a team) ──────────────────────────────────
 
 pub fn channel_browser(app: &mut App, key: KeyEvent) {
     // Create mode: the new-channel-name input owns the keys.
@@ -68,7 +68,6 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         }
         return;
     }
-    let alt = key.modifiers.contains(crossterm::event::KeyModifiers::ALT);
     match key.code {
         KeyCode::Esc => chat::close_channel_browser(app),
         KeyCode::Up | KeyCode::Char('k') => chat::channel_browser_move(app, -1),
@@ -77,19 +76,16 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         KeyCode::PageDown => chat::channel_browser_move(app, 10),
         KeyCode::Home | KeyCode::Char('g') => chat::channel_browser_move(app, isize::MIN),
         KeyCode::End | KeyCode::Char('G') => chat::channel_browser_move(app, isize::MAX),
-        // Create a new channel (enters create mode).
-        KeyCode::Char('n') | KeyCode::Char('N') if alt => chat::open_channel_create(app),
-        // Enter / →: open a channel you're in, join one you're not.
+        // Enter / → / l: open a channel you're in, join one you're not.
         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => chat::channel_browser_activate(app),
-        // Leave a joined channel.
-        KeyCode::Char('x') | KeyCode::Char('X') => chat::request_leave_selected_channel(app),
-        // Rename / delete the selected channel (admin).
-        KeyCode::Char('r') | KeyCode::Char('R') => chat::open_channel_rename(app),
-        KeyCode::Char('d') | KeyCode::Char('D') => chat::open_channel_delete_confirm(app),
-        // Toggle the selected channel as a team default (new-member auto-join).
-        KeyCode::Char('t') | KeyCode::Char('T') => chat::toggle_default_channel(app),
-        // Members of the selected channel.
-        KeyCode::Char('m') | KeyCode::Char('M') => chat::open_members_from_browser(app),
+        // ── common actions (bare) ─────────────────────────────────────────
+        KeyCode::Char('n') => chat::open_channel_create(app), // create (enters input)
+        KeyCode::Char('r') => chat::open_channel_rename(app), // rename (enters input)
+        KeyCode::Char('t') => chat::toggle_default_channel(app), // team default (auto-join)
+        KeyCode::Char('m') => chat::open_members_from_browser(app), // members
+        // ── destructive / loud (Shift) ────────────────────────────────────
+        KeyCode::Char('L') => chat::request_leave_selected_channel(app), // leave (Shift+L)
+        KeyCode::Char('X') => chat::open_channel_delete_confirm(app),    // delete (Shift+X)
         KeyCode::F(5) => chat::request_load_channels(app),
         _ => {}
     }
@@ -128,12 +124,10 @@ pub fn members(app: &mut App, key: KeyEvent) {
         KeyCode::PageDown => chat::members_move(app, 10),
         KeyCode::Home | KeyCode::Char('g') => chat::members_move(app, isize::MIN),
         KeyCode::End | KeyCode::Char('G') => chat::members_move(app, isize::MAX),
-        // Add member(s).
-        KeyCode::Char('a') | KeyCode::Char('A') => chat::open_member_add(app),
-        // Remove the selected member.
-        KeyCode::Char('x') | KeyCode::Char('X') | KeyCode::Char('d') | KeyCode::Char('D') => {
-            chat::open_member_remove_confirm(app)
-        }
+        // Add member(s) — bare (safe/common).
+        KeyCode::Char('a') => chat::open_member_add(app),
+        // Remove the selected member — Shift+X (destructive tier).
+        KeyCode::Char('X') => chat::open_member_remove_confirm(app),
         KeyCode::F(5) => chat::request_load_members(app),
         _ => {}
     }

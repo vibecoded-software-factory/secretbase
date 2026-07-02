@@ -81,7 +81,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         ])
     } else {
         Line::from(Span::styled(
-            " a add · x remove · F5 refresh · Esc close ",
+            " a add · Shift+X remove · F5 refresh · Esc close ",
             Style::default().fg(t.dim),
         ))
     };
