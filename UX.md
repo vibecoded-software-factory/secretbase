@@ -451,6 +451,16 @@ decision.
   centered position). A new full-screen-ish modal should use these constants,
   not a one-off `center_rect(w, h, …)`.
 - `widgets::checkbox_spans` / `chip_span` — shared toggle / tab spans.
+- `widgets::button(label, active, theme)` — **the** action-button span, rendered
+  `[ label ]` (accent on `selected_bg` + bold when focused/highlighted, else
+  `dim`). The Login form's two buttons and `draw_confirm_popup`'s confirm/cancel
+  both use it, so every button reads the same — a new button reuses this, never a
+  one-off styled span.
+- `widgets::unread_style(theme)` + `widgets::unread_dot` / `favorite_star` — the
+  single "unread / attention" emphasis (`conv_unread` + bold) and its `●` / `★`
+  marker spans. Every unread affordance (the tree's dot + count, the identity
+  bar's "N unread", the ★ favourite) draws through these so the emphasis is
+  identical everywhere.
 
 ## Overlays & confirmations
 
@@ -460,9 +470,10 @@ under react/delete/download).
 
 - **Confirmations** (`ConfirmLogout`, `ConfirmDeleteMessage`,
   `ConfirmConvAction`) render through `widgets::draw_confirm_popup`
-  (centered, double border): `←/→` (or `Tab`/`h`/`l`) move between
-  **confirm/cancel**, `Enter` activates the highlighted one, `y`/`n`/`Esc`
-  are shortcuts. **Default highlight = cancel** for the destructive action
+  (centered, double border) — its `[ confirm ]` / `[ cancel ]` buttons are
+  `widgets::button` spans, matching the Login form's buttons: `←/→` (or
+  `Tab`/`h`/`l`) move between **confirm/cancel**, `Enter` activates the
+  highlighted one, `y`/`n`/`Esc` are shortcuts. **Default highlight = cancel** for the destructive action
   (`logout_yes` / `delete_msg_yes` / `conv_action_yes` default `false`).
   Classified by `input::common::confirm_key`/`ConfirmInput`.
   `ConfirmConvAction` is the generic home for per-conversation status
@@ -770,8 +781,9 @@ coordinates predate the latest resize are dropped.
 
 1. **Reuse, don't reinvent** — a new list = `list_table`; a new input =
    `LineEditor` + `editor_spans` (routed via `input::common`); a new panel =
-   `titled_block`; a new confirm = `draw_confirm_popup`; a new signed-in
-   screen = `split_main`.
+   `titled_block`; a new confirm = `draw_confirm_popup`; a new button =
+   `widgets::button`; an unread/attention marker = `widgets::unread_style` /
+   `unread_dot` / `favorite_star`; a new signed-in screen = `split_main`.
 2. **Fix the class, not the instance** — when you change one screen, change
    every screen with the same pattern (and update this file).
 3. **Every change stays coherent** with the rest of the UI. If you diverge,

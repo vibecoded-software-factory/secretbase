@@ -17,7 +17,9 @@ use crate::tui::action::ActionState;
 use crate::tui::app::{App, LoginField};
 use crate::tui::theme::Theme;
 use crate::tui::view::starfield::fill_stars;
-use crate::tui::view::widgets::{draw_hint_bar, editor_spans, editor_spans_masked, rounded_block};
+use crate::tui::view::widgets::{
+    button, draw_hint_bar, editor_spans, editor_spans_masked, rounded_block,
+};
 use crate::tui::view::{logo, splash};
 
 /// Fixed form-block height: padding(1) + three label(1)+input(3) pairs +
@@ -251,17 +253,4 @@ fn render_input(
         spans.extend(editor_spans(editor, focused, t));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), text_area);
-}
-
-/// A focus-highlighted action button (`[ label ]`).
-fn button(label: &str, focused: bool, t: &Theme) -> Span<'static> {
-    let style = if focused {
-        Style::default()
-            .bg(t.selected_bg)
-            .fg(t.accent)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(t.dim)
-    };
-    Span::styled(format!("[ {label} ]"), style)
 }
