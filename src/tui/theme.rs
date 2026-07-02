@@ -61,6 +61,12 @@ pub struct Theme {
     pub conv_team: Color,
     /// Unread badge / "active" indicator.
     pub conv_unread: Color,
+    /// Palette of distinguishable hues used to color **other** users' names in
+    /// the message stream — one per sender, picked deterministically by
+    /// [`Theme::user_color`]. Derived from the preset's raw hues so every theme
+    /// gets a coherent set; `accent` is deliberately excluded so a peer never
+    /// looks like *you* (your own messages render in `accent`).
+    pub user_colors: Vec<Color>,
 }
 
 /// A named base palette — the raw colors a [`Preset`] is built from.
@@ -255,7 +261,30 @@ impl Theme {
             conv_dm: p.blue,
             conv_team: p.magenta,
             conv_unread: p.yellow,
+            // A spread of the preset's hues for per-user name colors (accent
+            // excluded — that marks *your own* messages). Order is stable so a
+            // given username always lands on the same hue within a preset.
+            user_colors: vec![
+                p.blue, p.magenta, p.cyan, p.orange, p.green, p.yellow, p.red,
+            ],
         }
+    }
+
+    /// Deterministically maps a username to one of [`Theme::user_colors`], so a
+    /// peer's name renders in a stable, per-user hue across the whole session
+    /// (Discord/IRC-style) instead of every sender sharing one color. Falls back
+    /// to `foreground` if the set is somehow empty. Uses a small FNV-1a hash so
+    /// the mapping is pure and stable (no RNG, no per-run drift).
+    pub fn user_color(&self, name: &str) -> Color {
+        if self.user_colors.is_empty() {
+            return self.foreground;
+        }
+        let mut h: u32 = 0x811c_9dc5;
+        for b in name.as_bytes() {
+            h ^= *b as u32;
+            h = h.wrapping_mul(0x0100_0193);
+        }
+        self.user_colors[(h as usize) % self.user_colors.len()]
     }
 }
 
@@ -599,5 +628,45 @@ mod tests {
     fn preset_next_prev_wrap() {
         assert_eq!(Preset::CatppuccinMocha.prev(), Preset::CatppuccinLatte);
         assert_eq!(Preset::CatppuccinLatte.next(), Preset::CatppuccinMocha);
+    }
+
+    #[test]
+    fn user_color_is_deterministic_and_from_the_set() {
+        let t = Theme::from_palette(&Preset::Nord.palette());
+        // Same name → same color, every time (pure hash, no RNG).
+        assert_eq!(t.user_color("alice"), t.user_color("alice"));
+        // The result is always one of the theme's user_colors.
+        for name in ["alice", "bob", "charlie", "dave", "eve", "mallory"] {
+            assert!(t.user_colors.contains(&t.user_color(name)));
+        }
+        // The palette spreads names across more than one hue (not all identical).
+        let distinct: std::collections::HashSet<_> = [
+            "alice", "bob", "charlie", "dave", "eve", "mallory", "trent", "peggy",
+        ]
+        .iter()
+        .map(|n| t.user_color(n))
+        .collect();
+        assert!(distinct.len() > 1, "usernames should not all share one hue");
+    }
+
+    #[test]
+    fn user_colors_exclude_accent_so_peers_never_look_like_you() {
+        // Your own messages render in `accent`; a peer must never collide with
+        // that, so `accent` is kept out of the per-user set on every preset.
+        for p in Preset::ALL {
+            let t = Theme::from_palette(&p.palette());
+            assert!(
+                !t.user_colors.contains(&t.accent),
+                "{}: user_colors must not include accent",
+                p.name()
+            );
+        }
+    }
+
+    #[test]
+    fn user_color_falls_back_to_foreground_when_set_empty() {
+        let mut t = Theme::from_palette(&Preset::Nord.palette());
+        t.user_colors.clear();
+        assert_eq!(t.user_color("anyone"), t.foreground);
     }
 }

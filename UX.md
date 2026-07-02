@@ -602,6 +602,14 @@ starfield colors `star_dim`/`star_mid`/`star_bright`, and the conversation
 marker colors `conv_dm` / `conv_team` / `conv_unread`. **Don't hardcode
 colors — use these.**
 
+**Per-user sender colors.** In the message stream each **peer's** name renders
+in a stable, per-user hue so authors are easy to tell apart (Discord/IRC-style):
+`Theme::user_color(name)` hashes the username (FNV-1a, pure/stable) into
+`Theme::user_colors` — a spread of the preset's raw hues derived in
+`from_palette`, **excluding `accent`** so a peer never looks like you. Your own
+messages stay `accent`+bold and system lines stay `dim`+italic. `user_colors` is
+always derived (not a `[theme]` override key).
+
 **Legibility hierarchy (hard rule).** Text de-emphasis comes from *hierarchy*,
 never from painting content almost the colour of the border. There are three
 legibility tiers and a fourth recessive band — pick by what the text **is**,

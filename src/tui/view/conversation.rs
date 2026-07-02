@@ -755,7 +755,11 @@ fn message_lines(
     } else if is_me {
         Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(t.conv_dm).add_modifier(Modifier::BOLD)
+        // Each peer gets a stable, per-user hue (Discord/IRC-style) so authors
+        // are easy to tell apart at a glance — `me` stays accent, system dim.
+        Style::default()
+            .fg(t.user_color(&m.sender))
+            .add_modifier(Modifier::BOLD)
     };
     let when = message_time(m.sent_at, now_s);
     let header_icon = if is_me && !is_system {
