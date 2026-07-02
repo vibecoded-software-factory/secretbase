@@ -289,6 +289,44 @@ pub fn chip_span(theme: &Theme, label: &str, active: bool, enabled: bool) -> Spa
     Span::styled(format!(" {label} "), style)
 }
 
+/// A focus/selection-highlighted action button rendered as `[ label ]` — the
+/// single button span every screen reuses (the Login form's two buttons, the
+/// confirm popup's confirm/cancel). `active` = focused / highlighted (accent on
+/// `selected_bg`, bold); otherwise a recessive `dim`. A new button anywhere
+/// must use this rather than hand-rolling a styled span.
+pub fn button(label: &str, active: bool, theme: &Theme) -> Span<'static> {
+    let style = if active {
+        Style::default()
+            .fg(theme.accent)
+            .bg(theme.selected_bg)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.dim)
+    };
+    Span::styled(format!("[ {label} ]"), style)
+}
+
+/// The shared **unread / attention** emphasis style: the golden `conv_unread`
+/// colour plus BOLD. Every unread affordance uses it (the dot, the count, the
+/// favourite star, the identity bar's "N unread"), so the emphasis reads
+/// identically everywhere instead of being copy-pasted per call site.
+pub fn unread_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.conv_unread)
+        .add_modifier(Modifier::BOLD)
+}
+
+/// The unread `●` dot span — no surrounding spacing (callers pad as they need).
+pub fn unread_dot(theme: &Theme) -> Span<'static> {
+    Span::styled("●", unread_style(theme))
+}
+
+/// The `★` favourite-marker span (our local-only favourite; see
+/// `App::favorites`). Same emphasis as the unread dot.
+pub fn favorite_star(theme: &Theme) -> Span<'static> {
+    Span::styled("★", unread_style(theme))
+}
+
 /// The shared y/n confirmation overlay — a centered, double-bordered
 /// popup with `title`, the caller's `body` lines, and the
 /// confirm/cancel buttons (the highlighted one follows `confirmed`).
@@ -327,22 +365,12 @@ pub fn draw_confirm_popup(
         .border_style(Style::default().fg(theme.accent));
     frame.render_widget(block, popup);
 
-    let selected = Style::default()
-        .fg(theme.accent)
-        .bg(theme.selected_bg)
-        .add_modifier(Modifier::BOLD);
-    let unselected = Style::default().fg(theme.dim);
-    let (confirm_style, cancel_style) = if confirmed {
-        (selected, unselected)
-    } else {
-        (unselected, selected)
-    };
     let mut lines = body;
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
-        Span::styled(" confirm ", confirm_style),
+        button("confirm", confirmed, theme),
         Span::raw("   "),
-        Span::styled(" cancel ", cancel_style),
+        button("cancel", !confirmed, theme),
         Span::styled("   (←/→ · Enter · Esc)", Style::default().fg(theme.muted)),
     ]));
     frame.render_widget(Paragraph::new(lines), inner);
@@ -414,12 +442,7 @@ pub fn draw_identity_bar(frame: &mut Frame, app: &App, area: Rect) {
     }
     if show_unread {
         spans.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
-        spans.push(Span::styled(
-            unread_txt,
-            Style::default()
-                .fg(t.conv_unread)
-                .add_modifier(Modifier::BOLD),
-        ));
+        spans.push(Span::styled(unread_txt, unread_style(t)));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), inner);
 }

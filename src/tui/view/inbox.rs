@@ -13,8 +13,8 @@ use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    cmdlog_height, draw_cmd_log, draw_search_box, draw_status_strip, list_table, list_title,
-    middle_ellipsis, tree_pane_width,
+    cmdlog_height, draw_cmd_log, draw_search_box, draw_status_strip, favorite_star, list_table,
+    list_title, middle_ellipsis, tree_pane_width, unread_dot, unread_style,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -160,21 +160,12 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 if *unread > 0 {
                     style = style.add_modifier(Modifier::BOLD);
                     name_spans[0].style = style;
-                    name_spans.push(Span::styled(
-                        " ●",
-                        Style::default()
-                            .fg(t.conv_unread)
-                            .add_modifier(Modifier::BOLD),
-                    ));
+                    name_spans.push(Span::raw(" "));
+                    name_spans.push(unread_dot(&t));
                 }
                 Row::new(vec![
                     ratatui::widgets::Cell::from(Line::from(name_spans)),
-                    ratatui::widgets::Cell::from(Span::styled(
-                        count,
-                        Style::default()
-                            .fg(t.conv_unread)
-                            .add_modifier(Modifier::BOLD),
-                    )),
+                    ratatui::widgets::Cell::from(Span::styled(count, unread_style(&t))),
                 ])
             }
             TreeRow::Conv { idx } => {
@@ -194,17 +185,13 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 // AND bold so they're easy to pick out. A locally-muted conv is
                 // dimmed and never shows the dot — that's its "quieted" marker.
                 let muted = app.is_muted(&conv.id);
-                let (prefix, style) = if app.conv_is_unread(conv) {
-                    (
-                        "● ",
-                        Style::default()
-                            .fg(t.conv_unread)
-                            .add_modifier(Modifier::BOLD),
-                    )
+                let unread = app.conv_is_unread(conv);
+                let style = if unread {
+                    unread_style(&t)
                 } else if muted {
-                    ("", Style::default().fg(t.dim))
+                    Style::default().fg(t.dim)
                 } else {
-                    ("", Style::default().fg(t.foreground))
+                    Style::default().fg(t.foreground)
                 };
                 // Local-only favourites carry a golden ★ (our own star — see
                 // `App::favorites`; never synced to Keybase).
@@ -212,14 +199,14 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 let label = middle_ellipsis(&raw, budget.saturating_sub(if fav { 6 } else { 4 }));
                 let mut spans = vec![Span::raw("  ")];
                 if fav {
-                    spans.push(Span::styled(
-                        "★ ",
-                        Style::default()
-                            .fg(t.conv_unread)
-                            .add_modifier(Modifier::BOLD),
-                    ));
+                    spans.push(favorite_star(&t));
+                    spans.push(Span::raw(" "));
                 }
-                spans.push(Span::styled(format!("{prefix}{label}"), style));
+                if unread {
+                    spans.push(unread_dot(&t));
+                    spans.push(Span::raw(" "));
+                }
+                spans.push(Span::styled(label, style));
                 Row::new(vec![
                     ratatui::widgets::Cell::from(Line::from(spans)),
                     ratatui::widgets::Cell::from(Span::raw("")),
