@@ -789,6 +789,31 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
     );
 }
 
+/// A minimal bottom hint bar — `footer_hint` fit to the width (whole `·`
+/// segments only, same rule as [`draw_status_strip`]) on the left, an `F1 help`
+/// anchor on the right. For signed-out / no-mode screens (the Login form),
+/// where the mode badge and action feedback of `draw_status_strip` don't apply.
+pub fn draw_hint_bar(frame: &mut Frame, area: Rect, footer_hint: &str, t: &Theme) {
+    const HELP_ANCHOR: &str = "F1 help";
+    let anchor_block = HELP_ANCHOR.chars().count() + 2;
+    let avail = (area.width as usize).saturating_sub(anchor_block);
+    let hint = fit_segments(footer_hint, avail);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(hint, Style::default().fg(t.dim)))),
+        area,
+    );
+    frame.render_widget(
+        Paragraph::new(
+            Line::from(Span::styled(
+                HELP_ANCHOR,
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+            ))
+            .right_aligned(),
+        ),
+        area,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

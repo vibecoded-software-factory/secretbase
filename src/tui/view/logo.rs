@@ -30,22 +30,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let style_inactive = Style::default().fg(t.inactive);
     let style_accent = Style::default().fg(t.accent);
 
-    // Render the FIGlet text into two stacked words. Fall back to plain
-    // text if the font fails to load (highly unlikely with embedded
-    // data) — a panic here would crash the TUI on the very first frame.
+    // Render the FIGlet text into two stacked words, **kerned** so the letters
+    // sit tight and each word reads as a unit (the slant font's default spacing
+    // spreads "secret"/"base" enough to look like separate chunks). Fall back to
+    // plain text if the font fails to load (highly unlikely with embedded data)
+    // — a panic here would crash the TUI on the very first frame.
     let (fig_top, fig_bottom) = {
         let font = FIGfont::from_content(SLANT_FONT)
             .ok()
             .or_else(|| FIGfont::standard().ok());
         match font {
-            Some(font) => (
-                font.convert("secret")
-                    .map(|f| f.to_string())
-                    .unwrap_or_else(|| "secret".into()),
-                font.convert("base")
-                    .map(|f| f.to_string())
-                    .unwrap_or_else(|| "base".into()),
-            ),
+            Some(font) => (kern(&font, "secret"), kern(&font, "base")),
             None => ("secret".to_string(), "base".to_string()),
         }
     };
@@ -132,4 +127,71 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Renders `text` in the FIGlet font with **kerning**: each glyph is converted
+/// on its own, then slid left as far as it can go without any non-space cell
+/// colliding with the letters already placed. The slant font's default layout
+/// leaves 2–3 blank columns between glyphs, which makes a word read as loose
+/// fragments; kerning pulls them into a single readable unit. Returns the
+/// assembled block as newline-joined rows (same shape as `FIGure::to_string`).
+fn kern(font: &FIGfont, text: &str) -> String {
+    let mut canvas: Vec<Vec<char>> = Vec::new();
+    for ch in text.chars() {
+        let block: Vec<Vec<char>> = font
+            .convert(&ch.to_string())
+            .map(|f| f.to_string())
+            .unwrap_or_default()
+            .lines()
+            .map(|l| l.chars().collect())
+            .collect();
+        if block.is_empty() {
+            continue;
+        }
+        if canvas.is_empty() {
+            canvas = block;
+            continue;
+        }
+        // Pad both blocks to a common height + width so indexing is uniform.
+        let h = canvas.len().max(block.len());
+        canvas.resize(h, Vec::new());
+        let cw = canvas.iter().map(Vec::len).max().unwrap_or(0);
+        for r in &mut canvas {
+            r.resize(cw, ' ');
+        }
+        let mut blk = block;
+        blk.resize(h, Vec::new());
+        let bw = blk.iter().map(Vec::len).max().unwrap_or(0);
+        for r in &mut blk {
+            r.resize(bw, ' ');
+        }
+        // Largest overlap where no two non-space cells land on the same column.
+        let mut shift = 0usize;
+        for s in 1..=cw.min(bw) {
+            let collide = (0..h)
+                .any(|row| (0..s).any(|k| canvas[row][cw - s + k] != ' ' && blk[row][k] != ' '));
+            if collide {
+                break;
+            }
+            shift = s;
+        }
+        let start = cw - shift;
+        for row in 0..h {
+            for (k, &b) in blk[row].iter().enumerate() {
+                let pos = start + k;
+                if pos < canvas[row].len() {
+                    if b != ' ' {
+                        canvas[row][pos] = b;
+                    }
+                } else {
+                    canvas[row].push(b);
+                }
+            }
+        }
+    }
+    canvas
+        .into_iter()
+        .map(|r| r.into_iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
 }

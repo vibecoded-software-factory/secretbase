@@ -17,7 +17,7 @@ use crate::tui::action::ActionState;
 use crate::tui::app::{App, LoginField};
 use crate::tui::theme::Theme;
 use crate::tui::view::starfield::fill_stars;
-use crate::tui::view::widgets::{editor_spans, editor_spans_masked, rounded_block};
+use crate::tui::view::widgets::{draw_hint_bar, editor_spans, editor_spans_masked, rounded_block};
 use crate::tui::view::{logo, splash};
 
 /// Fixed form-block height: padding(1) + three label(1)+input(3) pairs +
@@ -172,8 +172,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // Feedback strip: a top-bordered separator carrying the last error / result.
     render_strip(frame, f[10], app, &t);
 
-    // Bottom hint bar, split left (navigation) / right (F1 help).
-    render_bar(frame, bar_chunk, &t);
+    // Bottom hint bar — the shared, width-fitting strip (no mode badge here).
+    draw_hint_bar(
+        frame,
+        bar_chunk,
+        "Tab field · Enter login · F2 reveal · F5 retry · Esc quit",
+        &t,
+    );
 }
 
 /// The in-form feedback row: a `─` separator with the last error/result (blank
@@ -200,27 +205,6 @@ fn render_strip(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
         _ => Line::from(""),
     };
     frame.render_widget(Paragraph::new(line).block(sep), area);
-}
-
-/// Bottom hint strip, split left (navigation) / right (`F1 help`) so neither
-/// half runs off the edge.
-fn render_bar(frame: &mut Frame, bar: Rect, t: &Theme) {
-    let cols = Layout::horizontal([Constraint::Fill(1), Constraint::Length(9)]).split(bar);
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            " Tab field · Enter login · F2 reveal · F5 retry · Esc quit",
-            Style::default().fg(t.dim),
-        ))),
-        cols[0],
-    );
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "F1 help ",
-            Style::default().fg(t.dim),
-        )))
-        .alignment(Alignment::Right),
-        cols[1],
-    );
 }
 
 /// A field label row: accent+bold when its field is focused, else dim. `hint`
