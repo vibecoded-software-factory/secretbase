@@ -40,6 +40,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 fn render_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let t = app.theme.clone();
+    let icon_set = crate::tui::icons::resolve(&app.settings_cache.icon_style);
     let total = app.teams.len();
 
     let rows: Vec<Row<'static>> = app
@@ -54,7 +55,11 @@ fn render_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
                 TeamRole::Bot | TeamRole::RestrictedBot => t.conv_team,
                 _ => t.foreground,
             };
-            let icon = if tm.is_implicit_team { "  " } else { "󰀎 " };
+            let icon = if tm.is_implicit_team {
+                "  ".to_string()
+            } else {
+                format!("{} ", icon_set.group_team())
+            };
             Row::new(vec![
                 Cell::from(Span::styled(
                     format!("{icon}{}", tm.name),

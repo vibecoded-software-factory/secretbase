@@ -132,6 +132,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         );
         return;
     }
+    let icon_set = crate::tui::icons::resolve(&app.settings_cache.icon_style);
     let model = app.tree_rows();
     let budget = (area.width as usize).saturating_sub(7).max(6);
 
@@ -146,7 +147,11 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 ..
             } => {
                 let arrow = if *collapsed { "▸" } else { "▾" };
-                let icon = if *is_team { "󰀎" } else { "󰭹" };
+                let icon = if *is_team {
+                    icon_set.group_team()
+                } else {
+                    icon_set.group_dm()
+                };
                 let color = if *is_team { t.conv_team } else { t.conv_dm };
                 let count = if *unread > 0 {
                     unread.to_string()

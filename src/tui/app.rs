@@ -186,7 +186,7 @@ impl SettingsSection {
             SettingsSection::Identity => &[Username, Device, DeviceType],
             SettingsSection::Theme => &[],
             SettingsSection::Chat => &[AutoMarkRead, InboxRefresh],
-            SettingsSection::Emoji => &[EmojiStyle],
+            SettingsSection::Emoji => &[EmojiStyle, IconStyle],
             SettingsSection::Clipboard => &[ClipboardClear],
             SettingsSection::Network => &[ListTimeout, DownloadTimeout],
             SettingsSection::Images => &[ImageProtocol, ImageSymbols],
@@ -210,6 +210,7 @@ pub enum SettingId {
     ImageProtocol,
     ImageSymbols,
     EmojiStyle,
+    IconStyle,
 }
 
 /// The chafa symbol sets offered in the Images section (the meaningful presets
@@ -224,6 +225,10 @@ pub const IMAGE_PROTOCOLS: [&str; 6] = ["auto", "kitty", "sixel", "iterm", "symb
 /// Emoji display modes offered in the Emoji section: the Unicode `glyph`, or the
 /// `:shortcode:` text (legible even when the terminal renders emoji as tofu).
 pub const EMOJI_STYLES: [&str; 2] = ["glyph", "shortcode"];
+
+/// UI icon sets offered in the Emoji section: `unicode` (any font, the headless-
+/// safe default) or `nerd` (nerd-font glyphs where the terminal has the font).
+pub const ICON_STYLES: [&str; 2] = ["unicode", "nerd"];
 
 /// How a [`SettingId`] is displayed and adjusted.
 pub enum SettingKind {
@@ -253,6 +258,7 @@ impl SettingId {
             SettingId::ImageProtocol => "Image protocol",
             SettingId::ImageSymbols => "Symbol set",
             SettingId::EmojiStyle => "Display",
+            SettingId::IconStyle => "Icons",
         }
     }
 
@@ -284,6 +290,7 @@ impl SettingId {
             SettingId::ImageProtocol => SettingKind::Choice(&IMAGE_PROTOCOLS),
             SettingId::ImageSymbols => SettingKind::Choice(&IMAGE_SYMBOL_SETS),
             SettingId::EmojiStyle => SettingKind::Choice(&EMOJI_STYLES),
+            SettingId::IconStyle => SettingKind::Choice(&ICON_STYLES),
         }
     }
 
@@ -1189,6 +1196,7 @@ impl App {
             SettingId::ImageProtocol => s.image_protocol.clone(),
             SettingId::ImageSymbols => s.image_symbols.clone(),
             SettingId::EmojiStyle => s.emoji_style.clone(),
+            SettingId::IconStyle => s.icon_style.clone(),
         }
     }
 
@@ -1261,6 +1269,11 @@ impl App {
                 let next = cycle(&EMOJI_STYLES, &self.settings_cache.emoji_style, delta);
                 self.settings_cache.emoji_style = next.clone();
                 ("emoji_style", format!("\"{next}\""))
+            }
+            SettingId::IconStyle => {
+                let next = cycle(&ICON_STYLES, &self.settings_cache.icon_style, delta);
+                self.settings_cache.icon_style = next.clone();
+                ("icon_style", format!("\"{next}\""))
             }
         };
         self.settings.write_setting(key, &value);

@@ -166,6 +166,7 @@ impl SettingsPort for TomlSettingsAdapter {
             image_protocol: "auto".to_string(),
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
+            icon_style: "unicode".to_string(),
             favorites: Vec::new(),
             muted: Vec::new(),
         };
@@ -237,6 +238,9 @@ impl SettingsPort for TomlSettingsAdapter {
                 }
                 "emoji_style" if !value.is_empty() => {
                     cfg.emoji_style = value.to_ascii_lowercase();
+                }
+                "icon_style" if !value.is_empty() => {
+                    cfg.icon_style = value.to_ascii_lowercase();
                 }
                 "favorites" => {
                     cfg.favorites = value
@@ -335,6 +339,7 @@ impl UpdateBuffer {
         "image_protocol",
         "image_symbols",
         "emoji_style",
+        "icon_style",
         "favorites",
         "muted",
     ];

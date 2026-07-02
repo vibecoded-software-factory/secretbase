@@ -676,9 +676,11 @@ panel's "Applies live…" note — so descriptions never float in the middle. Th
 sections (`SettingsSection`): **Identity**
 (read-only — your username + device + device type, from `keybase status`),
 **Theme** (the live preset picker), **Chat** (`auto_mark_read`,
-`inbox_refresh_secs`), **Emoji** (`emoji_style`: `glyph` vs `:shortcode:` — the
-only emoji-appearance lever a TUI has, since it can't set the terminal's font;
-governs reaction display), **Clipboard** (`clipboard_clear_secs`), **Network**
+`inbox_refresh_secs`), **Emoji** — two glyph-appearance levers (a TUI can't set
+the terminal's font, so the only knob is *which glyph* to emit): `emoji_style`
+(`glyph` vs `:shortcode:`, reaction display) and `icon_style` (`unicode` — the
+headless-safe default that renders on any font — vs `nerd` for nerd-font glyphs,
+via `tui::icons`), **Clipboard** (`clipboard_clear_secs`), **Network**
 (`list_inbox_timeout_secs`, `download_timeout_secs`) and **Images**
 (`image_protocol`, `image_symbols`).
 
