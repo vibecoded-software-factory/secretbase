@@ -475,10 +475,23 @@ pub fn extract_gif_frames(gif: &str, dir: &std::path::Path) -> Option<GifFrames>
                 .collect()
         })
         .unwrap_or_default();
+    // Saturating arithmetic: the per-frame delays come from the GIF itself
+    // (an attacker-supplied attachment), so a crafted huge centisecond value
+    // or frame count must clamp, not overflow.
     let delays_ms: Vec<u32> = (0..frames.len())
-        .map(|i| delays_cs.get(i).copied().unwrap_or(10).max(2) * 10)
+        .map(|i| {
+            delays_cs
+                .get(i)
+                .copied()
+                .unwrap_or(10)
+                .max(2)
+                .saturating_mul(10)
+        })
         .collect();
-    let total_ms = delays_ms.iter().sum::<u32>().max(1);
+    let total_ms = delays_ms
+        .iter()
+        .fold(0u32, |acc, &d| acc.saturating_add(d))
+        .max(1);
     Some(GifFrames {
         frames,
         delays_ms,
