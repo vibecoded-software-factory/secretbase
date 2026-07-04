@@ -365,10 +365,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         Report => chat::open_conv_action(app, ConvAction::Report),
         Unhide => chat::open_unhide(app),
         ChannelBrowser => chat::open_channel_browser(app),
-        ConvSearch => {
-            chat::open_conv_search(app);
-            app.focus = Focus::ChatSearch;
-        }
+        ConvSearch => chat::open_conv_search(app),
         Attach => crate::tui::input::conversation::open_attach_picker(app),
         SelectMode => {
             app.focus = Focus::Chat;

@@ -46,10 +46,12 @@ The inbox is a **unified two-pane "Home"** (Discord-style): the conversation
 tree on the left, the open chat on the right — no separate full-screen
 conversation on normal terminals.
 - **header** — one shared row: the tree filter (`─[Alt+F]-Search`, above the
-  tree) + the in-chat search (`conversation::draw_chat_header`, above the
-  chat). The conversation **name lives on the Messages panel title**
-  (`Messages — <name>` via `conversation::chat_title`, plus `📌 #id` when
-  pinned) — no separate "Conversation" box.
+  tree) + the **chat header** (`conversation::draw_chat_header`, above the chat):
+  the conversation **name** as the box title plus a dim metadata row (type ·
+  participants/topic · `📌 pin`) — info chrome, not focusable. In-conversation
+  search is a **`Ctrl+F` modal** now (`Screen::ConvSearch`), not a box in this
+  row. The Messages panel title is just its `─[Alt+M]-` go-to tag
+  (`conversation::chat_title`).
 - **body** — `─[Alt+C]-Chats` tree (`Length(28)`) on the left, the chat
   (`Min(24)`) on the right:
   - `─[Alt+C]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
@@ -168,19 +170,17 @@ The compose box is **multi-line**: `Alt+Enter` inserts a newline (`Enter`
 sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
 cursor. Single-line inputs (search, react, new-conversation) keep
-`widgets::editor_spans`. The conversation **header row is split horizontally**:
-the `Conversation` name (left, 35%) + a `draw_search_box` **in-conversation
-search** (right, 65% — wider, the priority). `Ctrl+F` focuses it — and it is
-also a **Tab stop** (`Focus::ChatSearch`, between `Chat` and `CmdLog`, skipped
-when no conversation is open); Tabbing in activates the search and Tabbing out
-closes it (`conv_search_active` stays in sync via `input::inbox::set_focus`).
-Typing + `Enter` runs `keybase chat api searchregexp`
-over the open conversation (full history), and the match list renders in the
-message viewport (`render_conv_search_results`) — each hit is **two rows**:
-the sender + snippet, then a dim **day/time** line (`InboxHit::sent_at` from
-the hit's `ctime`, formatted by `message_time`) for context. `↑/↓` pick,
-`Enter` jumps to + highlights the message (via `pending_search_jump`,
-paginating older if needed), `Esc` closes. The **login** screen
+`widgets::editor_spans`. The chat's top row is the **chat header**
+(`draw_chat_header`, info chrome — name + type · participants/topic · pin), not a
+search box. **In-conversation search is a modal** (`Screen::ConvSearch`,
+`view::conv_search`): `Ctrl+F` opens a centered `searchregexp` box + results
+(sibling of the `Ctrl+G` global-search modal, sharing the `MODAL_*` geometry) —
+so it's on-demand, not a permanent panel, and the chat keeps its header row for
+metadata. Typing + `Enter` runs `keybase chat api searchregexp` over the open
+conversation (full history); each hit is **two rows** — the sender + snippet,
+then a dim **day/time** line (`InboxHit::sent_at` from the hit's `ctime`,
+`message_time`) for context. `↑/↓` pick, `Enter` jumps to + highlights the
+message (via `pending_search_jump`, paginating older if needed), `Esc` closes. The **login** screen
 (`view::login`) is the signed-out exception: it omits the identity bar and
 shows a **login form** over the figlet/starfield backdrop — a
 rounded `Login` block (cleared so the starfield doesn't bleed through) with
@@ -395,8 +395,9 @@ status strip are chrome, not focus targets).
 Conventions:
 
 - **Every focusable panel's border tag is its literal go-to combo** (no bare
-  `/`): `[Alt+F]` chat Filter, `[Alt+C]` Chats, `[Alt+M]` Messages, `[Ctrl+F]`
-  in-chat search (classic find), `[Alt+L]` command Log. The jumps are
+  `/`): `[Alt+F]` chat Filter, `[Alt+C]` Chats, `[Alt+M]` Messages, `[Alt+L]`
+  command Log. (`Ctrl+F` in-chat search is a modal now, not a focusable panel,
+  so it carries no border tag.) The jumps are
   **global** — they fire from any focus, even mid-compose (weechat-style
   modifier chords), so the tag always tells the truth. The `Alt` prefix is
   reserved for these panel jumps; list *actions* are bare letters (the gradient
@@ -404,8 +405,8 @@ Conventions:
   `Tab`/`Shift+Tab` also cycle focus via `input::common::cycle_focus`.
 - **Positional pane navigation** — a `Ctrl+W` leader (vim window-nav) arms
   `App::pending_pane_nav`; each following `h/j/k/l` or arrow moves to the
-  spatial neighbour (`input::inbox::pane_target`: filter/in-chat-search on the
-  top row, Chats/Chat in the body, command log across the bottom). The leader
+  spatial neighbour (`input::inbox::pane_target`: the filter on the top-left,
+  Chats/Chat in the body, command log across the bottom). The leader
   **stays armed across consecutive directions**, so two keys make a diagonal
   (e.g. `k` then `h` = up-left). `Esc`/`Enter` exit; any other key exits and is
   re-processed. The status strip shows the armed hint.
@@ -504,7 +505,8 @@ decision.
 - `widgets::MODAL_WIDTH_PCT` / `widgets::MODAL_HEIGHT` — **the standard
   centered-modal geometry** (currently 80% wide × 22 rows). Every list / picker
   overlay imitates it via `center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, …)` so
-  they all line up: **global search** (Ctrl+G), the **quick switcher** (Ctrl+K),
+  they all line up: **global search** (Ctrl+G), the **in-conversation search**
+  (Ctrl+F), the **quick switcher** (Ctrl+K), the **command palette** (Ctrl+P),
   the **reaction picker**, the **file picker**, and the **Settings** overlay
   (which keeps its own content-sized *width* but adopts this *height* +
   centered position). A new full-screen-ish modal should use these constants,
@@ -788,8 +790,9 @@ current size).
 toward the floor on a narrow terminal so the chat keeps room, and grows on a wide
 one so long DM/team names aren't always truncated (no magic `28`). The Home's
 header filter and body tree pass the same width so their columns line up; the
-chat side is `Min(20/24)` and flexes. The conversation header splits the name
-(35%) / in-chat search (65%).
+chat side is `Min(20/24)` and flexes. The chat header (name + metadata) takes
+the full chat-side width of the top row (in-conversation search is a `Ctrl+F`
+modal, not a box in the header).
 
 **Text that fits-or-degrades (never a fixed char cap that the terminal clips):**
 - **Footer hint** — `widgets::fit_segments` keeps only whole ` · ` segments that

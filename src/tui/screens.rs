@@ -46,6 +46,9 @@ pub enum Screen {
     QuickSwitcher,
     /// Command palette (Ctrl+P) — fuzzy list of context-aware actions.
     CommandPalette,
+    /// In-conversation search (Ctrl+F) — a modal `searchregexp` box + results,
+    /// jumping to the picked match (sibling of the global-search modal).
+    ConvSearch,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.
@@ -60,8 +63,6 @@ pub enum Focus {
     Tree,
     /// The chat (right pane) — compose / select.
     Chat,
-    /// The in-conversation search box (Ctrl+F / `searchregexp`).
-    ChatSearch,
     /// Bottom command-log panel.
     CmdLog,
 }

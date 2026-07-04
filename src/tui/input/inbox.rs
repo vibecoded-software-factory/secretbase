@@ -13,39 +13,22 @@ use crate::tui::input::common::{self, SearchAction};
 use crate::tui::screens::{Focus, Screen};
 
 /// Focus cycle order — the tree filter, the conversation tree, the open chat,
-/// the in-chat search box, the command log. `Chat` and `ChatSearch` are
-/// skipped while no conversation is open.
-const FOCUS_ORDER: [Focus; 5] = [
-    Focus::Search,
-    Focus::Tree,
-    Focus::Chat,
-    Focus::ChatSearch,
-    Focus::CmdLog,
-];
+/// the command log. `Chat` is skipped while no conversation is open. (In-chat
+/// search is a `Ctrl+F` modal now, not a focusable panel.)
+const FOCUS_ORDER: [Focus; 4] = [Focus::Search, Focus::Tree, Focus::Chat, Focus::CmdLog];
 
-/// Cycles focus, skipping the chat-only panels when no conversation is open.
+/// Cycles focus, skipping the chat panel when no conversation is open.
 fn cycle(app: &App, forward: bool) -> Focus {
-    let mut f = common::cycle_focus(&FOCUS_ORDER, app.focus, forward);
-    if matches!(f, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_none() {
-        f = common::cycle_focus(&FOCUS_ORDER, f, forward);
-        // Skip the second chat-only panel too (two in a row).
-        if matches!(f, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_none() {
-            f = common::cycle_focus(&FOCUS_ORDER, f, forward);
-        }
+    let f = common::cycle_focus(&FOCUS_ORDER, app.focus, forward);
+    if f == Focus::Chat && app.open_conv_id.is_none() {
+        return common::cycle_focus(&FOCUS_ORDER, f, forward);
     }
     f
 }
 
-/// Sets focus and keeps the in-chat search mode in sync: the search box is
-/// "active" exactly when `ChatSearch` holds focus, so Tab in/out toggles it.
+/// Sets focus, seating/clearing the command-log visual-select cursor as it's
+/// entered/left.
 fn set_focus(app: &mut App, f: Focus) {
-    if f == Focus::ChatSearch {
-        chat::open_conv_search(app);
-    } else if app.focus == Focus::ChatSearch {
-        chat::close_conv_search(app);
-    }
-    // Entering the command log seats the visual-select cursor on the newest
-    // line; leaving it drops any selection.
     if f == Focus::CmdLog {
         app.enter_cmdlog();
     } else if app.focus == Focus::CmdLog {
@@ -75,20 +58,18 @@ fn key_to_dir(code: KeyCode) -> Option<Dir> {
 }
 
 /// The panel reached by moving `dir` from `focus`, given the Home's spatial
-/// layout: filter / in-chat search on the top row, Chats / Chat in the body,
-/// command log spanning the bottom. `None` = no neighbour that way.
+/// layout: the filter on the top-left, Chats / Chat in the body, the command
+/// log spanning the bottom. `None` = no neighbour that way.
 fn pane_target(focus: Focus, dir: Dir, has_conv: bool) -> Option<Focus> {
     use Dir::*;
     use Focus::*;
     match (focus, dir) {
-        (Search, Right) => has_conv.then_some(ChatSearch),
+        (Search, Right) => has_conv.then_some(Chat),
         (Search, Down) => Some(Tree),
-        (ChatSearch, Left) => Some(Search),
-        (ChatSearch, Down) => Some(Chat),
         (Tree, Up) => Some(Search),
         (Tree, Right) => has_conv.then_some(Chat),
         (Tree, Down) => Some(CmdLog),
-        (Chat, Up) => Some(ChatSearch),
+        (Chat, Up) => Some(Search),
         (Chat, Left) => Some(Tree),
         (Chat, Down) => Some(CmdLog),
         (CmdLog, Up) => Some(Tree),
@@ -146,8 +127,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::Char('f') | KeyCode::Char('F') if ctrl && app.open_conv_id.is_some() => {
-            // Ctrl+F finds within the open conversation (the classic find).
-            set_focus(app, Focus::ChatSearch);
+            // Ctrl+F finds within the open conversation — opens the search modal.
+            chat::open_conv_search(app);
             return;
         }
         KeyCode::Char('l') | KeyCode::Char('L') if alt => {
@@ -185,9 +166,7 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 
     match app.focus {
         Focus::Tree => handle_tree(app, key),
-        // ChatSearch routes to the same handler: conv_search_active is set, so
-        // conversation::handle delegates to its in-conversation search keys.
-        Focus::Chat | Focus::ChatSearch => crate::tui::input::conversation::handle(app, key),
+        Focus::Chat => crate::tui::input::conversation::handle(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         Focus::Search => unreachable!("handled above"),
     }
