@@ -17,7 +17,7 @@ use zeroize::Zeroizing;
 
 use crate::domain::{
     AttachmentInfo, Channel, ChatMember, Conversation, Emoji, IdentityInfo, InboxHit, MemberStatus,
-    MembersType, Message, MessageContent, TeamMembership, TeamRole, TopicType,
+    MembersType, Message, MessageContent, TeamMembership, TeamRole,
 };
 use crate::ports::KeybaseError;
 use crate::ports::keybase::{KeybasePort, ListConversationsOk, ListTeamsOk, ReadChannel};
@@ -144,13 +144,6 @@ impl KeybasePort for MockKeybase {
         }
         s.read_calls.push(next.map(str::to_string));
         Ok((s.messages.clone(), s.messages_next.clone()))
-    }
-    fn read_conversation_json(
-        &mut self,
-        _: &ReadChannel,
-        _: u32,
-    ) -> Result<Zeroizing<String>, KeybaseError> {
-        Ok(Zeroizing::new(String::new()))
     }
     fn mark_read(&mut self, _: &ReadChannel, id: u64) -> Result<(), KeybaseError> {
         let mut s = self.0.lock().unwrap();
@@ -395,12 +388,6 @@ impl KeybasePort for MockKeybase {
             skipped: s.teams_skipped.clone(),
         })
     }
-    fn create_team(&mut self, _: &str) -> Result<(), KeybaseError> {
-        Ok(())
-    }
-    fn leave_team(&mut self, _: &str, _: bool) -> Result<(), KeybaseError> {
-        Ok(())
-    }
 }
 
 struct FakeClipboard;
@@ -492,11 +479,8 @@ fn conv(id: &str, name: &str, members: MembersType) -> Conversation {
         channel: Channel {
             name: name.into(),
             members_type: members,
-            topic_type: TopicType::Chat,
             topic_name: None,
-            public: false,
         },
-        is_default_conv: true,
         unread: false,
         active_at: 0,
         active_at_ms: 0,
@@ -1618,21 +1602,6 @@ fn unpin_calls_adapter_once() {
     assert_eq!(rig.mock.st().unpins, 1);
 }
 
-// ── filter cycling ────────────────────────────────────────────────────
-
-#[test]
-fn status_axis_cycles_and_wraps() {
-    use crate::domain::StatusFilter;
-    let mut rig = build_rig();
-    rig.app.status_filter = StatusFilter::All;
-    cycle_status(&mut rig.app, 1);
-    assert_eq!(rig.app.status_filter, StatusFilter::Unread);
-    cycle_status(&mut rig.app, 1); // wraps back to All
-    assert_eq!(rig.app.status_filter, StatusFilter::All);
-    cycle_status(&mut rig.app, -1); // wraps to last
-    assert_eq!(rig.app.status_filter, StatusFilter::Unread);
-}
-
 #[test]
 fn tree_groups_dms_then_teams_with_conversations_nested() {
     use crate::tui::app::TreeRow;
@@ -1692,29 +1661,6 @@ fn collapsed_group_hides_its_conversations() {
         .iter()
         .any(|r| matches!(r, TreeRow::Conv { idx } if rig.app.conversations[*idx].id == "d"));
     assert!(has_dm_conv);
-}
-
-#[test]
-fn status_filter_narrows_the_tree_to_unread() {
-    use crate::domain::StatusFilter;
-    use crate::tui::app::TreeRow;
-    let mut rig = build_rig();
-    let mut unread_dm = conv("d", "alice", MembersType::ImpTeamNative);
-    unread_dm.unread = true;
-    let read_dm = conv("d2", "bob", MembersType::ImpTeamNative);
-    preload_inbox(&mut rig.app, &rig.mock, vec![unread_dm, read_dm], "d");
-    rig.app.status_filter = StatusFilter::Unread;
-    rig.app.rebuild_filter();
-    let convs: Vec<&str> = rig
-        .app
-        .tree_rows()
-        .iter()
-        .filter_map(|r| match r {
-            TreeRow::Conv { idx } => Some(rig.app.conversations[*idx].id.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(convs, vec!["d"]);
 }
 
 // ── select mode ───────────────────────────────────────────────────────

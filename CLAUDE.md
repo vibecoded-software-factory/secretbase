@@ -41,8 +41,8 @@ updated before every push** when a change touches UX/UI (new screen, new
 pattern, changed convention): update the spec in the same change and apply
 it everywhere.
 
-The design system: the `split_main` vertical stack, the
-top identity bar, the single `widgets::list_table` renderer, the navigable
+The design system: the unified two-pane Home layout, the
+single `widgets::list_table` renderer, the navigable
 `widgets::draw_confirm_popup`, the `LineEditor` + `editor_spans` text-input
 model, the shared `input::common` mechanics, the rolling command log, and a
 restrained night-sky splash. When in doubt, reuse the documented component.
@@ -60,11 +60,12 @@ restrained night-sky splash. When in doubt, reuse the documented component.
 2. **Every UX change must stay coherent with the rest of the UI.** This
    app has established, repeated patterns; a change to one screen should
    match all the others, and ideally reuse the same component.
-   - Signed-in screens → `view::mod::split_main` stack (identity · header ·
-     body · cmdlog · status). Panels → `view::mod::titled_block(title,
-     focused, app)`. Popups → `widgets::center_rect` / `rounded_block`.
+   - Signed-in screens → the unified two-pane Home (tree · chat, with the
+     responsive `widgets::cmdlog_height` command log + status strip below).
+     Panels → `view::mod::titled_block(title, focused, app)`. Popups →
+     `widgets::center_rect` / `rounded_block`.
    - Multi-column lists → `widgets::list_table` (header + content-sized
-     columns via `col_width` + `▶` + persisted scroll + `· X of Y` title via
+     columns + `▶` + persisted scroll + `· X of Y` title via
      `list_title`). Never a stretching `Min` on a non-final column.
    - Text inputs → `domain::LineEditor` rendered with `widgets::editor_spans`,
      keys routed via `input::common::route_line_editor` / `search_key`. The
@@ -142,7 +143,7 @@ CLI.
 secretbase is a standalone public repository. **Never name or cite a sibling
 project** — jewel, bytewarden, termcord, or any other repo — in code,
 comments, commit messages, PR bodies, or docs. Describe every pattern as
-*this app's own* ("the `split_main` stack", "the shared confirm overlay"),
+*this app's own* ("the unified Home layout", "the shared confirm overlay"),
 not as "ported from X" or "mirrors X". Naming another repo in a public
 project leaks the private multi-project setup and reads as unprofessional.
 
@@ -269,7 +270,7 @@ main ──► tui ──► flows ──► ports ◄── adapters
 ```
 
 - `src/domain/` — pure types and rules, no I/O (e.g. `Conversation`,
-  `Message`/`MessageContent`, `TeamMembership`, `StatusFilter`,
+  `Message`/`MessageContent`, `TeamMembership`,
   `fuzzy_score_lowered`/`LoweredConversation`, validators).
 - `src/ports/` — trait abstractions: `KeybasePort`, `ClipboardPort`,
   `SettingsPort`, `KeybaseError`.
@@ -287,14 +288,14 @@ main ──► tui ──► flows ──► ports ◄── adapters
   - `action.rs` — `ActionState` (Idle/Running/Done/Error) + `CmdEntry`.
   - `screens.rs` — `Screen`, `Focus` enums.
   - `flows/` — per-feature `request_*`/`handle_*` pairs (`auth`, `chat`,
-    `teams`, `copy`). `flows::apply_response` routes each `WorkerResponse`
+    `teams`, `palette`). `flows::apply_response` routes each `WorkerResponse`
     to its `handle_*`.
   - `input/` — per-screen keyboard handlers (wired in `input/mod.rs`) +
     `mouse.rs`; shared mechanics in `input/common.rs` (`clamp_move`,
     `cycle_focus`, `busy_blocks`, `route_line_editor`, `search_key`,
     `confirm_key`). New handlers delegate here.
   - `view/` — per-screen Ratatui renderers (router in `view/mod.rs::draw`,
-    which owns `split_main` + `titled_block`) + the shared `list_table` and
+    which owns `titled_block`) + the shared `list_table` and
     chrome in `view/widgets.rs`; `theme.rs`, `logo.rs`, `starfield.rs`
     (restrained, splash/login only).
   - `domain::LineEditor` backs every text input across the app.

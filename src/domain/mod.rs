@@ -17,7 +17,6 @@ pub mod chat_event;
 pub mod conversation;
 pub mod duration;
 pub mod emoji;
-pub mod filter;
 pub mod identity;
 pub mod inbox_hit;
 pub mod line_editor;
@@ -31,12 +30,9 @@ pub mod url;
 pub mod validation;
 
 pub use chat_event::ChatEvent;
-pub use conversation::{
-    Channel, Conversation, MemberStatus, MembersType, TopicType, conversation_label,
-};
+pub use conversation::{Channel, Conversation, MemberStatus, MembersType, conversation_label};
 pub use duration::format_duration;
 pub use emoji::Emoji;
-pub use filter::{STATUS_FILTERS, StatusFilter};
 pub use identity::IdentityInfo;
 pub use inbox_hit::InboxHit;
 pub use line_editor::LineEditor;

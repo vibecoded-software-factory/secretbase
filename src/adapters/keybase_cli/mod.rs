@@ -262,28 +262,14 @@ impl KeybasePort for KeybaseCliAdapter {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
-            user_id: v
-                .get("UserID")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
             default_username: v
                 .get("DefaultUsername")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
             logged_in: v.get("LoggedIn").and_then(Value::as_bool).unwrap_or(false),
-            session_is_valid: v
-                .get("SessionIsValid")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
             device_name: v
                 .pointer("/Device/name")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            device_id: v
-                .pointer("/Device/deviceID")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
@@ -391,21 +377,6 @@ impl KeybasePort for KeybaseCliAdapter {
                 .map(|s| s.to_string())
         };
         Ok((out, next))
-    }
-
-    fn read_conversation_json(
-        &mut self,
-        channel: &ReadChannel,
-        num: u32,
-    ) -> Result<Zeroizing<String>, KeybaseError> {
-        let req = request_with_options(
-            "read",
-            json!({
-                "channel": channel_object(channel),
-                "pagination": { "num": num },
-            }),
-        );
-        self.run_api_raw("chat", &req, READ_TIMEOUT)
     }
 
     fn mark_read(&mut self, channel: &ReadChannel, message_id: u64) -> Result<(), KeybaseError> {
@@ -782,24 +753,6 @@ impl KeybasePort for KeybaseCliAdapter {
                 KeybaseError::shape("keybase team api list-user-memberships: missing result.teams")
             })?;
         Ok(parse_teams_array(arr))
-    }
-
-    fn create_team(&mut self, name: &str) -> Result<(), KeybaseError> {
-        let req = request_with_options("create-team", json!({"team": name}));
-        self.team_api(&req, QUICK_OP_TIMEOUT)?;
-        Ok(())
-    }
-
-    fn leave_team(&mut self, name: &str, permanent: bool) -> Result<(), KeybaseError> {
-        let req = request_with_options(
-            "leave-team",
-            json!({
-                "team": name,
-                "permanent": permanent,
-            }),
-        );
-        self.team_api(&req, QUICK_OP_TIMEOUT)?;
-        Ok(())
     }
 }
 

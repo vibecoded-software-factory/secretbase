@@ -24,7 +24,6 @@ use crate::tui::screens::Focus;
 pub struct MouseAreas {
     pub search: Rect,
     pub source: Rect,
-    pub filters: Rect,
     pub list: Rect,
     pub cmd_log: Rect,
     /// The conversation message viewport (for click-to-select + scroll).

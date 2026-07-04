@@ -396,7 +396,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
 mod tests {
     use super::*;
     use crate::domain::{
-        Channel, Conversation, MemberStatus, MembersType, Message, MessageContent, TopicType,
+        Channel, Conversation, MemberStatus, MembersType, Message, MessageContent,
     };
     use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
     use crate::tui::worker::{WorkerRequest, WorkerResponse};
@@ -448,11 +448,8 @@ mod tests {
             channel: Channel {
                 name: "alice".into(),
                 members_type: members,
-                topic_type: TopicType::Chat,
                 topic_name: (members == MembersType::Team).then(|| "general".into()),
-                public: false,
             },
-            is_default_conv: true,
             unread: false,
             active_at: 0,
             active_at_ms: 0,

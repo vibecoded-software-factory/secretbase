@@ -324,21 +324,6 @@ fn open_channel(app: &mut App) -> Option<(String, ReadChannel)> {
 
 // ── Filter / search query helpers (pure, sync) ───────────────────────
 
-/// Cycles the **status** axis (All ↔ Unread) by `delta` and refreshes.
-pub fn cycle_status(app: &mut App, delta: isize) {
-    use crate::domain::STATUS_FILTERS;
-    let cur = STATUS_FILTERS
-        .iter()
-        .position(|f| *f == app.status_filter)
-        .unwrap_or(0) as isize;
-    let n = STATUS_FILTERS.len() as isize;
-    let next = (cur + delta).rem_euclid(n) as usize;
-    app.status_filter = STATUS_FILTERS[next];
-    app.tree_selected = 0;
-    app.list_scroll = 0;
-    app.rebuild_filter();
-}
-
 /// Tree navigation: moves the cursor by `delta` over the visible tree rows.
 pub fn tree_move(app: &mut App, delta: isize) {
     let len = app.tree_rows().len();
@@ -419,15 +404,6 @@ pub fn tree_back(app: &mut App) {
 }
 
 // ── Open / close conversation detail screen ──────────────────────────
-
-pub fn open_selected_conversation(app: &mut App) {
-    let Some(conv) = app.selected_conversation() else {
-        app.set_action(ActionState::Error("No conversation selected".into()));
-        return;
-    };
-    let id = conv.id.clone();
-    enter_conversation(app, id);
-}
 
 /// Shared conversation-open path: stash the previously-open draft, switch to
 /// `id`, restore its draft, and load its messages.
@@ -838,8 +814,13 @@ pub fn handle_load_older_messages_response(
 
 // ── Escape semantics on the conversation screen ─────────────────────
 
+/// Esc in the compose pane: cancel an in-progress edit first, else clear a
+/// non-empty draft, else close the conversation (focus back to the tree).
+/// The single Esc path — the input handler routes here.
 pub fn escape_conversation(app: &mut App) {
-    if app.compose.is_empty() {
+    if app.edit_target_id.is_some() {
+        cancel_edit(app);
+    } else if app.compose.is_empty() {
         close_conversation(app);
     } else {
         app.compose_clear();

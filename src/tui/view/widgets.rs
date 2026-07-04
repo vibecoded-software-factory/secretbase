@@ -99,9 +99,8 @@ pub fn help_line<'a>(key: &'a str, desc: &'a str, t: &Theme) -> Line<'a> {
 /// the `▶ ` selection highlight, and persists the scroll offset through
 /// `*scroll`.
 ///
-/// `widths` must match `headers` in length. Size content columns with
-/// [`col_width`] — never a stretching `Min` on a non-final content
-/// column.
+/// `widths` must match `headers` in length. Size content columns to the
+/// visible rows — never a stretching `Min` on a non-final content column.
 #[allow(clippy::too_many_arguments)]
 pub fn list_table(
     frame: &mut Frame,
@@ -173,12 +172,6 @@ pub fn list_table(
     *scroll = state.offset();
 }
 
-/// Width for a content column, sized to the *visible* rows (`indices`),
-/// clamped to `[lo, hi]`. `f` maps a row index to its content length.
-pub fn col_width(indices: &[usize], lo: u16, hi: u16, f: impl Fn(usize) -> usize) -> u16 {
-    (indices.iter().map(|&i| f(i)).max().unwrap_or(0) as u16).clamp(lo, hi)
-}
-
 /// Truncates `s` to `max` columns with a `…` in the middle, **biased to
 /// the head**: identifiers carry their discriminator near the front, so
 /// the head keeps ~⅔ and a short tail preserves the suffix. Char-based
@@ -225,68 +218,6 @@ pub fn table_row_at(rect: Rect, y: u16, scroll: usize, len: usize) -> Option<usi
     }
     let idx = scroll + (y - top) as usize;
     (idx < len).then_some(idx)
-}
-
-/// Spans for one `[x]`/`[ ] <label>` checkbox row: a leading `▶ `
-/// (or two-space gutter) cursor, the `[x]`/`[ ]` mark, and the label.
-pub fn checkbox_spans(
-    theme: &Theme,
-    checked: bool,
-    label: &str,
-    focused: bool,
-) -> Vec<Span<'static>> {
-    let (mark, mark_style) = if checked {
-        (
-            "[x]",
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        ("[ ]", Style::default().fg(theme.inactive))
-    };
-    let leading: Span = if focused {
-        Span::styled(
-            "▶ ",
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        Span::raw("  ")
-    };
-    let label_style = if focused {
-        Style::default()
-            .fg(theme.foreground)
-            .add_modifier(Modifier::BOLD)
-    } else if checked {
-        Style::default().fg(theme.foreground)
-    } else {
-        Style::default().fg(theme.dim)
-    };
-    vec![
-        leading,
-        Span::styled(mark, mark_style),
-        Span::raw(" "),
-        Span::styled(label.to_string(), label_style),
-    ]
-}
-
-/// A single tab/chip span: `" {label} "`. When `active` it's `accent`
-/// on `selected_bg` + BOLD; enabled-inactive is `dim`; disabled is
-/// `muted`.
-pub fn chip_span(theme: &Theme, label: &str, active: bool, enabled: bool) -> Span<'static> {
-    let style = if !enabled {
-        Style::default().fg(theme.muted)
-    } else if active {
-        Style::default()
-            .fg(theme.accent)
-            .bg(theme.selected_bg)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.dim)
-    };
-    Span::styled(format!(" {label} "), style)
 }
 
 /// A focus/selection-highlighted action button rendered as `[ label ]` — the
@@ -386,83 +317,6 @@ pub fn draw_confirm_popup(
         Span::styled("   (←/→ · Enter · Esc)", Style::default().fg(theme.muted)),
     ]));
     frame.render_widget(Paragraph::new(lines), inner);
-}
-
-/// Top identity bar — always visible above the per-screen header on
-/// every signed-in screen. Renders `user <name> · device <dev>` plus the
-/// inbox-wide unread total so the user keeps the big picture everywhere.
-pub fn draw_identity_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let block = titled_block("Identity", false, app);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let t = &app.theme;
-    if !app.identity.logged_in || app.identity.username.is_empty() {
-        let p = Paragraph::new(Line::from(Span::styled(
-            "(not logged in)",
-            Style::default().fg(t.dim),
-        )));
-        frame.render_widget(p, inner);
-        return;
-    }
-
-    // Fit to width like the footer hint does (never a hard clip mid-word):
-    // the username is mandatory, then add `unread` (it outranks `device` when
-    // space is tight — a count you must notice beats a device label), then
-    // `device`. The username truncates only as a last resort on a very narrow
-    // terminal. Widths are char-based (each includes its leading separator).
-    let avail = inner.width as usize;
-    let uname = app.identity.username.clone();
-    let dev = app.identity.device_name.clone();
-    let unread = app.unread_total();
-    let unread_txt = if unread > 0 {
-        format!("{unread} unread")
-    } else {
-        String::new()
-    };
-    let user_w = "user ".len() + uname.chars().count();
-    let dev_w = if dev.is_empty() {
-        0
-    } else {
-        "  ·  device ".chars().count() + dev.chars().count()
-    };
-    let unread_w = if unread > 0 {
-        "  ·  ".chars().count() + unread_txt.chars().count()
-    } else {
-        0
-    };
-    let mut show_dev = dev_w > 0;
-    let mut show_unread = unread_w > 0;
-    if user_w + dev_w + unread_w > avail {
-        show_dev = false;
-    }
-    if user_w + if show_dev { dev_w } else { 0 } + unread_w > avail {
-        show_unread = false;
-    }
-
-    let mut spans = vec![Span::styled("user ", Style::default().fg(t.dim))];
-    let fixed = if show_dev { dev_w } else { 0 } + if show_unread { unread_w } else { 0 };
-    let uname_budget = avail.saturating_sub("user ".len() + fixed).max(1);
-    spans.push(Span::styled(
-        trim_end_ellipsis(&uname, uname_budget),
-        Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-    ));
-    if show_dev {
-        spans.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
-        spans.push(Span::styled("device ", Style::default().fg(t.dim)));
-        spans.push(Span::styled(dev, Style::default().fg(t.foreground)));
-    }
-    if show_unread {
-        spans.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
-        spans.push(Span::styled(unread_txt, unread_style(t)));
-    }
-    frame.render_widget(Paragraph::new(Line::from(spans)), inner);
-}
-
-/// Number of content rows the identity bar renders — always 1 for the
-/// Keybase identity. Add 2 (block borders) to get the slot height.
-pub fn identity_content_rows(_app: &App, _total_width: u16) -> u16 {
-    1
 }
 
 /// Shared single-line search/filter box: a titled block holding the live
@@ -928,13 +782,5 @@ mod tests {
             assert!(b >= prev, "body shrank at height {h}: {b} < {prev}");
             prev = b;
         }
-    }
-
-    #[test]
-    fn col_width_clamps() {
-        assert_eq!(col_width(&[0, 1], 4, 10, |_| 2), 4);
-        assert_eq!(col_width(&[0, 1], 4, 10, |_| 7), 7);
-        assert_eq!(col_width(&[0, 1], 4, 10, |_| 99), 10);
-        assert_eq!(col_width(&[], 4, 10, |_| 99), 4);
     }
 }

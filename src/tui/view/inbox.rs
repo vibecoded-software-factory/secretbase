@@ -178,8 +178,6 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 format!("No chats match \u{201c}{q}\u{201d}"),
                 "Esc clears the filter",
             )
-        } else if matches!(app.status_filter, crate::domain::StatusFilter::Unread) {
-            ("No unread chats".to_string(), "everything's read \u{2713}")
         } else {
             ("No chats to show".to_string(), "n to start one")
         };

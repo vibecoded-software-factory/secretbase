@@ -43,15 +43,7 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
 
     match key.code {
         // ── lifecycle ───────────────────────────────────────────────────
-        KeyCode::Esc => {
-            if app.edit_target_id.is_some() {
-                chat::cancel_edit(app);
-            } else if app.compose.is_empty() {
-                chat::close_conversation(app);
-            } else {
-                app.compose_clear();
-            }
-        }
+        KeyCode::Esc => chat::escape_conversation(app),
         // Alt+Enter inserts a newline (multi-line message); plain Enter sends.
         KeyCode::Enter if alt => app.compose.insert('\n'),
         KeyCode::Enter => submit_compose(app),

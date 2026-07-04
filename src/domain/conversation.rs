@@ -46,38 +46,17 @@ impl MembersType {
         }
     }
 
-    /// Whether this conversation is a one-to-one (or small group) DM.
-    pub fn is_dm(self) -> bool {
-        matches!(
-            self,
-            MembersType::ImpTeamNative | MembersType::ImpTeamUpgrade
-        )
-    }
-
     /// Whether this conversation lives inside a Keybase team.
     pub fn is_team(self) -> bool {
         matches!(self, MembersType::Team)
     }
 }
 
-/// Kind of content carried by the conversation.
-///
-/// Keybase teams can have multiple channels of different types; the
-/// TUI only surfaces the chat channels by default.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TopicType {
-    Chat,
-    Dev,
-    #[serde(other)]
-    Other,
-}
-
 /// Whether the local user is still a member of the conversation.
 ///
 /// Keybase keeps "left", "removed", "reset", "preview" conversations
-/// in the inbox so the UI can hint at the state instead of silently
-/// dropping them.
+/// in the inbox; the parser accepts them all, and the UI surfaces only
+/// `Active` memberships today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemberStatus {
@@ -103,35 +82,20 @@ pub struct Channel {
     #[zeroize(skip)]
     #[serde(default = "default_members_type")]
     pub members_type: MembersType,
-    /// `chat` / `dev` / …
-    #[zeroize(skip)]
-    #[serde(default = "default_topic_type")]
-    pub topic_type: TopicType,
     /// Sub-channel within a team (e.g. `general`, `random`). Absent
     /// for DMs.
     #[serde(default)]
     pub topic_name: Option<String>,
-    /// Whether the conversation is public (very rare — only relevant
-    /// for self-conversations).
-    #[zeroize(skip)]
-    #[serde(default)]
-    pub public: bool,
 }
 
 fn default_members_type() -> MembersType {
     MembersType::Unknown
 }
 
-fn default_topic_type() -> TopicType {
-    TopicType::Chat
-}
-
 /// The "creator_info" sub-object — only present on conversations
 /// the user did not initiate themselves.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatorInfo {
-    /// Unix millis of conversation creation.
-    pub ctime: u64,
     /// Username of the creator.
     pub username: String,
 }
@@ -147,12 +111,6 @@ pub struct Conversation {
     pub id: String,
 
     pub channel: Channel,
-
-    /// Whether this is the canonical default conversation between
-    /// the participants (false for secondary impteams).
-    #[zeroize(skip)]
-    #[serde(default)]
-    pub is_default_conv: bool,
 
     /// Whether the conversation has unread messages.
     #[zeroize(skip)]
@@ -282,7 +240,6 @@ mod tests {
         }"#;
         let c = parse_conv(json);
         assert_eq!(c.channel.members_type, MembersType::ImpTeamNative);
-        assert!(c.channel.members_type.is_dm());
     }
 
     #[test]
