@@ -106,14 +106,6 @@ pub fn handle_load_inbox_response(
 ) {
     match result {
         Ok(load) => {
-            // Remember which conversation the tree cursor was on so a
-            // background safety-net refresh doesn't yank it to the top:
-            // `rebuild_filter` re-seats `tree_selected` on the first row
-            // (the right behaviour for a new search/filter, not for a
-            // resync), so we restore it by id afterwards. Recency re-sorts
-            // the rows, so the old position would land on a different
-            // conversation — an id is stable.
-            let prev_selected_id = app.selected_conversation().map(|c| c.id.clone());
             let n = load.conversations.len();
             let skipped_count = load.skipped.len();
             app.conversations = load.conversations;
@@ -131,15 +123,7 @@ pub fn handle_load_inbox_response(
             }
             app.inbox_error = None;
             app.rebuild_lowered();
-            app.rebuild_filter();
-            if let Some(id) = prev_selected_id
-                && let Some(pos) = app.tree_rows().iter().position(|r| {
-                    matches!(r, crate::tui::app::TreeRow::Conv { idx }
-                        if app.conversations[*idx].id == id)
-                })
-            {
-                app.tree_selected = pos;
-            }
+            app.rebuild_filter_preserving_cursor();
             app.last_inbox_load = std::time::Instant::now();
             let summary = if skipped_count == 0 {
                 format!("{n} conversations")
@@ -223,10 +207,11 @@ pub fn handle_mark_read_response(app: &mut App, result: Result<(), KeybaseError>
             if let Some(c) = app.conversations.iter_mut().find(|c| c.id == conv_id) {
                 c.unread = false;
             }
-            // Rebuild the view so the Unread filter membership tracks the
-            // flipped flag. (The lowered projection only carries names/labels,
-            // so it doesn't need a rebuild for an unread change.)
-            app.rebuild_filter();
+            // Rebuild the view so the unread badge tracks the flipped flag —
+            // keeping the cursor on the row the user just marked. (The lowered
+            // projection only carries names/labels, so it doesn't need a
+            // rebuild for an unread change.)
+            app.rebuild_filter_preserving_cursor();
             app.set_action(ActionState::Done("Marked as read".into()));
             app.push_cmd("keybase chat api mark", true, "ok");
         }
@@ -658,7 +643,7 @@ pub fn handle_load_messages_response(
                     .map(|c| std::mem::replace(&mut c.unread, false))
                     .unwrap_or(false);
                 if cleared {
-                    app.rebuild_filter();
+                    app.rebuild_filter_preserving_cursor();
                 }
             }
             app.set_action(ActionState::Done(format!("Loaded {n} messages")));
@@ -741,7 +726,9 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
         // A bump only touches recency/unread — fields the lowered projection
         // doesn't carry — so rebuilding it here (N conversations × 4 strings,
         // each zeroize-wiped on drop, per pushed message) would be pure waste.
-        app.rebuild_filter();
+        // Preserve the cursor: a busy team pushes constantly, and the recency
+        // re-sort must not yank the user's tree selection to the top.
+        app.rebuild_filter_preserving_cursor();
     } else {
         // First message of a conversation we don't have yet.
         request_load_inbox_silent(app);
@@ -3134,8 +3121,9 @@ pub fn toggle_muted_conversation(app: &mut App) {
         }
         .into(),
     ));
-    // The unread count / filter membership changed — reproject the tree.
-    app.rebuild_filter();
+    // The unread badge changed — reproject the tree, keeping the cursor on
+    // the row the user just muted.
+    app.rebuild_filter_preserving_cursor();
 }
 
 /// Toggles the **local-only** star on the selected conversation. Synchronous,

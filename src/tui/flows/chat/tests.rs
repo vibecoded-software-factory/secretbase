@@ -1663,6 +1663,37 @@ fn collapsed_group_hides_its_conversations() {
     assert!(has_dm_conv);
 }
 
+#[test]
+fn incoming_push_keeps_tree_cursor_on_selected_conversation() {
+    use crate::tui::app::TreeRow;
+    let mut rig = build_rig();
+    let mut bumped = conv("bumped", "alice", MembersType::ImpTeamNative);
+    bumped.active_at_ms = 1000;
+    let mut selected = conv("selected", "bob", MembersType::ImpTeamNative);
+    selected.active_at_ms = 2000; // most recent → first row before the push
+    preload_inbox(&mut rig.app, &rig.mock, vec![bumped, selected], "selected");
+    assert_eq!(
+        rig.app.selected_conversation().map(|c| c.id.clone()),
+        Some("selected".to_string())
+    );
+    // A push for the *other* conversation re-sorts it to the top…
+    let mut m = text_msg(9, "alice", "bump");
+    m.sent_at_ms = 5000;
+    handle_incoming_message(&mut rig.app, "bumped".into(), m);
+    // …but the cursor stays on the conversation the user had selected
+    // (a recency re-sort must not yank the tree selection).
+    assert_eq!(
+        rig.app.selected_conversation().map(|c| c.id.clone()),
+        Some("selected".to_string())
+    );
+    // And the bumped conversation did move to the first conversation row.
+    let first_conv = rig.app.tree_rows().iter().find_map(|r| match r {
+        TreeRow::Conv { idx } => Some(rig.app.conversations[*idx].id.clone()),
+        _ => None,
+    });
+    assert_eq!(first_conv, Some("bumped".to_string()));
+}
+
 // ── select mode ───────────────────────────────────────────────────────
 
 #[test]
