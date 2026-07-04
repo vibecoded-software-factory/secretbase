@@ -89,7 +89,7 @@ pub fn cmdlog_height(total: u16) -> u16 {
 pub fn help_line<'a>(key: &'a str, desc: &'a str, t: &Theme) -> Line<'a> {
     Line::from(vec![
         Span::raw("  "),
-        Span::styled(format!("{key:<16}"), Style::default().fg(t.accent)),
+        Span::styled(format!("{key:<16}"), key_style(t)),
         Span::styled(desc, Style::default().fg(t.foreground)),
     ])
 }
@@ -304,6 +304,18 @@ pub fn button(label: &str, active: bool, theme: &Theme) -> Span<'static> {
         Style::default().fg(theme.dim)
     };
     Span::styled(format!("[ {label} ]"), style)
+}
+
+/// The **keybind-letter** style — `accent` + BOLD. Every place that shows a
+/// shortcut glyph (the `F1` help popup, the select-mode action bar, the command
+/// palette) styles the key with this, so keys read identically everywhere and
+/// match the gradient convention ("keybind letters = accent"). Labels/descriptions
+/// keep their own per-context style (help = foreground, action bar = dim, …) —
+/// only the key styling is unified.
+pub fn key_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD)
 }
 
 /// The shared **unread / attention** emphasis style: the golden `conv_unread`

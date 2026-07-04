@@ -1159,7 +1159,7 @@ fn select_actions_lines(
     // Pack actions onto as few lines as fit `width` — they all show on one
     // line when there's room, otherwise wrap onto continuation lines (each
     // flush-left, aligned with the message's "→" arrow). Never truncated.
-    let key_style = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
+    let key_style = crate::tui::view::widgets::key_style(t);
     let label_style = Style::default().fg(t.dim);
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];

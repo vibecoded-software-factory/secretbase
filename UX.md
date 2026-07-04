@@ -517,6 +517,11 @@ decision.
   marker spans. Every unread affordance (the tree's dot + count, the identity
   bar's "N unread", the ★ favourite) draws through these so the emphasis is
   identical everywhere.
+- `widgets::key_style(theme)` — the **keybind-letter** style (`accent` + bold).
+  Every place that shows a shortcut glyph — the `F1` help popup (`help_line`),
+  the select-mode action bar (`select_actions_lines`), the `Ctrl+P` command
+  palette — styles the key through this, so keys read the same everywhere (the
+  "keybind letters = accent" gradient rule). Labels keep their per-context style.
 
 ## Overlays & confirmations
 

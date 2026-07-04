@@ -13,7 +13,7 @@ use ratatui::{
 use crate::tui::App;
 use crate::tui::flows::palette::{PaletteRow, palette_rows};
 use crate::tui::view::widgets::{
-    MODAL_HEIGHT, MODAL_WIDTH_PCT, center_rect, editor_spans, rounded_block,
+    MODAL_HEIGHT, MODAL_WIDTH_PCT, center_rect, editor_spans, key_style, rounded_block,
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -88,7 +88,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                     Span::styled(prefix.to_string(), Style::default().fg(t.accent)),
                     Span::styled(c.label.to_string(), label_style),
                     Span::raw(" ".repeat(gap)),
-                    Span::styled(c.keys.to_string(), Style::default().fg(t.dim)),
+                    Span::styled(c.keys.to_string(), key_style(t)),
                 ]);
                 if selected {
                     line = line.style(Style::default().bg(t.selected_bg));
