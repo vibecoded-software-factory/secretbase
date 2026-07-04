@@ -425,6 +425,11 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     let viewport = area.height.saturating_sub(2).max(1) as usize;
     let max_back = total_lines.saturating_sub(viewport);
     let effective_back = app.messages_scroll.min(max_back);
+    // Persist the clamped offset: a stale-high `messages_scroll` (e.g. after a
+    // re-read shrinks the loaded list — a reaction/edit control event replaces
+    // 60 messages with the 27-message first page) would otherwise leave the
+    // mouse/keyboard scrolling in a dead zone above the real maximum.
+    app.messages_scroll = effective_back;
     let mut scroll_y = max_back.saturating_sub(effective_back);
 
     // In Select mode, keep the highlighted message inside the viewport —
@@ -512,45 +517,27 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     let scroll_u16 = scroll_y.min(u16::MAX as usize) as u16;
     let dim = app.theme.dim;
     let title = chat_title(app);
+    // The count lives in the bottom-right border; when messages arrived below
+    // while the reader is scrolled up, a `▼ N new` cue (accent) is appended
+    // there — in the border, never overlaying the message rows.
+    let mut counter_spans = vec![Span::styled(counter, Style::default().fg(dim))];
+    if effective_back > 0 && app.new_since_scroll > 0 {
+        counter_spans.push(Span::styled(
+            format!(" · ▼ {} new · End", app.new_since_scroll),
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        ));
+    }
     let block = titled_block(&title, app.focus == Focus::Chat, app)
-        .title_bottom(Line::from(Span::styled(counter, Style::default().fg(dim))).right_aligned());
+        .title_bottom(Line::from(counter_spans).right_aligned());
     frame.render_widget(
         Paragraph::new(lines).scroll((scroll_u16, 0)).block(block),
         area,
     );
 
     app.messages_max_back = max_back;
-
-    // Floating "jump to latest" cue: when the reader is scrolled up, a pill at
-    // the foot of the viewport shows the count of messages that arrived below
-    // while reading history (Discord/Slack-style). Reset once back at the bottom.
+    // Back at the latest → clear the new-arrival counter.
     if effective_back == 0 {
         app.new_since_scroll = 0;
-    } else {
-        let n = app.new_since_scroll;
-        let label = if n > 0 {
-            format!(" ▼ {n} new · End ")
-        } else {
-            " ▼ latest · End ".to_string()
-        };
-        let w = (label.chars().count() as u16).min(area.width.saturating_sub(2));
-        let pill = Rect {
-            x: area.x + area.width.saturating_sub(w) / 2,
-            y: area.y + area.height.saturating_sub(2),
-            width: w,
-            height: 1,
-        };
-        frame.render_widget(Clear, pill);
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                label,
-                Style::default()
-                    .fg(t.accent)
-                    .bg(t.selected_bg)
-                    .add_modifier(Modifier::BOLD),
-            ))),
-            pill,
-        );
     }
 
     // Mouse hit-testing: the viewport (for scroll) + a screen rect per
