@@ -142,18 +142,76 @@ impl SystemClipboardAdapter {
         }
         Some(String::from_utf8_lossy(&out.stdout).to_string())
     }
+
+    /// Copies `text` via the OSC 52 terminal escape — the headless / SSH
+    /// fallback used when no `wl-copy`/`xclip`/`xsel`/`pbcopy` backend is
+    /// available. The **terminal** applies it (not a display server), so the
+    /// copy lands in the *local* terminal's clipboard over SSH/tmux with no X /
+    /// Wayland. Written to stdout on the render thread — sequential with
+    /// ratatui's own output, so it can't interleave mid-frame. Terminal support
+    /// can't be detected (most modern terminals support it; tmux needs
+    /// `set-clipboard on`), so a terminal that ignores the escape is a silent
+    /// no-op rather than an error.
+    fn write_osc52(text: &str) -> Result<(), String> {
+        let seq = Zeroizing::new(osc52_sequence(text));
+        let mut out = std::io::stdout().lock();
+        out.write_all(seq.as_bytes())
+            .and_then(|()| out.flush())
+            .map_err(|e| format!("clipboard OSC 52: {e}"))
+    }
+}
+
+/// Base64-encodes `bytes` (standard alphabet, `=` padding). A tiny hand-rolled
+/// encoder so the adapter needs no base64 crate for its one use — the OSC 52
+/// clipboard escape.
+fn base64_encode(bytes: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        out.push(A[(b0 >> 2) as usize] as char);
+        out.push(A[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            A[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            A[(b2 & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// The OSC 52 "set clipboard" escape for `text`: `ESC ] 52 ; c ; <base64> BEL`.
+/// `c` selects the clipboard (vs the primary selection); an empty `text` yields
+/// a well-formed clearing escape.
+fn osc52_sequence(text: &str) -> String {
+    format!("\x1b]52;c;{}\x07", base64_encode(text.as_bytes()))
 }
 
 impl ClipboardPort for SystemClipboardAdapter {
     fn write(&self, text: &str) -> Result<(), String> {
-        let backend = Self::choose_backend()
-            .ok_or_else(|| "No clipboard tool found (install wl-copy or xclip)".to_string())?;
-        Self::write_via(&backend.write_argv, text)
+        match Self::choose_backend() {
+            Some(backend) => Self::write_via(&backend.write_argv, text),
+            // No display / tool (the headless / SSH case) → OSC 52, which copies
+            // via the terminal itself with no display server.
+            None => Self::write_osc52(text),
+        }
     }
 
     fn write_with_clear(&self, text: &str, clear_after_secs: u64) -> Result<(), String> {
-        let backend = Self::choose_backend()
-            .ok_or_else(|| "No clipboard tool found (install wl-copy or xclip)".to_string())?;
+        let backend = match Self::choose_backend() {
+            Some(b) => b,
+            // Headless / SSH: OSC 52 has no reliable read-back for the
+            // compare-and-clear, and a timed write from a background thread would
+            // race the render thread's stdout, so we just copy (no auto-clear).
+            None => return Self::write_osc52(text),
+        };
         Self::write_via(&backend.write_argv, text)?;
 
         if clear_after_secs == 0 {
@@ -191,6 +249,27 @@ impl ClipboardPort for SystemClipboardAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base64_encode_matches_known_vectors() {
+        // RFC 4648 test vectors — the padding boundaries are what matter.
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+        assert_eq!(base64_encode("hi".as_bytes()), "aGk=");
+    }
+
+    #[test]
+    fn osc52_sequence_wraps_the_base64_payload() {
+        // ESC ] 52 ; c ; <base64> BEL
+        assert_eq!(osc52_sequence("hi"), "\x1b]52;c;aGk=\x07");
+        // Empty text is a well-formed *clearing* escape (no panic, no payload).
+        assert_eq!(osc52_sequence(""), "\x1b]52;c;\x07");
+    }
 
     #[test]
     fn write_with_clear_zero_disables_timer() {
