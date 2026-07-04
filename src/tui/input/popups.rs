@@ -205,6 +205,30 @@ pub fn react(app: &mut App, key: KeyEvent) {
     }
 }
 
+// ── Command palette (Ctrl+P) ──────────────────────────────────────────
+
+pub fn command_palette(app: &mut App, key: KeyEvent) {
+    use crate::tui::flows::palette;
+    let len = palette::filtered_commands(app).len();
+    if common::list_nav_arrows(&key, len, app.palette_selected, |i| {
+        app.palette_selected = i
+    }) {
+        return;
+    }
+    match key.code {
+        KeyCode::Esc => palette::close_command_palette(app),
+        KeyCode::Enter => palette::palette_run_selected(app),
+        _ => {
+            let before = app.palette.text().to_string();
+            common::route_line_editor(&mut app.palette, key);
+            // A changed query re-filters — snap the selection back to the top.
+            if app.palette.text() != before {
+                app.palette_selected = 0;
+            }
+        }
+    }
+}
+
 // ── Quick switcher (Ctrl+K) ───────────────────────────────────────────
 
 pub fn quick_switcher(app: &mut App, key: KeyEvent) {

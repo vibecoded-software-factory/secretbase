@@ -80,6 +80,17 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         crate::tui::flows::chat::open_quick_switcher(app);
         return;
     }
+    // Ctrl+P toggles the command palette (from a base screen) — the sibling of
+    // the Ctrl+K switcher, for actions instead of conversations. Pure
+    // navigation, allowed even while busy.
+    if matches!(key.code, KeyCode::Char('p')) && key.modifiers.contains(KeyModifiers::CONTROL) {
+        match app.screen {
+            Screen::CommandPalette => flows::palette::close_command_palette(app),
+            Screen::Inbox | Screen::Teams => flows::palette::open_command_palette(app),
+            _ => {}
+        }
+        return;
+    }
     // While a worker request is in flight, swallow every key but Esc so
     // a second `request_*` can't overwrite `in_flight` / queue a stray
     // `WorkerRequest` (the `busy_blocks` gate). Esc still
@@ -173,6 +184,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::ConfirmDeleteMessage => popups::confirm_delete_message(app, key),
         Screen::React => popups::react(app, key),
         Screen::QuickSwitcher => popups::quick_switcher(app, key),
+        Screen::CommandPalette => popups::command_palette(app, key),
     }
 }
 

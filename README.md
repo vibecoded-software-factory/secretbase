@@ -44,7 +44,9 @@ A working terminal client for everyday Keybase chat. Highlights:
 * **Attachments**: upload via the built-in file picker, download to a chosen
   folder, and inline image thumbnails / animated-GIF playback via `chafa`.
 * **Search**: local fuzzy filter, server-side inbox search (`Ctrl+G`),
-  in-conversation regexp search (`Ctrl+F`), and a quick switcher (`Ctrl+K`).
+  in-conversation regexp search (`Ctrl+F`), a quick switcher (`Ctrl+K`), and a
+  **command palette** (`Ctrl+P`) — a fuzzy list of every action (with its
+  keybinding), run by name.
 * **Teams**: list your memberships with role and member count (`t`); a
   **channel browser** (`c` on a team) lists every channel to join / open /
   leave, plus create / rename / delete and toggle a channel as a team **default**
@@ -110,6 +112,7 @@ stays in sync with these tables.
 | `Ctrl+F`                | In-chat search (open conversation) |
 | `Ctrl+G`                | Global search |
 | `Ctrl+K`                | Quick switcher — jump to a conversation |
+| `Ctrl+P`                | Command palette — run any action |
 | **lowercase = frequent, safe** | |
 | `n`                     | New conversation |
 | `r` / `F5`              | Refresh inbox |

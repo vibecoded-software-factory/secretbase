@@ -14,6 +14,7 @@
 pub mod auth;
 pub mod chat;
 pub mod copy;
+pub mod palette;
 pub mod teams;
 
 use crate::tui::action::ActionState;

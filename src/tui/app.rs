@@ -605,6 +605,14 @@ pub struct App {
     /// Per-conversation unsent draft text (in memory only — not persisted
     /// across restarts). Keyed by conversation id.
     pub drafts: HashMap<String, String>,
+
+    // ── Command palette (Ctrl+P) ─────────────────────────────────────────
+    /// Fuzzy query in the command palette.
+    pub palette: LineEditor,
+    /// Selected row in the palette (indexes `flows::palette::filtered_commands`).
+    pub palette_selected: usize,
+    /// Screen the palette was opened from, restored on cancel / after running.
+    pub palette_from: Screen,
     /// When opening a conversation from a global-search hit, the message id
     /// to scroll to + highlight once it's loaded (paginating older if the
     /// match is below the first page). Cleared once landed or exhausted.
@@ -974,6 +982,9 @@ impl App {
             switcher_selected: 0,
             switcher_from: Screen::Inbox,
             drafts: HashMap::new(),
+            palette: LineEditor::default(),
+            palette_selected: 0,
+            palette_from: Screen::Inbox,
             pending_search_jump: None,
             conv_search: LineEditor::default(),
             conv_search_active: false,
@@ -1484,6 +1495,7 @@ impl App {
                     | Screen::ConfirmDeleteMessage
                     | Screen::React
                     | Screen::QuickSwitcher
+                    | Screen::CommandPalette
             )
     }
 
