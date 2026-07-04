@@ -211,10 +211,25 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
         // multiple chained requests (e.g. boot Status → LoadInbox)
         // by re-queuing inside the response handler; the next
         // iteration of this loop picks them up.
-        while let Ok(resp) = app.worker_rx.try_recv() {
-            flows::apply_response(app, resp);
-            done_ticks = 0;
+        loop {
+            match app.worker_rx.try_recv() {
+                Ok(resp) => {
+                    flows::apply_response(app, resp);
+                    done_ticks = 0;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                // Every worker thread is gone — no response will ever come.
+                // Unwedge the UI instead of spinning "busy" forever.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    app.on_worker_dead();
+                    break;
+                }
+            }
         }
+        // Belt-and-suspenders for a lost ticket (worker died mid-call, or a
+        // response was dropped): release a slot that outlived every per-op
+        // timeout so `busy_blocks` can't lock input permanently.
+        app.watchdog_release_stuck_request();
 
         // Drain push events from the `keybase chat api-listen` stream —
         // non-blocking. Collected first so the dispatch can take `&mut
