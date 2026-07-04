@@ -303,7 +303,12 @@ mod tests {
     fn write_via_returns_err_when_backend_exits_nonzero() {
         // `false` exits 1 — the previous code would have happily
         // returned Ok(()) and the user would have seen "copied"
-        // with nothing on the clipboard.
+        // with nothing on the clipboard. Reading the exit status also
+        // proves `write_via` `wait()`s on (reaps) its child — so it can't
+        // leak a zombie. That's why there's no separate /proc-scanning
+        // reaping test: such a test was PID-reuse racy (it flaked under
+        // parallel `cargo test`) and reimplemented the logic instead of
+        // calling it, while this deterministic test covers the property.
         let err = SystemClipboardAdapter::write_via(&["false"], "x")
             .expect_err("write_via must surface non-zero exit");
         assert!(
@@ -325,51 +330,5 @@ mod tests {
             "got: {err}"
         );
         assert!(err.contains("spawn"), "got: {err}");
-    }
-
-    /// Spawns many `write_via` calls in a row and asserts each
-    /// child PID has been reaped by the time the call returns.
-    ///
-    /// We refactor the assertion to be per-PID instead of a global
-    /// `/proc/self/task/*/children` scan because parallel tests in
-    /// other modules also spawn processes — a global counter would
-    /// be racy under `cargo test` default concurrency.
-    ///
-    /// To inspect a specific PID we duplicate the spawn logic
-    /// inline (rather than threading a `Child::id()` accessor
-    /// through `write_via`). The duplication is acceptable for a
-    /// regression test of a one-line fix.
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn write_via_does_not_leak_zombies() {
-        use std::fs;
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-
-        for _ in 0..8 {
-            // Mirror `write_via` exactly: spawn → write stdin → wait.
-            let mut child = Command::new("true")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .expect("spawn true");
-            let pid = child.id();
-            if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(b"x");
-            }
-            let _ = child.wait();
-            // After wait(), the kernel frees the PID — its
-            // /proc/<pid> entry disappears. The check is racy in
-            // principle (a brand-new process could grab the PID
-            // between wait and the readdir), but in a unit-test
-            // burst over single-digit milliseconds that does not
-            // happen on Linux.
-            let proc_entry = fs::metadata(format!("/proc/{pid}"));
-            assert!(
-                proc_entry.is_err(),
-                "pid {pid} still in /proc — write_via leaked a zombie"
-            );
-        }
     }
 }
