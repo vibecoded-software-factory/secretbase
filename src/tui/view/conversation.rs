@@ -534,6 +534,38 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
 
     app.messages_max_back = max_back;
 
+    // Floating "jump to latest" cue: when the reader is scrolled up, a pill at
+    // the foot of the viewport shows the count of messages that arrived below
+    // while reading history (Discord/Slack-style). Reset once back at the bottom.
+    if effective_back == 0 {
+        app.new_since_scroll = 0;
+    } else {
+        let n = app.new_since_scroll;
+        let label = if n > 0 {
+            format!(" ▼ {n} new · End ")
+        } else {
+            " ▼ latest · End ".to_string()
+        };
+        let w = (label.chars().count() as u16).min(area.width.saturating_sub(2));
+        let pill = Rect {
+            x: area.x + area.width.saturating_sub(w) / 2,
+            y: area.y + area.height.saturating_sub(2),
+            width: w,
+            height: 1,
+        };
+        frame.render_widget(Clear, pill);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                label,
+                Style::default()
+                    .fg(t.accent)
+                    .bg(t.selected_bg)
+                    .add_modifier(Modifier::BOLD),
+            ))),
+            pill,
+        );
+    }
+
     // Mouse hit-testing: the viewport (for scroll) + a screen rect per
     // visible message (for click-to-select). Content starts one row inside
     // the top border; line `L` shows at `area.y + 1 + (L - scroll_y)`.

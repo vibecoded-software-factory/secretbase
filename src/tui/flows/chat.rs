@@ -443,6 +443,7 @@ fn enter_conversation(app: &mut App, id: String) {
     app.unread_boundary = app.conv_last_seen.get(&id).copied();
     app.messages.clear();
     app.messages_scroll = 0;
+    app.new_since_scroll = 0;
     app.compose_open = true;
     app.edit_target_id = None;
     app.reply_to_id = None;
@@ -716,6 +717,11 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
         } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
             app.messages.push(message);
             app.rebuild_pinned();
+            // If the reader is scrolled up in history, a new arrival lands below
+            // the fold — count it for the floating "▼ N new · End" jump cue.
+            if app.messages_scroll > 0 && !from_me {
+                app.new_since_scroll += 1;
+            }
         }
     }
 

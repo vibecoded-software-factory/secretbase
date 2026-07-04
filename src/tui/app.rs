@@ -506,6 +506,11 @@ pub struct App {
     /// user has reached the top of loaded history (so it can trigger
     /// a pagination fetch).
     pub messages_max_back: usize,
+    /// Count of messages that arrived (via push) in the open conversation
+    /// while the reader was **scrolled up** away from the latest — drives the
+    /// floating "▼ N new · End" jump-to-latest pill. Reset to 0 once the reader
+    /// is back at the bottom (or on open/close).
+    pub new_since_scroll: usize,
     /// Message id pinned in the open conversation, derived from the
     /// most recent `Pin` system message in `messages`. `None` when
     /// the conversation has no pin (or the pin event is older than
@@ -957,6 +962,7 @@ impl App {
             messages_next: None,
             messages_loading_older: false,
             messages_max_back: 0,
+            new_since_scroll: 0,
             pinned_msg_id: None,
             compose_open: false,
             compose: LineEditor::default(),
