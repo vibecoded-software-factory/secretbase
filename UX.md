@@ -45,13 +45,17 @@ Every signed-in screen is built from the same vertical stack via
 The inbox is a **unified two-pane "Home"** (Discord-style): the conversation
 tree on the left, the open chat on the right — no separate full-screen
 conversation on normal terminals.
-- **header** — one shared row: the tree filter (`─[Alt+F]-Search`, above the
-  tree) + the **chat header** (`conversation::draw_chat_header`, above the chat):
-  the conversation **name** as the box title plus a dim metadata row (type ·
-  participants/topic · `📌 pin`) — info chrome, not focusable. In-conversation
-  search is a **`Ctrl+F` modal** now (`Screen::ConvSearch`), not a box in this
-  row. The Messages panel title is just its `─[Alt+M]-` go-to tag
-  (`conversation::chat_title`).
+- **two full-height columns** — the tree pane on the left (its `─[Alt+F]-Search`
+  filter box, 3 rows, atop the tree) and the **chat on the right, spanning the
+  full height**: no permanent header row is reserved above it. The conversation
+  **name** lives on the Messages panel title (`─[Alt+M]-Messages — <name>`,
+  `conversation::chat_title`). In-conversation search is a **`Ctrl+F` modal**
+  (`Screen::ConvSearch`). The chat draws an **adaptive header** only when it has
+  something to say (`conversation::has_adaptive_header` / `draw_adaptive_header`):
+  a **pin** (`📌 sender · "content" · Alt+U unpin`) or, failing that, the channel
+  **topic** (latest `headline`) — one borderless line; when there's **neither**
+  it collapses to **0 rows** and the message history takes the space, so no
+  chrome is reserved for nothing.
 - **body** — `─[Alt+C]-Chats` tree (`Length(28)`) on the left, the chat
   (`Min(24)`) on the right:
   - `─[Alt+C]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
@@ -170,13 +174,15 @@ The compose box is **multi-line**: `Alt+Enter` inserts a newline (`Enter`
 sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
 cursor. Single-line inputs (search, react, new-conversation) keep
-`widgets::editor_spans`. The chat's top row is the **chat header**
-(`draw_chat_header`, info chrome — name + type · participants/topic · pin), not a
-search box. **In-conversation search is a modal** (`Screen::ConvSearch`,
-`view::conv_search`): `Ctrl+F` opens a centered `searchregexp` box + results
-(sibling of the `Ctrl+G` global-search modal, sharing the `MODAL_*` geometry) —
-so it's on-demand, not a permanent panel, and the chat keeps its header row for
-metadata. Typing + `Enter` runs `keybase chat api searchregexp` over the open
+`widgets::editor_spans`. The chat column is **full-height** with an **adaptive
+header** (`has_adaptive_header` / `draw_adaptive_header`) — a single borderless
+line for a **pin** (`📌 sender · "content" · Alt+U unpin`) or the channel
+**topic**, or **nothing at all** (0 rows) when there's neither, so history isn't
+squeezed by empty chrome. **In-conversation search is a modal**
+(`Screen::ConvSearch`, `view::conv_search`): `Ctrl+F` opens a centered
+`searchregexp` box + results (sibling of the `Ctrl+G` global-search modal,
+sharing the `MODAL_*` geometry) — on-demand, not a permanent panel. Typing +
+`Enter` runs `keybase chat api searchregexp` over the open
 conversation (full history); each hit is **two rows** — the sender + snippet,
 then a dim **day/time** line (`InboxHit::sent_at` from the hit's `ctime`,
 `message_time`) for context. `↑/↓` pick, `Enter` jumps to + highlights the
@@ -790,9 +796,9 @@ current size).
 toward the floor on a narrow terminal so the chat keeps room, and grows on a wide
 one so long DM/team names aren't always truncated (no magic `28`). The Home's
 header filter and body tree pass the same width so their columns line up; the
-chat side is `Min(20/24)` and flexes. The chat header (name + metadata) takes
-the full chat-side width of the top row (in-conversation search is a `Ctrl+F`
-modal, not a box in the header).
+chat side is `Min(20/24)` and flexes, spanning the **full height** (no reserved
+header row) — the chat's adaptive header line appears only when there's a pin or
+topic, otherwise the message history takes the row.
 
 **Text that fits-or-degrades (never a fixed char cap that the terminal clips):**
 - **Footer hint** — `widgets::fit_segments` keeps only whole ` · ` segments that

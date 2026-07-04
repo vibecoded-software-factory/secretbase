@@ -31,105 +31,95 @@ fn latest_headline(messages: &[Message]) -> Option<String> {
     })
 }
 
-/// Renders the **chat header** into `area` — the conversation name (box title)
-/// plus a dim metadata row (type · participants/topic · `📌 pin`). Info chrome,
-/// non-focusable (in-conversation search is the `Ctrl+F` modal now, not here).
-/// A muted placeholder when no conversation is open.
-pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
-    let Some(id) = app.open_conv_id.as_deref() else {
-        let block = crate::tui::view::disabled_block("Conversation", app);
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                "  no conversation open",
-                Style::default().fg(t.muted),
-            ))),
-            inner,
-        );
-        return;
-    };
-    let idx = app.conversations.iter().position(|c| c.id == id);
-    let name = idx
-        .and_then(|i| app.conversations_lowered.get(i))
-        .map(|l| l.display_label.clone())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "Conversation".to_string());
-
-    // Metadata row: conversation type + participants/topic + pin.
-    let mut meta: Vec<Span<'static>> = Vec::new();
-    if let Some(c) = idx.map(|i| &app.conversations[i]) {
-        if c.channel.members_type.is_team() {
-            meta.push(Span::styled(
-                "team channel",
-                Style::default().fg(t.conv_team),
-            ));
-        } else {
-            let me = app.identity.username.as_str();
-            let people = c
-                .channel
-                .name
-                .split(',')
-                .map(str::trim)
-                .filter(|u| !u.is_empty())
-                .count();
-            let others = c
-                .channel
-                .name
-                .split(',')
-                .map(str::trim)
-                .filter(|u| !u.is_empty() && *u != me)
-                .count();
-            let label = if others == 0 {
-                "note to self".to_string()
-            } else if people <= 2 {
-                "direct message".to_string()
-            } else {
-                format!("group · {people} people")
-            };
-            meta.push(Span::styled(label, Style::default().fg(t.conv_dm)));
-        }
-    }
-    if let Some(topic) = latest_headline(&app.messages) {
-        let topic = trim_end_ellipsis(topic.lines().next().unwrap_or(""), 40);
-        meta.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
-        meta.push(Span::styled(
-            format!("\u{201c}{topic}\u{201d}"),
-            Style::default().fg(t.dim),
-        ));
-    }
-    if let Some(pid) = app.pinned_msg_id {
-        meta.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
-        meta.push(Span::styled(
-            format!("📌 #{pid}"),
-            Style::default().fg(t.conv_unread),
-        ));
-    }
-
-    let block = titled_block(&name, false, app);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    frame.render_widget(Paragraph::new(Line::from(meta)), inner);
+/// Whether the chat draws its **adaptive** 1-line header — a pin or a channel
+/// topic. When neither exists the header collapses to **0 rows** and the message
+/// history takes the space, so no chrome is reserved for nothing (the name lives
+/// on the Messages panel title either way).
+fn has_adaptive_header(app: &App) -> bool {
+    app.pinned_msg_id.is_some() || latest_headline(&app.messages).is_some()
 }
 
-/// Renders the chat **body** — message history + compose box — into `area`.
-/// The header is drawn separately ([`draw_chat_header`]) so it can live on the
-/// unified Home's shared top row.
+/// The adaptive header line: a **pin** (`📌 sender · "content" · Alt+U unpin`)
+/// when the conversation has one, else the channel **topic** (headline). Only
+/// called when [`has_adaptive_header`] is true.
+fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
+    let w = area.width as usize;
+    let spans: Vec<Span<'static>> = if let Some(pid) = app.pinned_msg_id {
+        let mut s = vec![Span::styled(" 📌 ", Style::default().fg(t.conv_unread))];
+        match app.messages.iter().find(|m| m.id == pid) {
+            Some(m) => {
+                let body = match &m.content {
+                    MessageContent::Text(b) => b.clone(),
+                    MessageContent::Edit { body, .. } => body.clone(),
+                    MessageContent::Attachment(a) => format!("[{}]", a.filename),
+                    _ => String::new(),
+                };
+                // Leave room for the sender + the `Alt+U unpin` affordance.
+                let budget = w.saturating_sub(m.sender.chars().count() + 22).max(8);
+                let snippet = trim_end_ellipsis(body.lines().next().unwrap_or(""), budget);
+                s.push(Span::styled(
+                    m.sender.clone(),
+                    Style::default()
+                        .fg(t.user_color(&m.sender))
+                        .add_modifier(Modifier::BOLD),
+                ));
+                s.push(Span::styled(" · ", Style::default().fg(t.muted)));
+                s.push(Span::styled(
+                    format!("\u{201c}{snippet}\u{201d}"),
+                    Style::default().fg(t.foreground),
+                ));
+            }
+            // Pinned message is older than the loaded window — just its id.
+            None => s.push(Span::styled(format!("#{pid}"), Style::default().fg(t.dim))),
+        }
+        s.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
+        s.push(Span::styled(
+            "Alt+U",
+            crate::tui::view::widgets::key_style(t),
+        ));
+        s.push(Span::styled(" unpin", Style::default().fg(t.dim)));
+        s
+    } else if let Some(topic) = latest_headline(&app.messages) {
+        let topic = trim_end_ellipsis(
+            topic.lines().next().unwrap_or(""),
+            w.saturating_sub(6).max(8),
+        );
+        vec![
+            Span::styled(" ~ ", Style::default().fg(t.conv_team)),
+            Span::styled(
+                format!("\u{201c}{topic}\u{201d}"),
+                Style::default().fg(t.dim),
+            ),
+        ]
+    } else {
+        return;
+    };
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// Renders the chat **body** into `area`: an **optional** adaptive header line
+/// (a pin / topic, `has_adaptive_header`) that takes 0 rows when there's nothing
+/// to show, then the message history and the compose box.
 pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
+    let header_h: u16 = if has_adaptive_header(app) { 1 } else { 0 };
     // Compose grows with its line count (multi-line via Alt+Enter), capped.
     let compose_lines = app.compose.text().split('\n').count().max(1) as u16;
     let compose_h = (compose_lines + 2).clamp(3, 8);
     let layout = Layout::vertical([
+        Constraint::Length(header_h),  // adaptive header (0 or 1 row)
         Constraint::Min(3),            // messages
         Constraint::Length(compose_h), // compose pane (dynamic)
     ])
     .split(area);
 
-    render_messages(frame, app, layout[0]);
-    render_compose(frame, app, layout[1]);
+    if header_h == 1 {
+        draw_adaptive_header(frame, app, layout[0]);
+    }
+    render_messages(frame, app, layout[1]);
+    render_compose(frame, app, layout[2]);
     if app.mention_popup_active() {
-        draw_mention_popup(frame, app, layout[1]);
+        draw_mention_popup(frame, app, layout[2]);
     }
 }
 
@@ -228,10 +218,27 @@ fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-/// The Messages-panel title — just the `─[Alt+M]-` go-to tag; the conversation
-/// name, topic and pin live in the chat header ([`draw_chat_header`]) now.
-fn chat_title() -> String {
-    "─[Alt+M]-Messages".to_string()
+/// The Messages-panel title — the `─[Alt+M]-` go-to tag + the conversation name.
+/// (The pin / topic live in the optional adaptive header line above the panel.)
+fn chat_title(app: &App) -> String {
+    let name = app
+        .open_conv_id
+        .as_deref()
+        .and_then(|id| {
+            app.conversations
+                .iter()
+                .position(|c| c.id == id)
+                .and_then(|i| {
+                    app.conversations_lowered
+                        .get(i)
+                        .map(|l| l.display_label.clone())
+                })
+        })
+        .filter(|s| !s.is_empty());
+    match name {
+        Some(n) => format!("─[Alt+M]-Messages — {n}"),
+        None => "─[Alt+M]-Messages".to_string(),
+    }
 }
 
 fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -275,7 +282,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 )),
             ]
         };
-        let title = chat_title();
+        let title = chat_title(app);
         frame.render_widget(
             Paragraph::new(lines).block(titled_block(&title, app.focus == Focus::Chat, app)),
             area,
@@ -504,7 +511,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // the offset to a tiny value via a truncating cast.
     let scroll_u16 = scroll_y.min(u16::MAX as usize) as u16;
     let dim = app.theme.dim;
-    let title = chat_title();
+    let title = chat_title(app);
     let block = titled_block(&title, app.focus == Focus::Chat, app)
         .title_bottom(Line::from(Span::styled(counter, Style::default().fg(dim))).right_aligned());
     frame.render_widget(
