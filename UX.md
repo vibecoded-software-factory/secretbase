@@ -13,7 +13,7 @@ trailing `…` (reply quotes, snippets — one-line previews where only the star
 matters) — never a fixed character cap that the terminal then clips. Size
 against the real content width, not a magic number.
 
-The design system: the `split_main` vertical stack, the top identity bar, the
+The design system: the unified two-pane Home layout, the
 single `widgets::list_table` list renderer, `draw_search_box`, `draw_cmd_log`,
 `draw_status_strip`, the navigable `draw_confirm_popup`, and the
 `LineEditor` + `editor_spans` text-input model. The shared input mechanics
@@ -25,7 +25,7 @@ Everything documented here is backed by real code in `src/tui/view/` and
 `src/tui/input/`. When you change a component, update this file in the same
 change.
 
-## Screen layout — the `split_main` stack
+## Screen layout — the unified Home
 
 The router `view::mod::draw` picks a base screen per `Screen`, then overlays
 any popup on top (popups draw the base screen underneath first). The
@@ -35,16 +35,11 @@ screen is replaced by the centered "terminal too small" notice
 `error`-colored bold `Terminal too small` title, a `dim` `Resize to at least
 {MIN_W}×{MIN_H} (currently {w}×{h})` line, and a `dim` `Ctrl+C to quit` hint.
 
-Every signed-in screen is built from the same vertical stack via
-`view::mod::split_main(area, identity_content_rows)` →
-`[identity, header, body, cmdlog, status]`:
-
-- **identity** — `widgets::draw_identity_bar`: `user <name> · device <dev> ·
-  N unread`. Size the slot with `widgets::identity_content_rows(app, width)`
-  (+2 for borders); it is currently always 1 row.
 The inbox is a **unified two-pane "Home"** (Discord-style): the conversation
 tree on the left, the open chat on the right — no separate full-screen
-conversation on normal terminals.
+conversation on normal terminals. Each signed-in screen owns its layout,
+sharing the responsive command log (`widgets::cmdlog_height`) and the
+status strip at the bottom.
 - **two full-height columns** — the tree pane on the left (its `─[Alt+F]-Search`
   filter box, 3 rows, atop the tree) and the **chat on the right, spanning the
   full height**: no permanent header row is reserved above it. The conversation
@@ -165,7 +160,7 @@ conversation on normal terminals.
   coverage so screens can't drift. The **mouse wheel** scrolls whatever list is
   active on every screen (`input::mouse` dispatches by `Screen`).
 
-The **conversation** screen uses a custom layout (identity · header ·
+The **conversation** pane uses a custom layout (header ·
 messages · compose · status) because the message stream is a *viewer*, not
 a grid. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row) and scroll the wheel to page history
@@ -187,7 +182,7 @@ conversation (full history); each hit is **two rows** — the sender + snippet,
 then a dim **day/time** line (`InboxHit::sent_at` from the hit's `ctime`,
 `message_time`) for context. `↑/↓` pick, `Enter` jumps to + highlights the
 message (via `pending_search_jump`, paginating older if needed), `Esc` closes. The **login** screen
-(`view::login`) is the signed-out exception: it omits the identity bar and
+(`view::login`) is the signed-out exception: it
 shows a **login form** over the figlet/starfield backdrop — a
 rounded `Login` block (cleared so the starfield doesn't bleed through) with
 three fields (**Username** / **Device name** / **Paper key**) and two action
@@ -396,8 +391,8 @@ which action to fire. The module depends only on `ratatui` + the shared
 
 The inbox's focusable panels are the `screens::Focus` variants: `Search`
 (chat filter), `Tree` (conversation tree), `Chat` (the open chat — skipped in
-the Tab cycle when no conversation is open), `CmdLog` (the identity bar and
-status strip are chrome, not focus targets).
+the Tab cycle when no conversation is open), `CmdLog` (the status strip is
+chrome, not a focus target).
 Conventions:
 
 - **Every focusable panel's border tag is its literal go-to combo** (no bare
@@ -443,9 +438,8 @@ scroll** (writes back the offset). Build `headers: &[&str]`,
 with `widgets::list_title` → **`"<Thing> · {filtered} of {total}"`**.
 
 Rules:
-- **Size content columns to the *visible* (filtered) rows** with
-  `widgets::col_width(indices, lo, hi, |i| …len)`. **Never** put a stretching
-  `Constraint::Min(..)` on a non-final content column — it shoves trailing
+- **Size content columns to the *visible* (filtered) rows.** **Never** put a
+  stretching `Constraint::Min(..)` on a non-final content column — it shoves trailing
   columns to the far right (the recurring "gap" bug). Only the last column
   may be `Min`.
 - Row-level color overrides are per `Cell` (unread `conv_unread`, members-type
@@ -490,11 +484,8 @@ decision.
 
 - `view::mod::titled_block(title, focused, app)` — the bordered block (rounded):
   focused = accent + bold, else `inactive`. Used for every panel.
-- `view::mod::split_main(area, identity_rows)` — the standard vertical stack.
-- `widgets::list_table` / `list_title` / `col_width` / `middle_ellipsis` /
+- `widgets::list_table` / `list_title` / `middle_ellipsis` /
   `trim_end_ellipsis` / `table_row_at` — the list renderer + sizing helpers.
-- `widgets::draw_identity_bar` / `identity_content_rows` — the top identity
-  bar.
 - `widgets::draw_search_box(frame, app, area, title, placeholder, editor,
   focused)` — the `[/] Search` box; placeholder when empty/unfocused, block
   cursor when focused (via `editor_spans`).
@@ -517,7 +508,6 @@ decision.
   (which keeps its own content-sized *width* but adopts this *height* +
   centered position). A new full-screen-ish modal should use these constants,
   not a one-off `center_rect(w, h, …)`.
-- `widgets::checkbox_spans` / `chip_span` — shared toggle / tab spans.
 - `widgets::button(label, active, theme)` — **the** action-button span, rendered
   `[ label ]` (accent on `selected_bg` + bold when focused/highlighted, else
   `dim`). The Login form's two buttons and `draw_confirm_popup`'s confirm/cancel
@@ -525,9 +515,8 @@ decision.
   one-off styled span.
 - `widgets::unread_style(theme)` + `widgets::unread_dot` / `favorite_star` — the
   single "unread / attention" emphasis (`conv_unread` + bold) and its `●` / `★`
-  marker spans. Every unread affordance (the tree's dot + count, the identity
-  bar's "N unread", the ★ favourite) draws through these so the emphasis is
-  identical everywhere.
+  marker spans. Every unread affordance (the tree's dot + count, the ★
+  favourite) draws through these so the emphasis is identical everywhere.
 - `widgets::key_style(theme)` — the **keybind-letter** style (`accent` + bold).
   Every place that shows a shortcut glyph — the `F1` help popup (`help_line`),
   the select-mode action bar (`select_actions_lines`), the `Ctrl+P` command
@@ -560,8 +549,8 @@ under react/delete/download).
   `App::toggle_favorite`/`toggle_muted`, persisted to the `favorites`/`muted`
   config keys). Favourite renders a golden **★**; **mute suppresses the unread
   indicators** secretbase controls — `App::conv_is_unread` (`unread && !muted`)
-  gates the `●` dot, the bold, the unread count, the Unread filter and the
-  switcher's Unread section, and a muted conv renders **dim**. (The TUI has no
+  gates the `●` dot, the bold, the unread count and the switcher's Unread
+  section, and a muted conv renders **dim**. (The TUI has no
   notifications, so a local mute can't silence your phone — see README →
   *Not supported*.) **Ignore / block / report** stay server-side (`setstatus`)
   because their effect *is* observable (the conv leaves the inbox).
@@ -779,14 +768,13 @@ Responsiveness is a hard rule (see the top of this file). This is the **inventor
 of mechanisms that already exist** — reuse them, and don't regress them. Every
 one is backed by code; the file/function is named so you can find it.
 
-**Vertical stack:** `[identity] · header (3) · body (Min 5) · cmdlog · status
-(1)`. The **body flexes**; the **command log is height-responsive** —
+**Vertical stack:** `header (3) · body (Min 5) · cmdlog · status (1)`. The
+**body flexes**; the **command log is height-responsive** —
 `widgets::cmdlog_height(area.height)` yields rows to the body as the terminal
 gets short (6 when roomy → 3 at the floor) **monotonically** (a taller terminal
-never shrinks the body). The Home (`view::inbox`) and **Teams** (`view::teams`)
-both drop the identity row — Teams is a focused drill-down, so the identity /
-unread chrome (which belongs on Home) is omitted, giving the list the full
-height. `Enter`/`→`/`l` on a team opens the **channel browser** for it
+never shrinks the body). Neither the Home (`view::inbox`) nor **Teams**
+(`view::teams`) reserves an identity row — the username/device live in
+Settings → Identity, giving the lists the full height. `Enter`/`→`/`l` on a team opens the **channel browser** for it
 (`chat::open_channel_browser_for_team`). Below **70×18** every screen is replaced by the centered
 "terminal too small" notice (`view::mod::draw_too_small`, states required +
 current size).
@@ -804,9 +792,9 @@ topic, otherwise the message history takes the row.
 - **Footer hint** — `widgets::fit_segments` keeps only whole ` · ` segments that
   fit, appends ` …`, never cuts a keybinding in half; `F1 help · F10 settings`
   is anchored right and reserved first.
-- **List columns** — `widgets::col_width(indices, lo, hi, len)` sizes a content
-  column to the **visible** rows, clamped; **only the final column may be `Min`**
-  (a stretching `Min` on a middle column is the recurring "gap" bug). Overflow:
+- **List columns** — size a content column to the **visible** rows, clamped;
+  **only the final column may be `Min`** (a stretching `Min` on a middle
+  column is the recurring "gap" bug). Overflow:
   `middle_ellipsis` (head-biased, keeps a `#id`/extension tail) for identifiers,
   `trim_end_ellipsis` (trailing `…`) for start-anchored previews (snippets,
   reply quotes).
@@ -837,12 +825,6 @@ as you navigate), clamps height to `MODAL_HEIGHT.min(area.height - 2)`, **wraps*
 long values onto continuation lines (`settings::wrap_chars`, never a `…`), and
 pins the focused row's hint to the bottom.
 
-**Identity bar fit:** `widgets::draw_identity_bar` fits to width like the footer
-(no hard mid-word clip): the **username is mandatory**, then the **unread count**
-(it outranks the device label when space is tight — a count you must notice beats
-a device name), then the **device**; the username truncates with `…` only as a
-last resort on a very narrow terminal.
-
 **Modals stay on-screen:** every list overlay windows its content by the *real*
 inner height, not the nominal `MODAL_HEIGHT` — the **react picker** /
 **quick switcher** scroll a viewport around the selection (`vh = rows[1].height`),
@@ -869,7 +851,8 @@ coordinates predate the latest resize are dropped.
    `LineEditor` + `editor_spans` (routed via `input::common`); a new panel =
    `titled_block`; a new confirm = `draw_confirm_popup`; a new button =
    `widgets::button`; an unread/attention marker = `widgets::unread_style` /
-   `unread_dot` / `favorite_star`; a new signed-in screen = `split_main`.
+   `unread_dot` / `favorite_star`; a new signed-in screen follows the Home
+   layout conventions (shared cmdlog + status strip).
 2. **Fix the class, not the instance** — when you change one screen, change
    every screen with the same pattern (and update this file).
 3. **Every change stays coherent** with the rest of the UI. If you diverge,

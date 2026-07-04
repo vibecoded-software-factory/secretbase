@@ -2,7 +2,7 @@
 //!
 //! `draw` is the single entry point called from the run loop. It draws
 //! the active base screen and overlays any popup on top, via the
-//! `split_main` stack + `titled_block` layout system.
+//! `titled_block` layout system and the shared `widgets` chrome.
 
 pub mod action;
 pub mod channels;
@@ -25,7 +25,7 @@ pub mod unhide;
 pub mod widgets;
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
@@ -222,25 +222,6 @@ fn draw_too_small(frame: &mut Frame, area: Rect, theme: &crate::tui::theme::Them
     lines.push(detail);
     lines.push(hint);
     frame.render_widget(Paragraph::new(lines), area);
-}
-
-/// Splits a vertical area into the standard signed-in stack:
-/// `identity` · `header` (3) · `body` (fills) · `cmdlog`
-/// ([`widgets::cmdlog_height`], responsive) · `status` (1).
-/// `identity_content_rows` comes from [`widgets::identity_content_rows`];
-/// +2 for the block borders.
-pub fn split_main(area: Rect, identity_content_rows: u16) -> [Rect; 5] {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(identity_content_rows + 2),
-            Constraint::Length(3),
-            Constraint::Min(5),
-            Constraint::Length(widgets::cmdlog_height(area.height)),
-            Constraint::Length(1),
-        ])
-        .split(area);
-    [chunks[0], chunks[1], chunks[2], chunks[3], chunks[4]]
 }
 
 /// Common bordered block with a stylised title — accent + bold when

@@ -82,7 +82,7 @@ pub trait KeybasePort {
 
     /// `{"method":"list"}` — returns every conversation the user can
     /// see, regardless of member-status. The TUI filters with the status
-    /// axis ([`crate::domain::StatusFilter`]) and groups them in the tree.
+    /// unread state and groups them in the tree.
     ///
     /// Rows that fail to decode end up in [`ListConversationsOk::skipped`]
     /// rather than aborting the whole call: one corrupted row should
@@ -108,15 +108,6 @@ pub trait KeybasePort {
         peek: bool,
         next_cursor: Option<&str>,
     ) -> Result<(Vec<Message>, Option<String>), KeybaseError>;
-
-    /// Returns the raw JSON for the conversation — primarily used as a
-    /// debug affordance and as the building block for richer
-    /// adapters down the line. The buffer is zeroized on drop.
-    fn read_conversation_json(
-        &mut self,
-        channel: &ReadChannel,
-        num: u32,
-    ) -> Result<Zeroizing<String>, KeybaseError>;
 
     /// `{"method":"mark","params":{"options":{"channel":...,"message_id":N}}}`.
     /// Marks the conversation read up to (and including) `message_id`.
@@ -433,12 +424,6 @@ pub trait KeybasePort {
     /// `AnnotatedMemberInfo` per real team (implicit teams excluded). Same
     /// `result.teams[]` shape, so parsing is unchanged.
     fn list_self_memberships(&mut self, username: &str) -> Result<ListTeamsOk, KeybaseError>;
-
-    /// `{"method":"create-team","params":{"options":{"team":NAME}}}`.
-    fn create_team(&mut self, name: &str) -> Result<(), KeybaseError>;
-
-    /// `{"method":"leave-team","params":{"options":{"team":NAME,"permanent":true}}}`.
-    fn leave_team(&mut self, name: &str, permanent: bool) -> Result<(), KeybaseError>;
 }
 
 /// Channel descriptor for read/write methods.

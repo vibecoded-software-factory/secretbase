@@ -19,10 +19,6 @@ pub struct IdentityInfo {
     #[serde(rename = "Username", default)]
     pub username: String,
 
-    /// 32-char hex user id.
-    #[serde(rename = "UserID", default)]
-    pub user_id: String,
-
     /// Default username — may differ from `username` when multiple
     /// accounts are provisioned but none is active.
     #[serde(rename = "DefaultUsername", default)]
@@ -33,18 +29,9 @@ pub struct IdentityInfo {
     #[serde(rename = "LoggedIn", default)]
     pub logged_in: bool,
 
-    /// Whether the cached session is currently valid.
-    #[zeroize(skip)]
-    #[serde(rename = "SessionIsValid", default)]
-    pub session_is_valid: bool,
-
     /// Device name (e.g. `"Debian desktop Linux Device"`).
     #[serde(default)]
     pub device_name: String,
-
-    /// Device id (32-char hex).
-    #[serde(default)]
-    pub device_id: String,
 
     /// Device type (`desktop`, `mobile`, `paper`).
     #[serde(default)]

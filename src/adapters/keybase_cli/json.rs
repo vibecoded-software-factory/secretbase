@@ -4,12 +4,6 @@ use serde_json::Value;
 
 use crate::ports::KeybaseError;
 
-/// Returns the trimmed string value of `key` inside the supplied JSON
-/// object, or `None` if the key is missing / not a string.
-pub fn opt_str<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
-    v.get(key).and_then(Value::as_str)
-}
-
 /// Extracts a [`KeybaseError::Api`] from a Keybase JSON response.
 ///
 /// Both `keybase chat api` and `keybase team api` follow the same
@@ -40,24 +34,6 @@ pub fn extract_error(v: &Value) -> Option<KeybaseError> {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn opt_str_returns_value_for_string_field() {
-        let v = json!({"name": "alice"});
-        assert_eq!(opt_str(&v, "name"), Some("alice"));
-    }
-
-    #[test]
-    fn opt_str_returns_none_for_missing_field() {
-        let v = json!({"name": "alice"});
-        assert_eq!(opt_str(&v, "age"), None);
-    }
-
-    #[test]
-    fn opt_str_returns_none_for_non_string_field() {
-        let v = json!({"age": 42});
-        assert_eq!(opt_str(&v, "age"), None);
-    }
 
     #[test]
     fn extract_error_reads_message_field_with_code() {

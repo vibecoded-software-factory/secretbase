@@ -358,7 +358,6 @@ pub enum InFlight {
     UploadAttachment {
         filename: String,
     },
-    LoadEmojis,
     LoadTeams,
 }
 
@@ -509,13 +508,6 @@ mod tests {
         ) -> Result<(Vec<Message>, Option<String>), KeybaseError> {
             Ok((Vec::new(), None))
         }
-        fn read_conversation_json(
-            &mut self,
-            _: &ReadChannel,
-            _: u32,
-        ) -> Result<Zeroizing<String>, KeybaseError> {
-            Ok(Zeroizing::new(String::new()))
-        }
         fn mark_read(&mut self, _: &ReadChannel, _: u64) -> Result<(), KeybaseError> {
             Ok(())
         }
@@ -613,12 +605,6 @@ mod tests {
                 teams: Vec::<TeamMembership>::new(),
                 skipped: Vec::new(),
             })
-        }
-        fn create_team(&mut self, _: &str) -> Result<(), KeybaseError> {
-            Ok(())
-        }
-        fn leave_team(&mut self, _: &str, _: bool) -> Result<(), KeybaseError> {
-            Ok(())
         }
         fn search_inbox_hits(&mut self, _: &str, _: u32) -> Result<Vec<InboxHit>, KeybaseError> {
             Ok(Vec::new())

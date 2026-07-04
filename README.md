@@ -278,7 +278,6 @@ src/
 │   ├── message.rs          # Message + MessageContent variants
 │   ├── team.rs             # TeamMembership, TeamRole
 │   ├── identity.rs         # IdentityInfo (keybase status)
-│   ├── filter.rs           # StatusFilter (All/Unread)
 │   ├── search.rs           # Fuzzy ranking
 │   └── validation.rs       # username validators
 ├── ports/                  # trait abstractions

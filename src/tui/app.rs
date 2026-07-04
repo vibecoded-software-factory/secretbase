@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use crate::domain::{
     ChatEvent, ChatMember, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor,
-    LoweredConversation, MemberStatus, Message, StatusFilter, TeamMembership, fuzzy_score_lowered,
+    LoweredConversation, MemberStatus, Message, TeamMembership, fuzzy_score_lowered,
 };
 use crate::ports::keybase::ReadChannel;
 use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
@@ -26,10 +26,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Maximum number of command-log entries kept in memory.
 pub const CMD_LOG_LIMIT: usize = 50;
-
-/// Number of rows the inbox list reserves before scrolling kicks in —
-/// used by PgUp/PgDn handlers to compute the right step size.
-pub const INBOX_VIEWPORT_ROWS: usize = 20;
 
 /// Step size in rows for PgUp/PgDn navigation.
 pub const PAGE_STEP: usize = 10;
@@ -416,8 +412,6 @@ pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
     pub screen: Screen,
     pub focus: Focus,
-    /// Status axis of the inbox filter (All / Unread).
-    pub status_filter: StatusFilter,
     /// **Expanded** tree groups (by key: [`Self::DMS_KEY`] or a team name).
     /// Empty = everything collapsed, so the tree starts fully folded and a
     /// user's expansions survive inbox refreshes.
@@ -801,7 +795,6 @@ pub struct App {
     // ── Lifecycle ─────────────────────────────────────────────────────────
     pub should_quit: bool,
     pub last_activity: Instant,
-    pub start_time: Instant,
     /// Wall-clock timestamp of the last inbox load — used by the run
     /// loop's auto-refresh hook.
     pub last_inbox_load: Instant,
@@ -968,7 +961,6 @@ impl App {
         let mut app = Self {
             screen: Screen::Splash,
             focus: Focus::Tree,
-            status_filter: StatusFilter::All,
             expanded: HashSet::new(),
             tree_selected: 0,
             identity: IdentityInfo::default(),
@@ -1097,7 +1089,6 @@ impl App {
             settings_from: Screen::Inbox,
             should_quit: false,
             last_activity: Instant::now(),
-            start_time: Instant::now(),
             last_inbox_load: Instant::now(),
             mouse_areas: MouseAreas::default(),
             last_terminal_size: (0, 0),
@@ -1791,13 +1782,7 @@ impl App {
         let query_lc = self.search.text().to_lowercase();
         let mut indices: Vec<usize> = Vec::new();
         for (idx, conv) in self.conversations.iter().enumerate() {
-            // The Unread filter honours local mute: a muted conv isn't "unread"
-            // for display, so it drops out of the Unread view (but stays in All).
-            let passes_status = match self.status_filter {
-                StatusFilter::All => true,
-                StatusFilter::Unread => conv.unread && !self.muted.contains(&conv.id),
-            };
-            if conv.member_status != MemberStatus::Active || !passes_status {
+            if conv.member_status != MemberStatus::Active {
                 continue;
             }
             if !query_lc.is_empty() {
@@ -2132,18 +2117,15 @@ mod tests {
 
     #[test]
     fn toggle_muted_is_local_and_affects_effective_unread() {
-        use crate::domain::{Channel, Conversation, MemberStatus, MembersType, TopicType};
+        use crate::domain::{Channel, Conversation, MemberStatus, MembersType};
         let mut app = fresh_app();
         let c = Conversation {
             id: "abc".into(),
             channel: Channel {
                 name: "alice".into(),
                 members_type: MembersType::ImpTeamNative,
-                topic_type: TopicType::Chat,
                 topic_name: None,
-                public: false,
             },
-            is_default_conv: true,
             unread: true,
             active_at: 0,
             active_at_ms: 0,
