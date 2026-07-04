@@ -113,6 +113,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
         lines.push(section("Conversation — Select", t));
         for (k, d) in [
             ("↑/↓ k/j · PgUp/Dn", "move cursor"),
+            ("g / G · Home / End", "first / latest message"),
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
             ("Shift+X / +", "delete / react — ALL marked (or the cursor)"),
@@ -149,8 +150,6 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                         "Enter / → / l",
                         "open a joined channel · join one you're not in",
                     ),
-                    ("x", "leave a joined channel"),
-                    ("r / d", "rename / delete the channel"),
                     ("n", "create a new channel"),
                     ("r", "rename the channel"),
                     ("t", "toggle as a team default (new members auto-join)"),
@@ -267,6 +266,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 lines.push(section("Command log (focused)", t));
                 for (k, d) in [
                     ("↑/↓ k/j", "move cursor (scrolls history)"),
+                    ("PgUp/Dn · g/G", "page · oldest / newest"),
                     ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
                     ("Space", "mark / unmark a line (multi-select)"),
                     ("y / Enter", "copy full line(s)"),
