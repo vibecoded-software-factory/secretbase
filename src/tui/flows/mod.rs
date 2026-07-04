@@ -37,6 +37,17 @@ pub fn apply_chat_event(app: &mut App, event: crate::domain::ChatEvent) {
             // so pull the new conversation in with a silent resync.
             chat::request_load_inbox_silent(app);
         }
+        ChatEvent::StreamClosed => {
+            // The supervisor is already respawning the stream with backoff;
+            // log the interruption so the gap in real-time updates is
+            // explainable, and resync to pick up anything missed meanwhile.
+            app.push_cmd(
+                "keybase chat api-listen",
+                false,
+                "stream interrupted — reconnecting…",
+            );
+            chat::request_load_inbox_silent(app);
+        }
     }
 }
 

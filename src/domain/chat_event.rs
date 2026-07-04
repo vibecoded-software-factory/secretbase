@@ -31,4 +31,8 @@ pub enum ChatEvent {
     /// the TUI resolves it with a (silent) inbox resync, since the
     /// listener's conv summary doesn't carry everything the inbox needs.
     NewConversation,
+    /// The `api-listen` stream ended (service restart, logout, crash).
+    /// The listener supervisor respawns it with backoff; this event lets
+    /// the UI log that real-time updates were interrupted meanwhile.
+    StreamClosed,
 }

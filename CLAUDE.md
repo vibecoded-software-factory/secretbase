@@ -222,9 +222,12 @@ fast).
 
 Alongside the request/response worker, a **third lane** delivers push
 updates: a long-lived `keybase chat api-listen --convs --hide-exploding`
-process (`adapters/keybase_cli/listen.rs`) whose reader thread parses each
-JSON line into a `domain::ChatEvent` and sends it on a channel. `main.rs`
-owns the listener guard (its child is killed on exit) and hands only the
+process (`adapters/keybase_cli/listen.rs`) whose reader parses each JSON
+line into a `domain::ChatEvent` and sends it on a channel. A **supervisor
+thread respawns the stream with backoff** if it dies (service restart,
+logout/login) — a `ChatEvent::StreamClosed` tells the UI about the gap and
+triggers a silent resync. `main.rs` owns the listener guard (the supervisor
+is stopped and its child killed on exit) and hands only the
 `Receiver<ChatEvent>` to the TUI, which drains it every frame in the run
 loop and applies events via `flows::apply_chat_event` — no `InFlight`
 ticket, so a push can land at any time without touching the user's slot.
