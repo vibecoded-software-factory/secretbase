@@ -78,13 +78,13 @@ impl TomlSettingsAdapter {
     }
 
     /// Rewrites `config.toml`, preserving any keys we don't manage
-    /// (e.g. the `[theme]` block).
-    fn rewrite(&self, updater: impl Fn(&mut UpdateBuffer)) {
+    /// (e.g. the `[theme]` block). Returns whether the write landed.
+    fn rewrite(&self, updater: impl Fn(&mut UpdateBuffer)) -> bool {
         self.ensure_dir();
         let existing = fs::read_to_string(self.file()).unwrap_or_default();
         let mut buf = UpdateBuffer::parse(&existing);
         updater(&mut buf);
-        write_file_secure(&self.file(), &buf.render());
+        write_file_secure(&self.file(), &buf.render())
     }
 }
 
@@ -96,19 +96,19 @@ impl TomlSettingsAdapter {
 /// ones — never a half-truncated draft, even on power loss between
 /// the truncate and the write.
 ///
-/// All errors are silently swallowed and the destination is left
-/// untouched, mirroring the original "settings writes never break
-/// the TUI" contract.
-fn write_file_secure(path: &Path, contents: &str) {
+/// Errors never break the TUI: the destination is left untouched and
+/// `false` is returned so the caller can *inform* (a toast) without the
+/// write path ever becoming fatal.
+fn write_file_secure(path: &Path, contents: &str) -> bool {
     let Some(parent) = path.parent() else {
-        return;
+        return false;
     };
     let mut tmp_name = path
         .file_name()
         .map(std::ffi::OsString::from)
         .unwrap_or_default();
     if tmp_name.is_empty() {
-        return;
+        return false;
     }
     tmp_name.push(".tmp");
     let tmp_path = parent.join(tmp_name);
@@ -122,11 +122,11 @@ fn write_file_secure(path: &Path, contents: &str) {
             .open(&tmp_path)
         {
             Ok(f) => f,
-            Err(_) => return,
+            Err(_) => return false,
         };
         if file.write_all(contents.as_bytes()).is_err() {
             let _ = fs::remove_file(&tmp_path);
-            return;
+            return false;
         }
         // Flush data + metadata so the bytes reach disk before the
         // rename. Without this, a crash between write and rename
@@ -138,7 +138,7 @@ fn write_file_secure(path: &Path, contents: &str) {
         // Rename failed: leave the original intact and clean up
         // the temp file rather than poisoning the slot.
         let _ = fs::remove_file(&tmp_path);
-        return;
+        return false;
     }
 
     // `rename(2)` preserves the source mode, which was set to 0600
@@ -146,6 +146,7 @@ fn write_file_secure(path: &Path, contents: &str) {
     // against a pre-existing tmp that someone chmod'd out of band
     // between two adjacent writes — practically a no-op.
     let _ = fs::set_permissions(path, fs::Permissions::from_mode(CONFIG_FILE_MODE));
+    true
 }
 
 impl Default for TomlSettingsAdapter {
@@ -208,18 +209,22 @@ impl SettingsPort for TomlSettingsAdapter {
                         cfg.clipboard_clear_secs = n;
                     }
                 }
+                // Clamp to the Settings steppers' ranges (5–600 / 10–3600):
+                // a hand-edited 1–4 s timeout would pass a bare `> 0` guard
+                // but sit below the UI's minimum, so the panel could neither
+                // reproduce nor correct it.
                 "list_inbox_timeout_secs" => {
                     if let Ok(n) = value.parse::<u64>()
                         && n > 0
                     {
-                        cfg.list_inbox_timeout_secs = n;
+                        cfg.list_inbox_timeout_secs = n.clamp(5, 600);
                     }
                 }
                 "download_timeout_secs" => {
                     if let Ok(n) = value.parse::<u64>()
                         && n > 0
                     {
-                        cfg.download_timeout_secs = n;
+                        cfg.download_timeout_secs = n.clamp(10, 3600);
                     }
                 }
                 "auto_mark_read" => {
@@ -264,19 +269,19 @@ impl SettingsPort for TomlSettingsAdapter {
         cfg
     }
 
-    fn write_setting(&self, key: &str, value: &str) {
+    fn write_setting(&self, key: &str, value: &str) -> bool {
         let key = key.to_string();
         let value = value.to_string();
         self.rewrite(move |buf| {
             buf.set(&key, &value);
-        });
+        })
     }
 
-    fn write_theme_name(&self, name: &str) {
+    fn write_theme_name(&self, name: &str) -> bool {
         let name = name.to_string();
         self.rewrite(move |buf| {
             buf.set_theme_name(&name);
-        });
+        })
     }
 
     fn config_dir(&self) -> PathBuf {

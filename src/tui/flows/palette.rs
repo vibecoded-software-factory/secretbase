@@ -420,8 +420,12 @@ mod tests {
         fn read(&self) -> UserSettings {
             UserSettings::default()
         }
-        fn write_setting(&self, _: &str, _: &str) {}
-        fn write_theme_name(&self, _: &str) {}
+        fn write_setting(&self, _: &str, _: &str) -> bool {
+            true
+        }
+        fn write_theme_name(&self, _: &str) -> bool {
+            true
+        }
         fn config_dir(&self) -> PathBuf {
             PathBuf::from(".")
         }
