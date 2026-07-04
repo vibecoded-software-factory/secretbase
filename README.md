@@ -61,8 +61,12 @@ A working terminal client for everyday Keybase chat. Highlights:
 * Rust 1.95 or newer (`rust-toolchain.toml` pins the channel).
 * The `keybase` binary on `$PATH`, with a logged-in session.
 * A clipboard tool on Linux/X11 (`xclip` or `xsel`) / Wayland (`wl-copy`).
-  macOS uses `pbcopy`/`pbpaste`. None is required to run the TUI — only
-  to copy.
+  macOS uses `pbcopy`/`pbpaste`. None of these is required — when there's no
+  display server (a **headless / SSH** box, the common case), copy falls back to
+  the **OSC 52** terminal escape, which puts the text on your *local* terminal's
+  clipboard with no tool at all (the terminal must support OSC 52; tmux needs
+  `set-clipboard on`). Note: the OSC 52 path can't time-clear the clipboard
+  (`clipboard_clear_secs` is a no-op there — no reliable read-back).
 
 ## Build & run
 

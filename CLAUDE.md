@@ -275,7 +275,9 @@ main ──► tui ──► flows ──► ports ◄── adapters
   `SettingsPort`, `KeybaseError`.
 - `src/adapters/` — the only layer allowed to do I/O: `keybase_cli/`
   (subprocess + `codec` + `process` + `json`), `clipboard_system.rs`
-  (`wl-copy`/`xclip`/`xsel`/`pbcopy`), `settings_toml.rs` (hand-rolled
+  (`wl-copy`/`xclip`/`xsel`/`pbcopy`, with an **OSC 52** terminal-escape
+  fallback when no display server is present — the headless/SSH case),
+  `settings_toml.rs` (hand-rolled
   TOML that preserves unknown keys, atomic writes, owner-only perms).
 - `src/tui/` — the driving adapter:
   - `app.rs` — global mutable `App` state container (incl. worker channels
@@ -319,7 +321,9 @@ re-implementing per screen** — that's what keeps the app coherent.
   drafts had as `Zeroizing<String>` before they moved onto the shared editor.
   Keep this derive when touching `LineEditor`.
 - **Clipboard auto-clear** (`clipboard_clear_secs`, default 30 s) wipes a
-  copied value — only if the clipboard still holds secretbase's write.
+  copied value — only if the clipboard still holds secretbase's write. (Applies
+  to the process backends only; the **OSC 52** fallback can't read the clipboard
+  back to verify, so it copies without a timed clear.)
 - **Attachment downloads are path-traversal hardened**
   (`safe_attachment_basename`); settings are written atomically
   (temp + fsync + rename) with `0o700` dirs / `0o600` files.
