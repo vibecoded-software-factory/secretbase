@@ -17,9 +17,10 @@
 //! can coordinate.
 
 use std::collections::HashMap;
-use std::io::{self, Write};
-use std::process::{Command, Stdio};
+use std::io::{self, Read, Write};
+use std::process::{Command, Output, Stdio};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use crossterm::cursor::MoveTo;
 use crossterm::queue;
@@ -437,6 +438,64 @@ fn sorted_frame_pngs(dir: &std::path::Path) -> Vec<String> {
 /// Extracts an animated GIF's frames into `dir` via ImageMagick `-coalesce`
 /// (reusing already-extracted frames), returning `None` for a still image, a
 /// single-frame GIF, or when ImageMagick isn't available.
+/// Wall-clock budget for `chafa` (runs on the **render thread** via the
+/// paint path — a wedged run would freeze the whole UI for its duration).
+const CHAFA_TIMEOUT_SECS: u64 = 5;
+/// Wall-clock budget for ImageMagick `convert` (runs on the **background
+/// worker lane** — a wedged run would silently kill the idle auto-refresh
+/// and emoji fetch for the rest of the session).
+const CONVERT_TIMEOUT_SECS: u64 = 30;
+
+/// Runs `cmd` to completion with a wall-clock deadline, draining stdout /
+/// stderr on threads so a full pipe can't deadlock (same pattern as the
+/// keybase process runner). On timeout the child is killed and a
+/// `TimedOut` error returned — no image tool is allowed to hang the render
+/// thread or a worker lane.
+fn run_with_timeout(cmd: &mut Command, secs: u64) -> io::Result<Output> {
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    let stdout_t = child.stdout.take().map(|mut s| {
+        std::thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = s.read_to_end(&mut b);
+            b
+        })
+    });
+    let stderr_t = child.stderr.take().map(|mut s| {
+        std::thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = s.read_to_end(&mut b);
+            b
+        })
+    });
+    let mut poll = Duration::from_millis(1);
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Output {
+                status,
+                stdout: stdout_t.and_then(|t| t.join().ok()).unwrap_or_default(),
+                stderr: stderr_t.and_then(|t| t.join().ok()).unwrap_or_default(),
+            });
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "image tool timed out",
+            ));
+        }
+        std::thread::sleep(poll);
+        // Adaptive backoff: tight at first so quick runs return fast, then
+        // relaxed so a long decode doesn't busy-spin.
+        poll = (poll * 2).min(Duration::from_millis(20));
+    }
+}
+
 pub fn extract_gif_frames(gif: &str, dir: &std::path::Path) -> Option<GifFrames> {
     std::fs::create_dir_all(dir).ok()?;
     let mut frames = sorted_frame_pngs(dir);
@@ -444,15 +503,17 @@ pub fn extract_gif_frames(gif: &str, dir: &std::path::Path) -> Option<GifFrames>
         let pattern = dir.join("f-%04d.png");
         // `-coalesce` reconstructs each full frame, then `-resize …>` shrinks it
         // to the thumbnail cap (shrink-only) so we don't write/decode full-res.
-        let ok = Command::new("convert")
-            .arg(gif)
-            .arg("-coalesce")
-            .arg("-resize")
-            .arg(format!("{GIF_FRAME_MAX_PX}x{GIF_FRAME_MAX_PX}>"))
-            .arg(&pattern)
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+        let ok = run_with_timeout(
+            Command::new("convert")
+                .arg(gif)
+                .arg("-coalesce")
+                .arg("-resize")
+                .arg(format!("{GIF_FRAME_MAX_PX}x{GIF_FRAME_MAX_PX}>"))
+                .arg(&pattern),
+            CONVERT_TIMEOUT_SECS,
+        )
+        .map(|o| o.status.success())
+        .unwrap_or(false);
         if !ok {
             return None;
         }
@@ -463,18 +524,20 @@ pub fn extract_gif_frames(gif: &str, dir: &std::path::Path) -> Option<GifFrames>
     }
     // Per-frame delay in centiseconds (`%T`), → milliseconds (min 20ms so a
     // 0-delay GIF doesn't spin at the redraw rate).
-    let delays_cs: Vec<u32> = Command::new("convert")
-        .arg(gif)
-        .args(["-format", "%T,", "info:"])
-        .output()
-        .ok()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .split(',')
-                .filter_map(|s| s.trim().parse::<u32>().ok())
-                .collect()
-        })
-        .unwrap_or_default();
+    let delays_cs: Vec<u32> = run_with_timeout(
+        Command::new("convert")
+            .arg(gif)
+            .args(["-format", "%T,", "info:"]),
+        CONVERT_TIMEOUT_SECS,
+    )
+    .ok()
+    .map(|o| {
+        String::from_utf8_lossy(&o.stdout)
+            .split(',')
+            .filter_map(|s| s.trim().parse::<u32>().ok())
+            .collect()
+    })
+    .unwrap_or_default();
     // Saturating arithmetic: the per-frame delays come from the GIF itself
     // (an attacker-supplied attachment), so a crafted huge centisecond value
     // or frame count must clamp, not overflow.
@@ -527,9 +590,7 @@ fn run_chafa(
         args.push(&symbols_arg);
     }
     args.extend(["--animate", "off", "--polite", "on", path]);
-    let output = Command::new("chafa")
-        .args(&args)
-        .output()
+    let output = run_with_timeout(Command::new("chafa").args(&args), CHAFA_TIMEOUT_SECS)
         .map_err(|e| io::Error::other(format!("chafa not available: {e}")))?;
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
