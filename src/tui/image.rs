@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
+use std::rc::Rc;
 
 use crossterm::cursor::MoveTo;
 use crossterm::queue;
@@ -161,8 +162,11 @@ impl<K: std::hash::Hash + Eq + Clone, V> Lru<K, V> {
 ///   ANSI-parsed exactly once, then steady-state animation is a cache lookup —
 ///   no `chafa` subprocess and no re-parse on the render thread every tick.
 pub struct RenderCache {
-    bytes: Lru<(String, u16, u16), Vec<u8>>,
-    lines: Lru<(String, u16, u16), Vec<Line<'static>>>,
+    // `Rc` values so a cache hit is a pointer bump, not a deep clone of the
+    // whole rendered frame (hundreds of spans / KBs of chafa bytes) — hits
+    // happen per visible image per frame while a GIF animates.
+    bytes: Lru<(String, u16, u16), Rc<[u8]>>,
+    lines: Lru<(String, u16, u16), Rc<[Line<'static>]>>,
     /// chafa `--symbols` spec for the symbol path (font-dependent).
     symbols: String,
 }
@@ -184,21 +188,21 @@ impl RenderCache {
         }
     }
 
-    /// Chafa output for `path` at `cols`×`rows` (owned), running chafa on a miss
-    /// and caching it. Used by the native-graphics paint path.
+    /// Chafa output for `path` at `cols`×`rows`, running chafa on a miss and
+    /// caching it. Used by the native-graphics paint path.
     fn cached_bytes(
         &mut self,
         proto: ImgProto,
         path: &str,
         cols: u16,
         rows: u16,
-    ) -> io::Result<Vec<u8>> {
+    ) -> io::Result<Rc<[u8]>> {
         let key = (path.to_string(), cols, rows);
         if let Some(b) = self.bytes.get(&key) {
-            return Ok(b.clone());
+            return Ok(Rc::clone(b));
         }
-        let bytes = run_chafa(proto, path, cols, rows, &self.symbols)?;
-        self.bytes.insert(key, bytes.clone());
+        let bytes: Rc<[u8]> = run_chafa(proto, path, cols, rows, &self.symbols)?.into();
+        self.bytes.insert(key, Rc::clone(&bytes));
         Ok(bytes)
     }
 
@@ -215,13 +219,13 @@ impl RenderCache {
         cols: u16,
         rows: u16,
         indent: usize,
-    ) -> Vec<Line<'static>> {
+    ) -> Rc<[Line<'static>]> {
         let key = (format!("{indent}\u{0}{path}"), cols, rows);
         if let Some(l) = self.lines.get(&key) {
-            return l.clone();
+            return Rc::clone(l);
         }
         let Ok(bytes) = self.cached_bytes(proto, path, cols, rows) else {
-            return Vec::new();
+            return Rc::new([]);
         };
         let mut lines = symbols_to_lines(&bytes, indent, rows);
         // Trim the trailing blank row chafa's output leaves so the reservation
@@ -232,7 +236,8 @@ impl RenderCache {
         {
             lines.pop();
         }
-        self.lines.insert(key, lines.clone());
+        let lines: Rc<[Line<'static>]> = lines.into();
+        self.lines.insert(key, Rc::clone(&lines));
         lines
     }
 
@@ -354,6 +359,53 @@ impl GifFrames {
 /// Capping with ImageMagick's `>` (shrink-only) keeps quality at thumbnail size
 /// while slashing extraction/render cost. Frames already ≤ this are untouched.
 const GIF_FRAME_MAX_PX: u32 = 480;
+
+/// Max age for entries in the on-disk image cache. Downloaded previews and
+/// extracted GIF frames accumulate across sessions with no other eviction
+/// (a single large GIF can leave hundreds of frame PNGs), so anything
+/// untouched for this long is swept at startup.
+const DISK_CACHE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
+
+/// Sweeps the on-disk image cache — downloaded previews plus the extracted
+/// GIF frame dirs — deleting entries older than [`DISK_CACHE_MAX_AGE`].
+/// Runs once at startup on a background thread; an entry swept too eagerly
+/// just re-downloads / re-extracts on demand, so the policy errs cheap.
+pub fn sweep_disk_cache() {
+    let dir = crate::tui::flows::chat::image_cache_dir();
+    let now = std::time::SystemTime::now();
+    let expired = |p: &std::path::Path| -> bool {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .is_some_and(|age| age > DISK_CACHE_MAX_AGE)
+    };
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for entry in rd.filter_map(Result::ok) {
+            let p = entry.path();
+            // `frames/` (the only subdir) is handled below.
+            if !p.is_dir() && expired(&p) {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+    // A frame dir is judged by the freshest PNG inside (the dir's own mtime
+    // only reflects extraction); an expired animation is removed whole.
+    if let Ok(rd) = std::fs::read_dir(dir.join("frames")) {
+        for entry in rd.filter_map(Result::ok) {
+            let d = entry.path();
+            if !d.is_dir() {
+                continue;
+            }
+            let any_fresh = std::fs::read_dir(&d)
+                .map(|it| it.filter_map(Result::ok).any(|f| !expired(&f.path())))
+                .unwrap_or(false);
+            if !any_fresh {
+                let _ = std::fs::remove_dir_all(&d);
+            }
+        }
+    }
+}
 
 /// Per-GIF frame directory under the image cache (`…/images/frames/<stem>`).
 /// Lives here (not the view) so the worker can compute it when decoding

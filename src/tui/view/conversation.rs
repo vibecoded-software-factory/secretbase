@@ -1,6 +1,8 @@
 //! Single-conversation detail view — identity bar, conversation header,
 //! scrollable message history, the compose pane and the status strip.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ratatui::{
@@ -20,23 +22,13 @@ use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{editor_lines, trim_end_ellipsis};
 
-/// The latest channel topic/headline set in the loaded history, if any — shown
-/// in the chat header. Scans newest-first for a `headline` system message.
-fn latest_headline(messages: &[Message]) -> Option<String> {
-    messages.iter().rev().find_map(|m| match &m.content {
-        MessageContent::Headline { headline } if !headline.trim().is_empty() => {
-            Some(headline.clone())
-        }
-        _ => None,
-    })
-}
-
 /// Whether the chat draws its **adaptive** 1-line header — a pin or a channel
-/// topic. When neither exists the header collapses to **0 rows** and the message
-/// history takes the space, so no chrome is reserved for nothing (the name lives
-/// on the Messages panel title either way).
+/// topic (`App::conv_headline`, cached per load). When neither exists the
+/// header collapses to **0 rows** and the message history takes the space, so
+/// no chrome is reserved for nothing (the name lives on the Messages panel
+/// title either way).
 fn has_adaptive_header(app: &App) -> bool {
-    app.pinned_msg_id.is_some() || latest_headline(&app.messages).is_some()
+    app.pinned_msg_id.is_some() || app.conv_headline.is_some()
 }
 
 /// The adaptive header line: a **pin** (`📌 sender · "content" · Alt+U unpin`)
@@ -47,7 +39,7 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     let w = area.width as usize;
     let spans: Vec<Span<'static>> = if let Some(pid) = app.pinned_msg_id {
         let mut s = vec![Span::styled(" 📌 ", Style::default().fg(t.conv_unread))];
-        match app.messages.iter().find(|m| m.id == pid) {
+        match app.msg_index.get(&pid).and_then(|&i| app.messages.get(i)) {
             Some(m) => {
                 let body = match &m.content {
                     MessageContent::Text(b) => b.clone(),
@@ -80,7 +72,7 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
         ));
         s.push(Span::styled(" unpin", Style::default().fg(t.dim)));
         s
-    } else if let Some(topic) = latest_headline(&app.messages) {
+    } else if let Some(topic) = app.conv_headline.as_deref() {
         let topic = trim_end_ellipsis(
             topic.lines().next().unwrap_or(""),
             w.saturating_sub(6).max(8),
@@ -118,18 +110,21 @@ pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
     }
     render_messages(frame, app, layout[1]);
     render_compose(frame, app, layout[2]);
-    if app.mention_popup_active() {
-        draw_mention_popup(frame, app, layout[2]);
+    // Compute the matches once: `mention_popup_active` recomputes them for
+    // its gate, so calling it *and* `mention_matches` doubled the per-frame
+    // work while composing.
+    if app.mention_popup_gate() {
+        let matches = app.mention_matches();
+        if !matches.is_empty() {
+            draw_mention_popup(frame, app, layout[2], &matches);
+        }
     }
 }
 
 /// The `@`-mention autocomplete popup, floated just above the compose box.
-fn draw_mention_popup(frame: &mut Frame, app: &App, compose_area: Rect) {
+/// `matches` is non-empty (the caller gates on it).
+fn draw_mention_popup(frame: &mut Frame, app: &App, compose_area: Rect, matches: &[String]) {
     let t = &app.theme;
-    let matches = app.mention_matches();
-    if matches.is_empty() {
-        return;
-    }
     let sel = app.mention_selected.min(matches.len() - 1);
     let h = (matches.len() as u16 + 2).min(8);
     let longest = matches.iter().map(|m| m.chars().count()).max().unwrap_or(8) as u16;
@@ -241,6 +236,47 @@ fn chat_title(app: &App) -> String {
     }
 }
 
+/// A rendered message block cached by id: the lines exactly as
+/// [`message_lines`] produced them (unshaded — selection shading is applied
+/// to the visible clones at materialisation), plus the per-entry inputs that
+/// can change *without* the history being replaced. Everything else that
+/// feeds a block (body, reactions, theme, width, emoji/icon settings)
+/// invalidates the whole cache via [`App::msg_cache_epoch`] at its mutation
+/// site.
+struct MsgBlock {
+    grouped: bool,
+    pinned: bool,
+    lines: Vec<Line<'static>>,
+}
+
+/// Per-message rendered-lines cache. `epoch` mirrors [`App::msg_cache_epoch`]
+/// and `width` the wrap width — a mismatch on either drops every entry.
+struct MsgBlockCache {
+    epoch: u64,
+    width: usize,
+    blocks: HashMap<u64, MsgBlock>,
+}
+
+thread_local! {
+    /// The render thread is the only caller, so a `thread_local` cache needs
+    /// no locking — same pattern as the syntax-highlight memo. Living here
+    /// (not on `App`) keeps ratatui buffers out of the app state and away
+    /// from its borrows.
+    static MSG_BLOCKS: RefCell<MsgBlockCache> = RefCell::new(MsgBlockCache {
+        epoch: 0,
+        width: 0,
+        blocks: HashMap::new(),
+    });
+}
+
+/// A run of lines at a fixed absolute offset in the message stream: either
+/// built fresh this frame (dividers, image blocks, the action bar, outbox)
+/// or a reference into the block cache.
+enum Chunk {
+    Fresh(Vec<Line<'static>>),
+    Cached { id: u64, shade: bool },
+}
+
 fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = app.theme.clone();
     let now_s = SystemTime::now()
@@ -291,277 +327,388 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    let mut lines: Vec<Line<'static>> = Vec::with_capacity(app.messages.len() * 3 + outbox.len());
-
-    if !app.messages.is_empty() {
-        if app.messages_next.is_some() {
-            lines.push(Line::from(Span::styled(
-                "  ↑ press Up to load older messages",
-                Style::default().fg(t.dim),
-            )));
-        } else {
-            lines.push(Line::from(Span::styled(
-                "  · beginning of conversation",
-                Style::default().fg(t.dim),
-            )));
+    // The whole build runs inside one borrow of the per-message block cache
+    // (thread-local, independent of `app`'s borrows). Pass 1 walks the
+    // history computing only *heights* and structural chunks — cached blocks
+    // aren't materialised; pass 2 (below) clones just the viewport rows.
+    let epoch = app.msg_cache_epoch;
+    MSG_BLOCKS.with(|cell| {
+        let cache = &mut *cell.borrow_mut();
+        if cache.epoch != epoch || cache.width != body_width {
+            cache.blocks.clear();
+            cache.epoch = epoch;
+            cache.width = body_width;
         }
-        lines.push(Line::from(Span::raw("")));
-    }
 
-    let mut selected_line: Option<usize> = None;
-    // Line span [start, end) each message occupies, for click-to-select.
-    let mut spans_map: Vec<(usize, usize, usize)> = Vec::with_capacity(app.messages.len());
-    // Absolute (line, rows, msg_id, cache path) reservations for inline images.
-    let mut img_reservations: Vec<(usize, u16, u64, String)> = Vec::new();
-    // Thumbnail width (indent 4 + a right margin so it isn't glued to the
-    // border; capped on wide panels). Symbol images are pre-rendered to lines
-    // here so each reserves exactly its real height.
-    let img_w = body_width.saturating_sub(6).clamp(10, 72) as u16;
-    // Recomputed each frame; `symbol_image_lines` / `image_render_path` set it
-    // true when an animated GIF is on screen.
-    app.gif_animating = false;
-    let symbol_imgs = symbol_image_lines(app, img_w);
-    // Grouping / day-divider / unread-marker state (F3). Dividers are pushed
-    // BEFORE each message's `start` is captured, so they fall outside every
-    // `spans_map` / image range and stay non-selectable.
-    let mut prev: Option<(&str, u64, bool)> = None;
-    let mut prev_day_ts: Option<u64> = None;
-    let unread_boundary = app.unread_boundary;
-    let mut marker_done = false;
-    for (idx, m) in app.messages.iter().enumerate() {
-        let m_is_system = is_system_content(&m.content);
-        // Day divider when the local day changes (or before the first dated msg).
-        let new_day = m.sent_at != 0
-            && match prev_day_ts {
-                Some(p) => !same_local_day(p, m.sent_at),
-                None => true,
+        let mut chunks: Vec<(usize, Chunk)> = Vec::with_capacity(app.messages.len() + 4);
+        let mut off = 0usize;
+
+        if !app.messages.is_empty() {
+            let head = if app.messages_next.is_some() {
+                "  ↑ press Up to load older messages"
+            } else {
+                "  · beginning of conversation"
             };
-        if new_day {
-            let label = day_divider_label(m.sent_at, now_s);
-            if !label.is_empty() {
-                lines.push(divider_line(&label, t.dim, body_width));
-            }
-            prev_day_ts = Some(m.sent_at);
+            push_fresh(
+                &mut chunks,
+                &mut off,
+                vec![
+                    Line::from(Span::styled(head, Style::default().fg(t.dim))),
+                    Line::from(Span::raw("")),
+                ],
+            );
         }
-        // `new messages` divider — once, before the first message newer than the
-        // session's last-seen id, and only when a seen message sits above it.
-        if !marker_done
-            && let Some(b) = unread_boundary
-            && m.id > b
-            && app.messages[..idx].iter().any(|x| x.id <= b)
-        {
-            lines.push(divider_line("new messages", t.conv_unread, body_width));
-            marker_done = true;
-        }
-        // Hide the header when this message continues the previous one's run.
-        let needs_header = m.reply_to.is_some() || m.edited || app.pinned_msg_id == Some(m.id);
-        let grouped = group_continues(
-            prev,
-            &m.sender,
-            m.sent_at,
-            m_is_system,
-            needs_header,
-            new_day,
-            GROUP_WINDOW_SECS,
-        );
-        prev = Some((&m.sender, m.sent_at, m_is_system));
 
-        let start = lines.len();
-        let is_selected = app.selected_msg_idx == Some(idx);
-        // Marked messages (multi-select for copy) get the same shading as the
-        // cursor — the cursor is told apart by its action bar below.
-        let is_marked = app.msg_marks.contains(&idx);
-        if is_selected {
-            selected_line = Some(start);
-        }
-        let mut local_img: Vec<ImgReservation> = Vec::new();
-        let mut block = message_lines(
-            m,
-            app,
-            &t,
-            body_width,
-            &mut local_img,
-            &symbol_imgs,
-            !grouped,
-        );
-        // Block-relative row ranges occupied by image thumbnails — these stay
-        // unshaded so the selection background doesn't paint over the graphic.
-        let img_ranges: Vec<(usize, usize)> = local_img
-            .iter()
-            .map(|r| (r.block_offset, r.block_offset + r.rows as usize))
-            .collect();
-        for r in local_img.drain(..) {
-            img_reservations.push((start + r.block_offset, r.rows, r.msg_id, r.path));
-        }
-        if is_selected || is_marked {
-            let bg = t.selected_bg;
-            for (li, line) in block.iter_mut().enumerate() {
-                if img_ranges.iter().any(|&(s, e)| li >= s && li < e) {
-                    continue;
+        let mut selected_line: Option<usize> = None;
+        // Line span [start, end) each message occupies, for click-to-select.
+        let mut spans_map: Vec<(usize, usize, usize)> = Vec::with_capacity(app.messages.len());
+        // Absolute (line, rows, msg_id, cache path) reservations for inline images.
+        let mut img_reservations: Vec<(usize, u16, u64, String)> = Vec::new();
+        // Thumbnail width (indent 4 + a right margin so it isn't glued to the
+        // border; capped on wide panels). Symbol images are pre-rendered to lines
+        // here so each reserves exactly its real height.
+        let img_w = body_width.saturating_sub(6).clamp(10, 72) as u16;
+        // Recomputed each frame; `symbol_image_lines` / `image_render_path` set it
+        // true when an animated GIF is on screen.
+        app.gif_animating = false;
+        let symbol_imgs = symbol_image_lines(app, img_w);
+        // Grouping / day-divider / unread-marker state (F3). Dividers are pushed
+        // BEFORE each message's `start` is captured, so they fall outside every
+        // `spans_map` / image range and stay non-selectable.
+        let mut prev: Option<(&str, u64, bool)> = None;
+        let mut prev_day_ts: Option<u64> = None;
+        let unread_boundary = app.unread_boundary;
+        let mut marker_done = false;
+        for (idx, m) in app.messages.iter().enumerate() {
+            let m_is_system = is_system_content(&m.content);
+            // Day divider when the local day changes (or before the first dated
+            // msg). Dividers depend on "now" (Today/Yesterday) and are at most
+            // two short lines, so they're always built fresh.
+            let new_day = m.sent_at != 0
+                && match prev_day_ts {
+                    Some(p) => !same_local_day(p, m.sent_at),
+                    None => true,
+                };
+            let mut pre: Vec<Line<'static>> = Vec::new();
+            if new_day {
+                let label = day_divider_label(m.sent_at, now_s);
+                if !label.is_empty() {
+                    pre.push(divider_line(&label, t.dim, body_width));
                 }
-                line.spans = line
-                    .spans
+                prev_day_ts = Some(m.sent_at);
+            }
+            // `new messages` divider — once, before the first message newer than the
+            // session's last-seen id, and only when a seen message sits above it.
+            if !marker_done
+                && let Some(b) = unread_boundary
+                && m.id > b
+                && app.messages[..idx].iter().any(|x| x.id <= b)
+            {
+                pre.push(divider_line("new messages", t.conv_unread, body_width));
+                marker_done = true;
+            }
+            push_fresh(&mut chunks, &mut off, pre);
+            // Hide the header when this message continues the previous one's run.
+            let needs_header = m.reply_to.is_some() || m.edited || app.pinned_msg_id == Some(m.id);
+            let grouped = group_continues(
+                prev,
+                &m.sender,
+                m.sent_at,
+                m_is_system,
+                needs_header,
+                new_day,
+                GROUP_WINDOW_SECS,
+            );
+            prev = Some((&m.sender, m.sent_at, m_is_system));
+
+            let start = off;
+            let is_selected = app.selected_msg_idx == Some(idx);
+            // Marked messages (multi-select for copy) get the same shading as the
+            // cursor — the cursor is told apart by its action bar below.
+            let is_marked = app.msg_marks.contains(&idx);
+            if is_selected {
+                selected_line = Some(start);
+            }
+            // Attachments render live state (download/decode skeletons, GIF
+            // frames) that changes between frames, so they're never cached;
+            // every other content kind is a pure function of the message +
+            // epoch-guarded inputs and renders once per (history, width, theme).
+            let cacheable = !matches!(m.content, MessageContent::Attachment(_));
+            if cacheable {
+                let pinned = app.pinned_msg_id == Some(m.id);
+                let hit = cache
+                    .blocks
+                    .get(&m.id)
+                    .is_some_and(|e| e.grouped == grouped && e.pinned == pinned);
+                if !hit {
+                    let mut no_img: Vec<ImgReservation> = Vec::new();
+                    let block =
+                        message_lines(m, app, &t, body_width, &mut no_img, &symbol_imgs, !grouped);
+                    cache.blocks.insert(
+                        m.id,
+                        MsgBlock {
+                            grouped,
+                            pinned,
+                            lines: block,
+                        },
+                    );
+                }
+                let h = cache.blocks.get(&m.id).map(|e| e.lines.len()).unwrap_or(0);
+                chunks.push((
+                    off,
+                    Chunk::Cached {
+                        id: m.id,
+                        shade: is_selected || is_marked,
+                    },
+                ));
+                off += h;
+            } else {
+                let mut local_img: Vec<ImgReservation> = Vec::new();
+                let mut block = message_lines(
+                    m,
+                    app,
+                    &t,
+                    body_width,
+                    &mut local_img,
+                    &symbol_imgs,
+                    !grouped,
+                );
+                // Block-relative row ranges occupied by image thumbnails — these
+                // stay unshaded so the selection background doesn't paint over
+                // the graphic.
+                let img_ranges: Vec<(usize, usize)> = local_img
                     .iter()
-                    .map(|s| Span::styled(s.content.clone(), s.style.bg(bg)))
+                    .map(|r| (r.block_offset, r.block_offset + r.rows as usize))
                     .collect();
+                for r in local_img.drain(..) {
+                    img_reservations.push((start + r.block_offset, r.rows, r.msg_id, r.path));
+                }
+                if is_selected || is_marked {
+                    let bg = t.selected_bg;
+                    for (li, line) in block.iter_mut().enumerate() {
+                        if img_ranges.iter().any(|&(s, e)| li >= s && li < e) {
+                            continue;
+                        }
+                        for sp in line.spans.iter_mut() {
+                            sp.style = sp.style.bg(bg);
+                        }
+                    }
+                }
+                push_fresh(&mut chunks, &mut off, block);
+            }
+            // In select mode, show a contextual action bar under the highlighted
+            // message — visual feedback for what can be done with it (the keys
+            // still work directly).
+            if is_selected {
+                push_fresh(
+                    &mut chunks,
+                    &mut off,
+                    select_actions_lines(m, app, &t, body_width),
+                );
+            }
+            // Compact: no blank line between messages — a message's header (or, for
+            // a grouped follow-up, the sender's run above it) separates them.
+            spans_map.push((start, off, idx));
+        }
+
+        // Optimistic sends sit at the very bottom, after the loaded history.
+        push_fresh(&mut chunks, &mut off, outbox);
+
+        let total_lines = off;
+        let viewport = area.height.saturating_sub(2).max(1) as usize;
+        let max_back = total_lines.saturating_sub(viewport);
+        let effective_back = app.messages_scroll.min(max_back);
+        // Persist the clamped offset: a stale-high `messages_scroll` (e.g. after a
+        // re-read shrinks the loaded list — a reaction/edit control event replaces
+        // 60 messages with the 27-message first page) would otherwise leave the
+        // mouse/keyboard scrolling in a dead zone above the real maximum.
+        app.messages_scroll = effective_back;
+        let mut scroll_y = max_back.saturating_sub(effective_back);
+
+        // In Select mode, keep the highlighted message inside the viewport —
+        // cursor navigation alone never scrolls, so it could otherwise drift
+        // above the fold with no way back.
+        if let Some(sel) = selected_line.filter(|_| app.selected_msg_idx.is_some()) {
+            if sel < scroll_y {
+                scroll_y = sel;
+            } else if sel >= scroll_y + viewport {
+                scroll_y = sel + 1 - viewport;
             }
         }
-        lines.extend(block);
-        // In select mode, show a contextual action bar under the highlighted
-        // message — visual feedback for what can be done with it (the keys
-        // still work directly).
-        if is_selected && app.selected_msg_idx.is_some() {
-            lines.extend(select_actions_lines(m, app, &t, body_width));
-        }
-        // Compact: no blank line between messages — a message's header (or, for
-        // a grouped follow-up, the sender's run above it) separates them.
-        spans_map.push((start, lines.len(), idx));
-    }
 
-    // Optimistic sends sit at the very bottom, after the loaded history.
-    lines.extend(outbox);
-
-    let total_lines = lines.len();
-    let viewport = area.height.saturating_sub(2).max(1) as usize;
-    let max_back = total_lines.saturating_sub(viewport);
-    let effective_back = app.messages_scroll.min(max_back);
-    // Persist the clamped offset: a stale-high `messages_scroll` (e.g. after a
-    // re-read shrinks the loaded list — a reaction/edit control event replaces
-    // 60 messages with the 27-message first page) would otherwise leave the
-    // mouse/keyboard scrolling in a dead zone above the real maximum.
-    app.messages_scroll = effective_back;
-    let mut scroll_y = max_back.saturating_sub(effective_back);
-
-    // In Select mode, keep the highlighted message inside the viewport —
-    // cursor navigation alone never scrolls, so it could otherwise drift
-    // above the fold with no way back.
-    if let Some(sel) = selected_line.filter(|_| app.selected_msg_idx.is_some()) {
-        if sel < scroll_y {
-            scroll_y = sel;
-        } else if sel >= scroll_y + viewport {
-            scroll_y = sel + 1 - viewport;
-        }
-    }
-
-    // Inline images. Symbols are already rendered in-buffer (pushed as lines by
-    // `message_lines`), so only `img_res` for graphics / still-downloading
-    // images remains: queue a fetch when not ready, else (true graphics)
-    // record a paint rect for the run loop — but only when the whole thumbnail
-    // fits the viewport so it can't overflow the panel.
-    app.image_areas.clear();
-    app.image_to_fetch.clear();
-    app.gif_to_decode.clear();
-    let graphics = matches!(app.image_proto, Some(p) if p != crate::tui::image::ImgProto::Symbols);
-    let img_x = area.x + 1 + 4;
-    for (abs, rows, msg_id, path) in img_reservations {
-        match img_state(app, &path) {
-            // Still downloading → queue the fetch (skeleton shown meanwhile).
-            ImgState::Loading => {
-                if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
-                    app.image_to_fetch.push((msg_id, path));
+        // Inline images. Symbols are already rendered in-buffer (pushed as lines by
+        // `message_lines`), so only `img_res` for graphics / still-downloading
+        // images remains: queue a fetch when not ready, else (true graphics)
+        // record a paint rect for the run loop — but only when the whole thumbnail
+        // fits the viewport so it can't overflow the panel.
+        app.image_areas.clear();
+        app.image_to_fetch.clear();
+        app.gif_to_decode.clear();
+        let graphics =
+            matches!(app.image_proto, Some(p) if p != crate::tui::image::ImgProto::Symbols);
+        let img_x = area.x + 1 + 4;
+        for (abs, rows, msg_id, path) in img_reservations {
+            match img_state(app, &path) {
+                // Still downloading → queue the fetch (skeleton shown meanwhile).
+                ImgState::Loading => {
+                    if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
+                        app.image_to_fetch.push((msg_id, path));
+                    }
+                }
+                // Downloaded GIF, not decoded yet → queue the off-thread decode.
+                ImgState::Decoding => {
+                    if !app.gif_pending.contains(&path) {
+                        app.gif_to_decode.push(path);
+                    }
+                }
+                // Ready → graphics protocols paint the current frame / the file.
+                ImgState::Ready => {
+                    if graphics && abs >= scroll_y && (abs - scroll_y) + rows as usize <= viewport {
+                        let rect = Rect {
+                            x: img_x,
+                            y: area.y + 1 + (abs - scroll_y) as u16,
+                            width: img_w,
+                            height: rows,
+                        };
+                        let render_path = image_render_path(app, &path);
+                        app.image_areas.push((rect, render_path));
+                    }
                 }
             }
-            // Downloaded GIF, not decoded yet → queue the off-thread decode.
-            ImgState::Decoding => {
-                if !app.gif_pending.contains(&path) {
-                    app.gif_to_decode.push(path);
-                }
-            }
-            // Ready → graphics protocols paint the current frame / the file.
-            ImgState::Ready => {
-                if graphics && abs >= scroll_y && (abs - scroll_y) + rows as usize <= viewport {
-                    let rect = Rect {
-                        x: img_x,
-                        y: area.y + 1 + (abs - scroll_y) as u16,
-                        width: img_w,
-                        height: rows,
-                    };
-                    let render_path = image_render_path(app, &path);
-                    app.image_areas.push((rect, render_path));
-                }
-            }
         }
-    }
 
-    // Count + scroll position live in the bottom-right border (dim), the
-    // same place every other list panel shows its count — the title stays
-    // a plain "Messages". (Pagination means there's no true total, so this
-    // is loaded-count + scroll position, not an "X of Y".)
-    // `n msgs` = messages currently loaded (paginated; older ones load on
-    // scroll-up). The word reports where the viewport sits — no raw line
-    // offset, which mixed units (lines vs messages) and read as confusing.
-    let n = app.messages.len();
-    let counter = if app.messages_loading_older {
-        format!("{n} msgs · loading older…")
-    } else if max_back == 0 {
-        // Everything fits — no scrollback.
-        format!("{n} msgs")
-    } else if effective_back == 0 {
-        // Pinned to the newest message.
-        format!("{n} msgs · latest")
-    } else if effective_back == max_back {
-        // Top of what's loaded: more history on the server, or the very
-        // start of the conversation.
-        if app.messages_next.is_some() {
-            format!("{n} msgs · ↑ more above")
+        // Count + scroll position live in the bottom-right border (dim), the
+        // same place every other list panel shows its count — the title stays
+        // a plain "Messages". (Pagination means there's no true total, so this
+        // is loaded-count + scroll position, not an "X of Y".)
+        // `n msgs` = messages currently loaded (paginated; older ones load on
+        // scroll-up). The word reports where the viewport sits — no raw line
+        // offset, which mixed units (lines vs messages) and read as confusing.
+        let n = app.messages.len();
+        let counter = if app.messages_loading_older {
+            format!("{n} msgs · loading older…")
+        } else if max_back == 0 {
+            // Everything fits — no scrollback.
+            format!("{n} msgs")
+        } else if effective_back == 0 {
+            // Pinned to the newest message.
+            format!("{n} msgs · latest")
+        } else if effective_back == max_back {
+            // Top of what's loaded: more history on the server, or the very
+            // start of the conversation.
+            if app.messages_next.is_some() {
+                format!("{n} msgs · ↑ more above")
+            } else {
+                format!("{n} msgs · oldest")
+            }
         } else {
-            format!("{n} msgs · oldest")
+            // Scrolled up into older messages, mid-history.
+            format!("{n} msgs · ↑ older")
+        };
+
+        // Pass 2: materialise ONLY the viewport rows [scroll_y, scroll_y +
+        // viewport). Cached blocks clone just their visible lines (shaded on the
+        // clone when selected/marked); everything above/below the fold is never
+        // built, so the per-frame cost tracks the panel height, not how far the
+        // reader has paged back.
+        let win_end = scroll_y + viewport;
+        let mut visible: Vec<Line<'static>> = Vec::with_capacity(viewport.min(total_lines));
+        let shade_bg = t.selected_bg;
+        for (start, chunk) in chunks {
+            if start >= win_end {
+                break;
+            }
+            match chunk {
+                Chunk::Fresh(ls) => {
+                    if start + ls.len() <= scroll_y {
+                        continue;
+                    }
+                    for (i, l) in ls.into_iter().enumerate() {
+                        let abs = start + i;
+                        if abs >= scroll_y && abs < win_end {
+                            visible.push(l);
+                        }
+                    }
+                }
+                Chunk::Cached { id, shade } => {
+                    let Some(entry) = cache.blocks.get(&id) else {
+                        continue;
+                    };
+                    if start + entry.lines.len() <= scroll_y {
+                        continue;
+                    }
+                    for (i, l) in entry.lines.iter().enumerate() {
+                        let abs = start + i;
+                        if abs < scroll_y || abs >= win_end {
+                            continue;
+                        }
+                        let mut l = l.clone();
+                        if shade {
+                            for sp in l.spans.iter_mut() {
+                                sp.style = sp.style.bg(shade_bg);
+                            }
+                        }
+                        visible.push(l);
+                    }
+                }
+            }
         }
-    } else {
-        // Scrolled up into older messages, mid-history.
-        format!("{n} msgs · ↑ older")
-    };
 
-    // Ratatui scroll is u16; saturate so a very long history can't wrap
-    // the offset to a tiny value via a truncating cast.
-    let scroll_u16 = scroll_y.min(u16::MAX as usize) as u16;
-    let dim = app.theme.dim;
-    let title = chat_title(app);
-    // The count lives in the bottom-right border; when messages arrived below
-    // while the reader is scrolled up, a `▼ N new` cue (accent) is appended
-    // there — in the border, never overlaying the message rows.
-    let mut counter_spans = vec![Span::styled(counter, Style::default().fg(dim))];
-    if effective_back > 0 && app.new_since_scroll > 0 {
-        counter_spans.push(Span::styled(
-            format!(" · ▼ {} new · End", app.new_since_scroll),
-            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-        ));
-    }
-    let block = titled_block(&title, app.focus == Focus::Chat, app)
-        .title_bottom(Line::from(counter_spans).right_aligned());
-    frame.render_widget(
-        Paragraph::new(lines).scroll((scroll_u16, 0)).block(block),
-        area,
-    );
-
-    app.messages_max_back = max_back;
-    // Back at the latest → clear the new-arrival counter.
-    if effective_back == 0 {
-        app.new_since_scroll = 0;
-    }
-
-    // Mouse hit-testing: the viewport (for scroll) + a screen rect per
-    // visible message (for click-to-select). Content starts one row inside
-    // the top border; line `L` shows at `area.y + 1 + (L - scroll_y)`.
-    app.mouse_areas.messages = area;
-    let inner_top = area.y + 1;
-    let mut rows = Vec::new();
-    for (start, end, idx) in spans_map {
-        let vis_start = start.max(scroll_y);
-        let vis_end = end.min(scroll_y + viewport);
-        if vis_start < vis_end {
-            rows.push((
-                Rect {
-                    x: area.x,
-                    y: inner_top + (vis_start - scroll_y) as u16,
-                    width: area.width,
-                    height: (vis_end - vis_start) as u16,
-                },
-                idx,
+        let dim = app.theme.dim;
+        let title = chat_title(app);
+        // The count lives in the bottom-right border; when messages arrived below
+        // while the reader is scrolled up, a `▼ N new` cue (accent) is appended
+        // there — in the border, never overlaying the message rows.
+        let mut counter_spans = vec![Span::styled(counter, Style::default().fg(dim))];
+        if effective_back > 0 && app.new_since_scroll > 0 {
+            counter_spans.push(Span::styled(
+                format!(" · ▼ {} new · End", app.new_since_scroll),
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ));
         }
+        let block = titled_block(&title, app.focus == Focus::Chat, app)
+            .title_bottom(Line::from(counter_spans).right_aligned());
+        frame.render_widget(Paragraph::new(visible).block(block), area);
+
+        app.messages_max_back = max_back;
+        // Back at the latest → clear the new-arrival counter.
+        if effective_back == 0 {
+            app.new_since_scroll = 0;
+        }
+
+        // Mouse hit-testing: the viewport (for scroll) + a screen rect per
+        // visible message (for click-to-select). Content starts one row inside
+        // the top border; line `L` shows at `area.y + 1 + (L - scroll_y)`.
+        app.mouse_areas.messages = area;
+        let inner_top = area.y + 1;
+        let mut rows = Vec::new();
+        for (start, end, idx) in spans_map {
+            let vis_start = start.max(scroll_y);
+            let vis_end = end.min(scroll_y + viewport);
+            if vis_start < vis_end {
+                rows.push((
+                    Rect {
+                        x: area.x,
+                        y: inner_top + (vis_start - scroll_y) as u16,
+                        width: area.width,
+                        height: (vis_end - vis_start) as u16,
+                    },
+                    idx,
+                ));
+            }
+        }
+        app.mouse_areas.message_rows = rows;
+    });
+}
+
+/// Appends `ls` to `chunks` as a fresh (built-this-frame) chunk at `*off`,
+/// advancing the running line offset. Empty runs are dropped.
+fn push_fresh(chunks: &mut Vec<(usize, Chunk)>, off: &mut usize, ls: Vec<Line<'static>>) {
+    if !ls.is_empty() {
+        let h = ls.len();
+        chunks.push((*off, Chunk::Fresh(ls)));
+        *off += h;
     }
-    app.mouse_areas.message_rows = rows;
 }
 
 /// Builds the bubbles for the optimistic outbox entries targeting the open
@@ -754,7 +901,7 @@ fn image_render_path(app: &mut App, path: &str) -> String {
 fn symbol_image_lines(
     app: &mut App,
     img_w: u16,
-) -> std::collections::HashMap<u64, Vec<Line<'static>>> {
+) -> std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>> {
     let mut map = std::collections::HashMap::new();
     let Some(proto) = app.image_proto else {
         return map;
@@ -851,7 +998,7 @@ fn message_lines(
     t: &crate::tui::theme::Theme,
     width: usize,
     img_res: &mut Vec<ImgReservation>,
-    symbol_imgs: &std::collections::HashMap<u64, Vec<Line<'static>>>,
+    symbol_imgs: &std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>>,
     show_header: bool,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(3);
@@ -996,9 +1143,9 @@ fn reply_quote_line(
     width: usize,
 ) -> Line<'static> {
     let label = app
-        .messages
-        .iter()
-        .find(|m| m.id == target)
+        .msg_index
+        .get(&target)
+        .and_then(|&i| app.messages.get(i))
         .map(|m| {
             let body = match &m.content {
                 MessageContent::Text(b) => b.as_str(),
@@ -1174,11 +1321,9 @@ fn select_actions_lines(
 /// tofu / monochrome — the only lever a TUI has, since it can't pick the font).
 fn reaction_display(app: &App, key: &str) -> String {
     let alias = key.trim_matches(':');
-    // Match by alias (shortcode key) or by display glyph (stock emoji sent raw).
-    let entry = app
-        .emojis
-        .iter()
-        .find(|e| e.alias == alias || e.display == key);
+    // Match by alias (shortcode key) or by display glyph (stock emoji sent
+    // raw) — O(1) via the catalogue index.
+    let entry = app.emoji_for_reaction(key);
     if app.settings_cache.emoji_style == "shortcode" {
         match entry {
             Some(e) => format!(":{}:", e.alias),
@@ -1391,7 +1536,7 @@ fn push_code_block(
     match crate::tui::syntax::highlight(&code, lang, code_theme_is_dark(t)) {
         Some(per_line) => {
             let inner = width.saturating_sub(2).max(4);
-            for segs in &per_line {
+            for segs in per_line.iter() {
                 push_colored_code_line(lines, segs, inner, t);
             }
         }

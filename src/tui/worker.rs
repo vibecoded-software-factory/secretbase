@@ -410,6 +410,12 @@ impl WorkerHandle {
         let (req_tx, req_rx) = channel::<WorkerRequest>();
         let resp_tx = self.resp_tx.as_ref().expect("resp_tx present").clone();
         let join = std::thread::spawn(move || {
+            // One-shot startup chores on this idle lane, off the render
+            // thread: warm the syntect grammar/theme dumps (so the first
+            // rendered code block doesn't pay the load hitch) and sweep
+            // stale entries from the on-disk image cache.
+            crate::tui::syntax::preload();
+            crate::tui::image::sweep_disk_cache();
             run_worker(&mut *keybase, req_rx, resp_tx);
         });
         self.extra_join = Some(join);

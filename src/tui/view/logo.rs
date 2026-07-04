@@ -1,5 +1,7 @@
 //! Logo renderer — FIGlet wordmark overlaid on the starfield.
 
+use std::sync::LazyLock;
+
 use figlet_rs::FIGfont;
 use ratatui::{
     Frame,
@@ -20,6 +22,35 @@ const SLANT_FONT: &str = include_str!("../assets/slant.flf");
 /// Crate version string for the centered subtitle.
 const VERSION: &str = "v0.1.0";
 
+/// The two wordmark blocks ("secret" / "base"), kerned and trimmed of blank
+/// rows. The FIGlet output is constant, so it is rendered **once** — the
+/// splash redraws at spinner cadence during boot, and re-parsing the whole
+/// `.flf` per frame was measurable waste. Falls back to plain text if the
+/// font fails to load (highly unlikely with embedded data) — a panic here
+/// would crash the TUI on the very first frame.
+static FIG_WORDS: LazyLock<(Vec<String>, Vec<String>)> = LazyLock::new(|| {
+    let font = FIGfont::from_content(SLANT_FONT)
+        .ok()
+        .or_else(|| FIGfont::standard().ok());
+    let (top, bottom) = match font {
+        Some(font) => (kern(&font, "secret"), kern(&font, "base")),
+        None => ("secret".to_string(), "base".to_string()),
+    };
+    (trim_blank_rows(&top), trim_blank_rows(&bottom))
+});
+
+/// Drops leading/trailing all-blank rows from a newline-joined FIGlet block.
+fn trim_blank_rows(s: &str) -> Vec<String> {
+    let ls: Vec<&str> = s.lines().collect();
+    let a = ls.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
+    let b = ls
+        .iter()
+        .rposition(|l| !l.trim().is_empty())
+        .map(|i| i + 1)
+        .unwrap_or(ls.len());
+    ls[a..b].iter().map(|l| l.to_string()).collect()
+}
+
 /// Renders the logo + version + surrounding starfield into `area`.
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
@@ -30,34 +61,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let style_inactive = Style::default().fg(t.inactive);
     let style_accent = Style::default().fg(t.accent);
 
-    // Render the FIGlet text into two stacked words, **kerned** so the letters
-    // sit tight and each word reads as a unit (the slant font's default spacing
-    // spreads "secret"/"base" enough to look like separate chunks). Fall back to
-    // plain text if the font fails to load (highly unlikely with embedded data)
-    // — a panic here would crash the TUI on the very first frame.
-    let (fig_top, fig_bottom) = {
-        let font = FIGfont::from_content(SLANT_FONT)
-            .ok()
-            .or_else(|| FIGfont::standard().ok());
-        match font {
-            Some(font) => (kern(&font, "secret"), kern(&font, "base")),
-            None => ("secret".to_string(), "base".to_string()),
-        }
-    };
-
-    let trim = |s: &str| -> Vec<String> {
-        let ls: Vec<&str> = s.lines().collect();
-        let a = ls.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
-        let b = ls
-            .iter()
-            .rposition(|l| !l.trim().is_empty())
-            .map(|i| i + 1)
-            .unwrap_or(ls.len());
-        ls[a..b].iter().map(|l| l.to_string()).collect()
-    };
-
-    let r1_owned = trim(&fig_top);
-    let r2_owned = trim(&fig_bottom);
+    // The two stacked words, **kerned** so the letters sit tight and each word
+    // reads as a unit (the slant font's default spacing spreads "secret"/"base"
+    // enough to look like separate chunks). Rendered once — see [`FIG_WORDS`].
+    let (r1_owned, r2_owned) = &*FIG_WORDS;
     let r1: Vec<&str> = r1_owned.iter().map(String::as_str).collect();
     let r2: Vec<&str> = r2_owned.iter().map(String::as_str).collect();
 

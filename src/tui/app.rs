@@ -381,6 +381,7 @@ pub enum SwitcherRow {
 
 /// A row of the inbox conversation tree: a collapsible group header
 /// (Direct messages / a team) or a conversation leaf.
+#[derive(Clone)]
 pub enum TreeRow {
     /// Group header. `key` is the collapse key ([`App::DMS_KEY`] or the team
     /// name); `unread` is the count of unread conversations in the group.
@@ -420,6 +421,10 @@ pub struct App {
     pub conversations_lowered: Vec<LoweredConversation>,
     /// Indices into `conversations` after filter + search are applied.
     pub filtered_cache: Vec<usize>,
+    /// Cached flattened tree rows (groups + visible conversation leaves) —
+    /// see [`Self::rebuild_tree_rows`]. Read per frame via
+    /// [`Self::tree_rows`]; rebuilt only when an input changes.
+    pub tree_rows_cache: Vec<TreeRow>,
     /// First visible row in the conversation tree — driven by scrolling.
     pub list_scroll: usize,
     /// Error from the **last inbox `list`** — kept so the empty tree shows a
@@ -516,6 +521,21 @@ pub struct App {
     /// the conversation has no pin (or the pin event is older than
     /// the loaded history).
     pub pinned_msg_id: Option<u64>,
+    /// Latest channel topic/headline in the loaded history — the chat's
+    /// adaptive header line, cached by [`Self::rebuild_msg_meta`] so the
+    /// render doesn't rescan the history per frame. Zeroized on drop
+    /// (it's chat content).
+    pub conv_headline: Option<zeroize::Zeroizing<String>>,
+    /// `message id → index into `messages`` for O(1) lookups (reply
+    /// quotes, the pin header). Rebuilt by [`Self::rebuild_msg_meta`].
+    pub msg_index: HashMap<u64, usize>,
+    /// Invalidation epoch for the per-message rendered-lines cache
+    /// (`view::conversation`). Bumped by
+    /// [`Self::invalidate_msg_render_cache`] whenever an input that feeds a
+    /// message's rendered block changes outside the block itself: the
+    /// history (via [`Self::rebuild_msg_meta`]), the theme, a setting, or
+    /// the emoji catalogue.
+    pub msg_cache_epoch: u64,
     /// **Session-local** highest message id already *seen* per conversation
     /// (keyed by conv id). Recorded when a conversation is left / switched away
     /// from; on the next open it seeds [`Self::unread_boundary`] so the
@@ -596,6 +616,17 @@ pub struct App {
     pub emojis_loaded: bool,
     /// Whether an `emojilist` fetch is in flight (de-dupes the request).
     pub emojis_loading: bool,
+    /// Lookup index over [`Self::emojis`]: both the `alias` and the `display`
+    /// glyph map to the entry's index (earliest catalogue entry wins, matching
+    /// the linear-scan semantics it replaces). Rebuilt whenever `emojis` is
+    /// assigned — reaction chips resolve through this instead of scanning the
+    /// ~1.9k-entry catalogue per chip per frame.
+    pub emoji_index: HashMap<String, usize>,
+    /// Cached reaction-picker rows: indices into [`Self::emojis`] surviving
+    /// the current query, frecency-sorted. Rebuilt by
+    /// [`Self::rebuild_emoji_filter`] on keystroke / catalogue change — never
+    /// per frame.
+    pub emoji_filtered: Vec<usize>,
     /// Per-alias reaction usage this session — floats the most-used emojis
     /// to the top of the picker (Discord-style frecency).
     pub emoji_uses: HashMap<String, u32>,
@@ -919,7 +950,7 @@ impl App {
             .or(Some(theme::Preset::DEFAULT))
             .and_then(|p| theme::Preset::ALL.iter().position(|&q| q == p))
             .unwrap_or(0);
-        Self {
+        let mut app = Self {
             screen: Screen::Splash,
             focus: Focus::Tree,
             status_filter: StatusFilter::All,
@@ -929,6 +960,7 @@ impl App {
             conversations: Vec::new(),
             conversations_lowered: Vec::new(),
             filtered_cache: Vec::new(),
+            tree_rows_cache: Vec::new(),
             list_scroll: 0,
             inbox_error: None,
             teams: Vec::new(),
@@ -962,6 +994,9 @@ impl App {
             messages_max_back: 0,
             new_since_scroll: 0,
             pinned_msg_id: None,
+            conv_headline: None,
+            msg_index: HashMap::new(),
+            msg_cache_epoch: 0,
             compose_open: false,
             compose: LineEditor::default(),
             edit_target_id: None,
@@ -981,6 +1016,8 @@ impl App {
             emojis: crate::domain::emoji::standard(),
             emojis_loaded: false,
             emojis_loading: false,
+            emoji_index: HashMap::new(),
+            emoji_filtered: Vec::new(),
             emoji_uses: HashMap::new(),
             switcher: LineEditor::default(),
             switcher_selected: 0,
@@ -1061,12 +1098,50 @@ impl App {
             clipboard,
             opener,
             settings,
+        };
+        app.rebuild_emoji_index();
+        app.rebuild_emoji_filter();
+        app
+    }
+
+    /// Rebuilds [`Self::emoji_index`] from [`Self::emojis`]. Call after every
+    /// assignment to `emojis`.
+    pub fn rebuild_emoji_index(&mut self) {
+        self.emoji_index = HashMap::with_capacity(self.emojis.len() * 2);
+        for (i, e) in self.emojis.iter().enumerate() {
+            self.emoji_index.entry(e.alias.clone()).or_insert(i);
+            self.emoji_index.entry(e.display.clone()).or_insert(i);
         }
     }
 
-    /// Indices into [`Self::emojis`] matching the reaction-picker query
-    /// (case-insensitive substring on the alias; all when empty).
-    pub fn filtered_emoji_indices(&self) -> Vec<usize> {
+    /// Resolves a stored reaction key — a `:shortcode:` or a raw glyph — to
+    /// its catalogue entry: matches by alias (colons trimmed) or by display
+    /// glyph, earliest catalogue entry winning, in O(1) via
+    /// [`Self::emoji_index`].
+    pub fn emoji_for_reaction(&self, key: &str) -> Option<&Emoji> {
+        let alias = key.trim_matches(':');
+        let a = self.emoji_index.get(alias).copied();
+        let d = self.emoji_index.get(key).copied();
+        let idx = match (a, d) {
+            (Some(x), Some(y)) => x.min(y),
+            (Some(x), None) | (None, Some(x)) => x,
+            (None, None) => return None,
+        };
+        self.emojis.get(idx)
+    }
+
+    /// Indices into [`Self::emojis`] matching the reaction-picker query —
+    /// the cached result of [`Self::rebuild_emoji_filter`]. The picker view
+    /// reads this per frame; the filter/sort over the ~1.9k-entry catalogue
+    /// runs only on a keystroke / catalogue change, not per draw.
+    pub fn filtered_emoji_indices(&self) -> &[usize] {
+        &self.emoji_filtered
+    }
+
+    /// Recomputes [`Self::emoji_filtered`] from the reaction-picker query
+    /// (case-insensitive substring on the keywords; all when empty). Call
+    /// whenever the query, the catalogue, or the frecency ranking changes.
+    pub fn rebuild_emoji_filter(&mut self) {
         let q = self.react.text().trim().to_lowercase();
         let mut idx: Vec<usize> = self
             .emojis
@@ -1089,7 +1164,7 @@ impl App {
                 .unwrap_or(0);
             ub.cmp(&ua)
         });
-        idx
+        self.emoji_filtered = idx;
     }
 
     /// Conversations matching the quick-switcher query, as indices into
@@ -1199,6 +1274,14 @@ impl App {
         self.settings_theme_idx = idx;
         self.theme = Theme::from_palette(&p.palette());
         self.settings.write_theme_name(p.name());
+        // Message blocks bake theme colours into their spans.
+        self.invalidate_msg_render_cache();
+    }
+
+    /// Bumps [`Self::msg_cache_epoch`] so the render thread drops its cached
+    /// per-message blocks on the next frame.
+    pub fn invalidate_msg_render_cache(&mut self) {
+        self.msg_cache_epoch = self.msg_cache_epoch.wrapping_add(1);
     }
 
     /// The display value of a Settings row.
@@ -1304,6 +1387,9 @@ impl App {
             }
         };
         self.settings.write_setting(key, &value);
+        // Several settings feed message blocks (emoji/icon style, image
+        // protocol) — invalidating on any adjust is cheap and can't go stale.
+        self.invalidate_msg_render_cache();
     }
 
     /// Convenience: whether the worker is currently processing a
@@ -1354,6 +1440,9 @@ impl App {
         self.settings_cache.muted = ids.clone();
         self.settings
             .write_setting("muted", &format!("\"{}\"", ids.join(",")));
+        // Mute gates `conv_is_unread`, which the tree's group unread counts
+        // derive from — refresh the cached rows so the badge updates now.
+        self.rebuild_tree_rows();
         now_on
     }
 
@@ -1597,15 +1686,21 @@ impl App {
             .collect()
     }
 
-    /// Whether the `@`-mention popup should be shown / capture keys — only in
-    /// the chat's compose mode with at least one match.
-    pub fn mention_popup_active(&self) -> bool {
+    /// The cheap state gate for the `@`-mention popup — everything except the
+    /// (allocating) match computation, so a caller that already has the
+    /// matches in hand doesn't recompute them just to test the gate.
+    pub fn mention_popup_gate(&self) -> bool {
         self.focus == Focus::Chat
             && self.screen == Screen::Inbox
             && self.open_conv_id.is_some()
             && self.selected_msg_idx.is_none()
             && self.edit_target_id.is_none()
-            && !self.mention_matches().is_empty()
+    }
+
+    /// Whether the `@`-mention popup should be shown / capture keys — only in
+    /// the chat's compose mode with at least one match.
+    pub fn mention_popup_active(&self) -> bool {
+        self.mention_popup_gate() && !self.mention_matches().is_empty()
     }
 
     /// Updates `last_activity` to "now" — called on every keypress and
@@ -1633,13 +1728,32 @@ impl App {
             .collect();
     }
 
-    /// Recomputes [`Self::pinned_msg_id`] by scanning the loaded
-    /// history for the most recent `Pin` system message. Called once
-    /// after every load — pinning/unpinning emits a system message
-    /// itself, so a fresh read is enough to keep the indicator
-    /// accurate.
-    pub fn rebuild_pinned(&mut self) {
+    /// Recomputes the per-history projections — [`Self::pinned_msg_id`],
+    /// [`Self::conv_headline`] and [`Self::msg_index`] — by scanning the
+    /// loaded history once. Called after every mutation of
+    /// [`Self::messages`] (load, live append, clear), so the render path
+    /// never rescans the whole history per frame for them.
+    pub fn rebuild_msg_meta(&mut self) {
         use crate::domain::MessageContent;
+        // Any history mutation invalidates the per-message render cache
+        // (an edit re-read keeps ids but changes their bodies).
+        self.invalidate_msg_render_cache();
+        // O(1) id → index lookups (reply quotes, the pin header). Projected
+        // histories have unique ids; a duplicate would keep the later row,
+        // matching what the reader sees.
+        self.msg_index = self
+            .messages
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (m.id, i))
+            .collect();
+        // Latest channel topic/headline — the chat's adaptive header.
+        self.conv_headline = self.messages.iter().rev().find_map(|m| match &m.content {
+            MessageContent::Headline { headline } if !headline.trim().is_empty() => {
+                Some(zeroize::Zeroizing::new(headline.clone()))
+            }
+            _ => None,
+        });
         // The first `Pin` event walking newest → oldest is
         // authoritative. A `target_id == 0` event (which Keybase uses
         // for "pin cleared") wins over older "pin set" events.
@@ -1682,11 +1796,12 @@ impl App {
         // Most-recent first — `active_at_ms` is monotonically growing.
         indices.sort_by_key(|&i| std::cmp::Reverse(self.conversations[i].active_at_ms));
         self.filtered_cache = indices;
+        self.rebuild_tree_rows();
         // Land the tree cursor on the first conversation (skipping the leading
         // group header) so actions that need a selected conversation work
         // right after a load / filter / search change.
-        let rows = self.tree_rows();
-        self.tree_selected = rows
+        self.tree_selected = self
+            .tree_rows_cache
             .iter()
             .position(|r| matches!(r, TreeRow::Conv { .. }))
             .unwrap_or(0);
@@ -1705,11 +1820,22 @@ impl App {
     /// occur in a team name, so it never collides).
     pub const DMS_KEY: &'static str = "\u{0}dms";
 
-    /// Flattened rows of the conversation **tree**: a "Direct messages" group
-    /// then one group per team, each (unless collapsed) followed by its
-    /// conversations. Built from `filtered_cache` (already status/search
-    /// filtered, recency-sorted). A non-empty search force-expands all groups.
-    pub fn tree_rows(&self) -> Vec<TreeRow> {
+    /// Flattened rows of the conversation **tree** — the cached result of
+    /// [`Self::rebuild_tree_rows`]. Rendering and cursor math read this per
+    /// frame; the O(teams × conversations) build runs only when an input
+    /// changes (filter/search rebuild, fold/unfold, mute, reveal).
+    pub fn tree_rows(&self) -> &[TreeRow] {
+        &self.tree_rows_cache
+    }
+
+    /// Rebuilds [`Self::tree_rows_cache`]: a "Direct messages" group then one
+    /// group per team, each (unless collapsed) followed by its conversations.
+    /// Built from `filtered_cache` (already status/search filtered,
+    /// recency-sorted). A non-empty search force-expands all groups. Call
+    /// after mutating anything the rows derive from: `filtered_cache` /
+    /// `conversations` (via [`Self::rebuild_filter`], which calls this),
+    /// `expanded`, `muted`, or an `unread` flag.
+    pub fn rebuild_tree_rows(&mut self) {
         let leaves = &self.filtered_cache;
         let is_team = |i: usize| self.conversations[i].channel.members_type.is_team();
         let force_expand = !self.search.text().trim().is_empty();
@@ -1761,7 +1887,7 @@ impl App {
         for team in teams {
             push_group(&mut rows, team.clone(), team, true);
         }
-        rows
+        self.tree_rows_cache = rows;
     }
 
     /// Toggles a tree group's collapsed state (groups start collapsed).
@@ -1769,6 +1895,7 @@ impl App {
         if !self.expanded.remove(key) {
             self.expanded.insert(key.to_string());
         }
+        self.rebuild_tree_rows();
     }
 
     /// Total number of conversations flagged as unread. Surfaced in

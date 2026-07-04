@@ -195,11 +195,12 @@ pub fn react(app: &mut App, key: KeyEvent) {
         KeyCode::Enter => chat::request_send_reaction(app),
         _ => {
             // Typing edits the search query; reset the highlight to the top
-            // match whenever the query actually changes.
+            // match (and refilter the catalogue) whenever the query changes.
             let before = app.react.text().to_string();
             common::route_line_editor(&mut app.react, key);
             if app.react.text() != before {
                 app.react_selected = 0;
+                app.rebuild_emoji_filter();
             }
         }
     }
