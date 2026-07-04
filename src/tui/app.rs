@@ -1807,6 +1807,27 @@ impl App {
             .unwrap_or(0);
     }
 
+    /// [`Self::rebuild_filter`] for **resyncs and bumps**: keeps the tree
+    /// cursor on the same conversation (found again by id) instead of
+    /// re-seating it on the first row. A recency re-sort from a push message,
+    /// a mark-read, or a background refresh must not yank the cursor while
+    /// the user is navigating — an id survives the re-sort, a position
+    /// doesn't. Falls back to the first row when the conversation left the
+    /// tree (filtered out / removed). A genuinely **new** search/filter
+    /// should use `rebuild_filter`, where snapping to the best match is the
+    /// right behaviour.
+    pub fn rebuild_filter_preserving_cursor(&mut self) {
+        let prev_id = self.selected_conversation().map(|c| c.id.clone());
+        self.rebuild_filter();
+        if let Some(id) = prev_id
+            && let Some(pos) = self.tree_rows_cache.iter().position(
+                |r| matches!(r, TreeRow::Conv { idx } if self.conversations[*idx].id == id),
+            )
+        {
+            self.tree_selected = pos;
+        }
+    }
+
     /// The conversation under the tree cursor, if it's on a conversation row
     /// (not a group header).
     pub fn selected_conversation(&self) -> Option<&Conversation> {
