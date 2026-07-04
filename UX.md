@@ -70,7 +70,13 @@ conversation on normal terminals.
     (`chat::reveal_in_tree` — expand its group + move the cursor). There is **no
     loading skeleton** — the inbox is only ever entered with its conversations
     already loaded (the splash doubles as the loading screen; see *Boot &
-    loading* below), so the tree never renders empty/half-loaded.
+    loading* below), so the tree never renders empty/half-loaded. **Empty states**
+    (`inbox::draw_tree_notice`) fill the panel with a friendly bold headline +
+    dim hints instead of a blank list: a failed load shows `⚠ Couldn't load
+    chats` + the error + `r / F5 to retry`; a genuinely empty inbox shows `No
+    conversations yet` + `n to start one`; and a filter/search that matches
+    nothing shows `No chats match "…"` (+ `Esc clears the filter`), `No unread
+    chats`, or `No chats to show` per the active filter.
   - the right pane is `conversation::draw_chat` (messages + compose; the header
     name/search are on the shared top row) when a conversation is open, else a
     placeholder. `Focus::Chat` routes keys to `input::conversation::handle`

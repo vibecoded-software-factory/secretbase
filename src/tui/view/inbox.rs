@@ -98,6 +98,37 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+/// A friendly notice inside the Chats panel (empty inbox / no matches): a bold
+/// headline + dim hint lines, reusing the panel chrome so it reads as a state,
+/// not a glitch.
+fn draw_tree_notice(frame: &mut Frame, app: &App, area: Rect, head: &str, hints: &[&str]) {
+    let t = &app.theme;
+    let focused = app.focus == Focus::Tree;
+    let block = titled_block("─[Alt+C]-Chats", focused, app);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("  {head}"),
+            Style::default()
+                .fg(t.foreground)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+    for h in hints {
+        lines.push(Line::from(Span::styled(
+            format!("  {h}"),
+            Style::default().fg(t.dim),
+        )));
+    }
+    frame.render_widget(
+        ratatui::widgets::Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false }),
+        inner,
+    );
+}
+
 /// Left pane: the conversation **tree** — Direct messages + a group per team,
 /// collapsible, each (unless folded) followed by its conversations.
 fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -132,8 +163,36 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         );
         return;
     }
+    // Signed in and loaded, but the inbox is genuinely empty (no conversations
+    // at all) — a friendly welcome instead of a blank list.
+    if app.conversations.is_empty() {
+        draw_tree_notice(
+            frame,
+            app,
+            area,
+            "No conversations yet",
+            &["n to start one", "r / F5 to refresh"],
+        );
+        return;
+    }
     let icon_set = crate::tui::icons::resolve(&app.settings_cache.icon_style);
     let model = app.tree_rows();
+    // Conversations exist, but the active filter / search matches none of them.
+    if model.is_empty() {
+        let q = app.search.text().trim().to_string();
+        let (head, hint) = if !q.is_empty() {
+            (
+                format!("No chats match \u{201c}{q}\u{201d}"),
+                "Esc clears the filter",
+            )
+        } else if matches!(app.status_filter, crate::domain::StatusFilter::Unread) {
+            ("No unread chats".to_string(), "everything's read \u{2713}")
+        } else {
+            ("No chats to show".to_string(), "n to start one")
+        };
+        draw_tree_notice(frame, app, area, &head, &[hint]);
+        return;
+    }
     let budget = (area.width as usize).saturating_sub(7).max(6);
 
     let rows: Vec<Row<'static>> = model
