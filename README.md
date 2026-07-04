@@ -38,7 +38,9 @@ A working terminal client for everyday Keybase chat. Highlights:
   pin / reply, optimistic send with resend-on-failure, `@`-mention
   autocomplete, inline markdown (`*bold*`, `_italic_`, `~strike~`,
   `` `code` ``, quotes) and **syntax-highlighted** fenced code blocks
-  (` ```rust ` …, via `syntect`).
+  (` ```rust ` …, via `syntect`). The stream **groups consecutive messages by
+  author** (per-user colored names), with **day separators** and a **new
+  messages** marker.
 * **Attachments**: upload via the built-in file picker, download to a chosen
   folder, and inline image thumbnails / animated-GIF playback via `chafa`.
 * **Search**: local fuzzy filter, server-side inbox search (`Ctrl+G`),

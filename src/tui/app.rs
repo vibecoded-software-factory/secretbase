@@ -511,6 +511,17 @@ pub struct App {
     /// the conversation has no pin (or the pin event is older than
     /// the loaded history).
     pub pinned_msg_id: Option<u64>,
+    /// **Session-local** highest message id already *seen* per conversation
+    /// (keyed by conv id). Recorded when a conversation is left / switched away
+    /// from; on the next open it seeds [`Self::unread_boundary`] so the
+    /// message stream can draw a `new messages` divider above anything that
+    /// arrived since. Not persisted (a fresh run starts with no baseline).
+    pub conv_last_seen: HashMap<String, u64>,
+    /// For the **currently open** conversation, the message id below-or-equal to
+    /// which everything was already seen last time it was open — the anchor for
+    /// the `new messages` divider. `None` on a first-ever open (no baseline) or
+    /// when nothing new has arrived. Set on open, cleared on close.
+    pub unread_boundary: Option<u64>,
     /// Optimistic send queue: messages shown immediately and tracked
     /// through `Pending → Delivered → Failed`. Kept separate from
     /// `messages` so a re-read (which replaces `messages` wholesale)
@@ -928,6 +939,8 @@ impl App {
             member_add_input: LineEditor::default(),
             member_confirm_remove: None,
             open_conv_id: None,
+            conv_last_seen: HashMap::new(),
+            unread_boundary: None,
             messages: Vec::new(),
             outbox: Vec::new(),
             file_picker: None,

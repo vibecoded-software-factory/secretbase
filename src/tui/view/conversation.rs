@@ -11,7 +11,10 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 
-use crate::domain::{AttachmentInfo, Message, MessageContent, SystemInfo, message_time};
+use crate::domain::{
+    AttachmentInfo, Message, MessageContent, SystemInfo, clock_time, day_divider_label,
+    message_time, same_local_day,
+};
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
@@ -331,7 +334,51 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // true when an animated GIF is on screen.
     app.gif_animating = false;
     let symbol_imgs = symbol_image_lines(app, img_w);
+    // Grouping / day-divider / unread-marker state (F3). Dividers are pushed
+    // BEFORE each message's `start` is captured, so they fall outside every
+    // `spans_map` / image range and stay non-selectable.
+    let mut prev: Option<(&str, u64, bool)> = None;
+    let mut prev_day_ts: Option<u64> = None;
+    let unread_boundary = app.unread_boundary;
+    let mut marker_done = false;
     for (idx, m) in app.messages.iter().enumerate() {
+        let m_is_system = is_system_content(&m.content);
+        // Day divider when the local day changes (or before the first dated msg).
+        let new_day = m.sent_at != 0
+            && match prev_day_ts {
+                Some(p) => !same_local_day(p, m.sent_at),
+                None => true,
+            };
+        if new_day {
+            let label = day_divider_label(m.sent_at, now_s);
+            if !label.is_empty() {
+                lines.push(divider_line(&label, t.dim, body_width));
+            }
+            prev_day_ts = Some(m.sent_at);
+        }
+        // `new messages` divider — once, before the first message newer than the
+        // session's last-seen id, and only when a seen message sits above it.
+        if !marker_done
+            && let Some(b) = unread_boundary
+            && m.id > b
+            && app.messages[..idx].iter().any(|x| x.id <= b)
+        {
+            lines.push(divider_line("new messages", t.conv_unread, body_width));
+            marker_done = true;
+        }
+        // Hide the header when this message continues the previous one's run.
+        let needs_header = m.reply_to.is_some() || m.edited || app.pinned_msg_id == Some(m.id);
+        let grouped = group_continues(
+            prev,
+            &m.sender,
+            m.sent_at,
+            m_is_system,
+            needs_header,
+            new_day,
+            GROUP_WINDOW_SECS,
+        );
+        prev = Some((&m.sender, m.sent_at, m_is_system));
+
         let start = lines.len();
         let is_selected = app.selected_msg_idx == Some(idx);
         // Marked messages (multi-select for copy) get the same shading as the
@@ -341,7 +388,15 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             selected_line = Some(start);
         }
         let mut local_img: Vec<ImgReservation> = Vec::new();
-        let mut block = message_lines(m, now_s, app, &t, body_width, &mut local_img, &symbol_imgs);
+        let mut block = message_lines(
+            m,
+            app,
+            &t,
+            body_width,
+            &mut local_img,
+            &symbol_imgs,
+            !grouped,
+        );
         // Block-relative row ranges occupied by image thumbnails — these stay
         // unshaded so the selection background doesn't paint over the graphic.
         let img_ranges: Vec<(usize, usize)> = local_img
@@ -371,8 +426,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         if is_selected && app.selected_msg_idx.is_some() {
             lines.extend(select_actions_lines(m, app, &t, body_width));
         }
-        // Compact: no blank line between messages — each message's
-        // "→ sender · time" header already separates them.
+        // Compact: no blank line between messages — a message's header (or, for
+        // a grouped follow-up, the sender's run above it) separates them.
         spans_map.push((start, lines.len(), idx));
     }
 
@@ -731,62 +786,111 @@ fn symbol_image_lines(
     map
 }
 
-fn message_lines(
-    m: &Message,
-    now_s: u64,
-    app: &App,
-    t: &crate::tui::theme::Theme,
-    width: usize,
-    img_res: &mut Vec<ImgReservation>,
-    symbol_imgs: &std::collections::HashMap<u64, Vec<Line<'static>>>,
-) -> Vec<Line<'static>> {
-    let is_system = matches!(
-        m.content,
+/// Messages within this many seconds of the previous one (same sender) collapse
+/// into a group — the follow-ups hide their header (Discord/Slack-style).
+const GROUP_WINDOW_SECS: u64 = 300;
+
+/// Whether a message renders as a dim system line (never grouped / per-user).
+fn is_system_content(c: &MessageContent) -> bool {
+    matches!(
+        c,
         MessageContent::System(_)
             | MessageContent::Metadata { .. }
             | MessageContent::Headline { .. }
             | MessageContent::Join { .. }
             | MessageContent::Leave { .. }
             | MessageContent::Pin { .. }
-    );
-    let is_me = !app.identity.username.is_empty() && m.sender == app.identity.username;
-    let sender_style = if is_system {
-        Style::default().fg(t.dim).add_modifier(Modifier::ITALIC)
-    } else if is_me {
-        Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-    } else {
-        // Each peer gets a stable, per-user hue (Discord/IRC-style) so authors
-        // are easy to tell apart at a glance — `me` stays accent, system dim.
-        Style::default()
-            .fg(t.user_color(&m.sender))
-            .add_modifier(Modifier::BOLD)
-    };
-    let when = message_time(m.sent_at, now_s);
-    let header_icon = if is_me && !is_system {
-        "→"
-    } else {
-        content_icon(&m.content)
-    };
-    let is_pinned = app.pinned_msg_id == Some(m.id);
-    let mut header_spans: Vec<Span<'static>> = vec![
-        Span::styled(format!(" {header_icon} "), Style::default().fg(t.dim)),
-        Span::styled(format!("{} ", m.sender), sender_style),
-        Span::styled(when, Style::default().fg(t.dim)),
-    ];
-    if m.edited {
-        header_spans.push(Span::styled(
-            " (edited)",
-            Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
-        ));
+    )
+}
+
+/// Whether the current message continues the previous one's visual group, so its
+/// header is hidden. Broken by a sender change, a gap over `window`s, a new day,
+/// a system message on either side, or the current message needing its own
+/// header (a reply, an edit, or the pinned message). `prev` is the previous
+/// message's `(sender, sent_at, is_system)`.
+fn group_continues(
+    prev: Option<(&str, u64, bool)>,
+    cur_sender: &str,
+    cur_sent: u64,
+    cur_is_system: bool,
+    cur_needs_header: bool,
+    new_day: bool,
+    window: u64,
+) -> bool {
+    if cur_is_system || cur_needs_header || new_day {
+        return false;
     }
-    if is_pinned {
-        header_spans.push(Span::styled(
-            "  📌 pinned",
-            Style::default().fg(t.conv_unread),
-        ));
+    match prev {
+        Some((ps, pt, false)) => ps == cur_sender && cur_sent.saturating_sub(pt) <= window,
+        _ => false,
     }
+}
+
+/// A centered `──── label ────` divider line (day separators, the unread
+/// marker) sized to the panel width and styled in `color`.
+fn divider_line(label: &str, color: Color, width: usize) -> Line<'static> {
+    let mid = format!(" {label} ");
+    let dashes = width.saturating_sub(mid.chars().count()).max(2);
+    let left = dashes / 2;
+    let right = dashes - left;
+    Line::from(Span::styled(
+        format!("{}{mid}{}", "─".repeat(left), "─".repeat(right)),
+        Style::default().fg(color),
+    ))
+}
+
+fn message_lines(
+    m: &Message,
+    app: &App,
+    t: &crate::tui::theme::Theme,
+    width: usize,
+    img_res: &mut Vec<ImgReservation>,
+    symbol_imgs: &std::collections::HashMap<u64, Vec<Line<'static>>>,
+    show_header: bool,
+) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(3);
-    lines.push(Line::from(header_spans));
+    // A grouped follow-up (same sender, within the window) renders body-only —
+    // only the first message of a run carries the sender/time header.
+    if show_header {
+        let is_system = is_system_content(&m.content);
+        let is_me = !app.identity.username.is_empty() && m.sender == app.identity.username;
+        let sender_style = if is_system {
+            Style::default().fg(t.dim).add_modifier(Modifier::ITALIC)
+        } else if is_me {
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+        } else {
+            // Each peer gets a stable, per-user hue (Discord/IRC-style) so
+            // authors are easy to tell apart — `me` stays accent, system dim.
+            Style::default()
+                .fg(t.user_color(&m.sender))
+                .add_modifier(Modifier::BOLD)
+        };
+        // The day divider carries the date, so the header only needs the clock.
+        let when = clock_time(m.sent_at);
+        let header_icon = if is_me && !is_system {
+            "→"
+        } else {
+            content_icon(&m.content)
+        };
+        let mut header_spans: Vec<Span<'static>> = vec![
+            Span::styled(format!(" {header_icon} "), Style::default().fg(t.dim)),
+            Span::styled(format!("{} ", m.sender), sender_style),
+            Span::styled(when, Style::default().fg(t.dim)),
+        ];
+        if m.edited {
+            header_spans.push(Span::styled(
+                " (edited)",
+                Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
+            ));
+        }
+        if app.pinned_msg_id == Some(m.id) {
+            header_spans.push(Span::styled(
+                "  📌 pinned",
+                Style::default().fg(t.conv_unread),
+            ));
+        }
+        lines.push(Line::from(header_spans));
+    }
     // Threaded reply: quote the message being replied to, above the body.
     if let Some(target) = m.reply_to {
         lines.push(reply_quote_line(target, app, t, width));
@@ -1574,6 +1678,66 @@ fn format_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn group_continues_only_for_same_sender_within_window() {
+        let w = 300;
+        let prev = Some(("alice", 1000, false));
+        // Same sender, 2 min later, plain message → grouped (header hidden).
+        assert!(group_continues(prev, "alice", 1120, false, false, false, w));
+        // Different sender → not grouped.
+        assert!(!group_continues(prev, "bob", 1120, false, false, false, w));
+        // Gap beyond the window → not grouped.
+        assert!(!group_continues(
+            prev,
+            "alice",
+            1000 + 301,
+            false,
+            false,
+            false,
+            w
+        ));
+        // A new day → not grouped even within the window.
+        assert!(!group_continues(prev, "alice", 1120, false, false, true, w));
+        // Needs its own header (reply / edit / pin) → not grouped.
+        assert!(!group_continues(prev, "alice", 1120, false, true, false, w));
+        // Current is a system message → not grouped.
+        assert!(!group_continues(prev, "alice", 1120, true, false, false, w));
+        // Previous was a system message → not grouped.
+        assert!(!group_continues(
+            Some(("sys", 1000, true)),
+            "alice",
+            1120,
+            false,
+            false,
+            false,
+            w
+        ));
+        // No previous message → not grouped.
+        assert!(!group_continues(
+            None, "alice", 1120, false, false, false, w
+        ));
+    }
+
+    #[test]
+    fn is_system_content_covers_non_message_kinds() {
+        assert!(is_system_content(&MessageContent::Join {
+            joiner: "a".into()
+        }));
+        assert!(is_system_content(&MessageContent::Pin { target_id: 1 }));
+        assert!(!is_system_content(&MessageContent::Text("hi".into())));
+    }
+
+    #[test]
+    fn divider_line_centers_label_within_width() {
+        let t = crate::tui::theme::Theme::default();
+        let line = divider_line("Today", t.dim, 30);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains(" Today "));
+        assert!(text.starts_with('─') && text.ends_with('─'));
+        // Never wider than the panel (the dash budget is width − label width).
+        assert!(text.chars().count() <= 30);
+    }
 
     #[test]
     fn styled_runs_wrap_and_carry_their_style() {

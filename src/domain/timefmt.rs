@@ -39,6 +39,58 @@ pub fn message_time(sent_at_s: u64, now_s: u64) -> String {
     sent.format("%d/%m/%Y %H:%M:%S").to_string()
 }
 
+/// Local wall-clock `HH:MM` for a message timestamp (Unix seconds), or empty
+/// when unknown. Used for the message-stream header once a **day divider**
+/// carries the date, so the per-message stamp only needs the time of day.
+pub fn clock_time(sent_at_s: u64) -> String {
+    use chrono::{Local, TimeZone};
+    if sent_at_s == 0 {
+        return String::new();
+    }
+    Local
+        .timestamp_opt(sent_at_s as i64, 0)
+        .single()
+        .map(|dt| dt.format("%H:%M").to_string())
+        .unwrap_or_default()
+}
+
+/// Whether two Unix-second timestamps fall on the same **local** calendar day.
+/// Used to decide where a day divider goes in the message stream.
+pub fn same_local_day(a_s: u64, b_s: u64) -> bool {
+    use chrono::{Local, TimeZone};
+    match (
+        Local.timestamp_opt(a_s as i64, 0).single(),
+        Local.timestamp_opt(b_s as i64, 0).single(),
+    ) {
+        (Some(a), Some(b)) => a.date_naive() == b.date_naive(),
+        _ => false,
+    }
+}
+
+/// Label for a day divider between messages: `Today` / `Yesterday` /
+/// `Mon 12 Feb` (localized weekday + date). Empty when the timestamp is
+/// unknown.
+pub fn day_divider_label(sent_at_s: u64, now_s: u64) -> String {
+    use chrono::{Duration, Local, TimeZone};
+    if sent_at_s == 0 || now_s == 0 {
+        return String::new();
+    }
+    let (Some(sent), Some(now)) = (
+        Local.timestamp_opt(sent_at_s as i64, 0).single(),
+        Local.timestamp_opt(now_s as i64, 0).single(),
+    ) else {
+        return String::new();
+    };
+    let (sd, nd) = (sent.date_naive(), now.date_naive());
+    if sd == nd {
+        "Today".to_string()
+    } else if sd == nd - Duration::days(1) {
+        "Yesterday".to_string()
+    } else {
+        sent.format("%a %d %b").to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,6 +120,34 @@ mod tests {
         assert_eq!(message_time(now - 3, now), "now");
         assert_eq!(message_time(now - 42, now), "now");
         assert_eq!(message_time(now - 90, now), "1m");
+    }
+
+    #[test]
+    fn clock_time_is_hh_mm_or_empty() {
+        assert_eq!(clock_time(0), "");
+        let s = clock_time(1_700_000_000);
+        assert_eq!(s.chars().count(), 5, "{s} should be HH:MM");
+        assert_eq!(s.matches(':').count(), 1, "{s} should have one colon");
+    }
+
+    #[test]
+    fn same_local_day_matches_only_the_same_day() {
+        let ts = 1_700_000_000;
+        assert!(same_local_day(ts, ts));
+        assert!(!same_local_day(ts, ts - 10 * 86_400));
+    }
+
+    #[test]
+    fn day_divider_label_today_and_older() {
+        let ts = 1_700_000_000;
+        assert_eq!(day_divider_label(ts, ts), "Today");
+        // Ten days earlier is neither Today nor Yesterday → a weekday+date label.
+        let older = day_divider_label(ts - 10 * 86_400, ts);
+        assert_ne!(older, "Today");
+        assert_ne!(older, "Yesterday");
+        assert!(older.contains(' '), "{older} should be a weekday + date");
+        // Unknown timestamp → empty.
+        assert_eq!(day_divider_label(0, ts), "");
     }
 
     #[test]

@@ -237,6 +237,20 @@ on their own:
   fill a row left-to-right, then continue on a new row below, never truncated
   (`conversation::reaction_lines`); the standalone reaction events are dropped from the
   stream so they don't show as stray `reacted :emoji: on msg #N` lines.
+  **Message grouping** (`conversation::render_messages`): consecutive messages
+  from the same sender within `GROUP_WINDOW_SECS` (5 min) collapse into one run
+  — only the first carries the `→/icon sender HH:MM` header (`domain::clock_time`),
+  the follow-ups render body-only (Discord/Slack-style); a **reply**, an **edit**,
+  or the **pinned** message always keeps its own header. **Day dividers**
+  (`── Today ── / Yesterday / Mon 12 Feb`, via `domain::day_divider_label` +
+  `same_local_day`) mark each local-day change and carry the date, so the header
+  only needs the clock. A **`new messages` divider** (`conv_unread`-coloured)
+  sits above the first message newer than what you'd already seen — anchored by
+  `App::unread_boundary`, seeded from the session-local `App::conv_last_seen`
+  (recorded when you leave / switch a conversation; no baseline on a first-ever
+  open, so no divider then). All three are drawn with `conversation::divider_line`
+  and pushed **outside** any `spans_map` / image reservation, so they're
+  non-selectable and never perturb click-to-select or the scroll math.
   **Edits fold in place** (`domain::fold_edits`): the standalone `edit`
   envelope is dropped, the target's body is replaced with the latest edit, and
   it carries a dim `(edited)` marker in its header (Discord-style) instead of a
