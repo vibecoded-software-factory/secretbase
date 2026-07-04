@@ -13,6 +13,7 @@ pub mod login;
 pub mod logo;
 pub mod members;
 pub mod new_conversation;
+pub mod palette;
 pub mod popups;
 pub mod search_global;
 pub mod settings;
@@ -60,8 +61,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::SearchGlobal
         | Screen::ConfirmDeleteMessage
         | Screen::React => Screen::Inbox,
-        // The quick switcher floats over wherever it was opened.
+        // The quick switcher / command palette float over wherever opened.
         Screen::QuickSwitcher => app.switcher_from,
+        Screen::CommandPalette => app.palette_from,
         // Help is scoped to (and renders over) the screen it was opened
         // from — use `help_from`, not an open-conversation heuristic, so
         // e.g. Teams isn't drawn as Inbox underneath.
@@ -152,6 +154,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::SearchGlobal => search_global::draw(frame, app),
         Screen::React => popups::react_input(frame, app),
         Screen::QuickSwitcher => popups::quick_switcher(frame, app),
+        Screen::CommandPalette => palette::draw(frame, app),
         _ => {}
     }
 

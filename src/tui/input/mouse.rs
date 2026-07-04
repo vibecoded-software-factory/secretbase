@@ -50,6 +50,10 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
             let len = app.switcher_selectable().len();
             app.switcher_selected = clamp_move(app.switcher_selected, delta, len);
         }
+        Screen::CommandPalette => {
+            let len = crate::tui::flows::palette::filtered_commands(app).len();
+            app.palette_selected = clamp_move(app.palette_selected, delta, len);
+        }
         Screen::Help => {
             app.help_scroll = if delta < 0 {
                 app.help_scroll.saturating_sub(3)

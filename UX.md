@@ -318,6 +318,34 @@ on reopen, and dropped on send. Editing an existing message isn't stashed.
 It's navigation, distinct from `/` (inbox filter) and `Ctrl+G` (message
 search).
 
+## Command palette (`Ctrl+P`)
+
+Sibling of the quick switcher, for **actions** instead of conversations
+(`Screen::CommandPalette`, opened with `Ctrl+P` from the inbox or Teams,
+returns to `App::palette_from`). A fuzzy query box over a **context-aware**
+list of commands (`flows::palette::palette_commands` — only the actions valid
+where you are: the per-conversation status verbs need a selected/open chat, the
+`Conversation` group only shows with a chat open, the channel browser only on a
+team). With an **empty** query the rows are grouped under category headers
+(`Chat` · `Conversation` · `Navigate` · `App`, via `palette_rows` →
+`PaletteRow::{Header,Cmd}`); **typing** collapses to a flat filtered list
+(substring over label + keywords). Each row shows its **keybinding**
+right-aligned, so the palette doubles as an executable cheat-sheet — the `F1`
+help is read-only, this *acts*. `↑/↓` select (over `filtered_commands`), `Enter`
+runs (`run_palette_action` restores the base screen then calls the very same
+`flows::*` the keybinding would — it never diverges), `Esc`/`Ctrl+P` cancel.
+Shares the standard modal geometry (`center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT)`,
+`view::palette`). `Ctrl+K` (chats) and `Ctrl+P` (actions) stay deliberately
+separate — two clear, single-purpose palettes.
+
+**Keep the command set in sync (hard rule).** The palette is now a **fourth**
+place that enumerates actions, alongside the footer hints, the `F1` help popup
+and the `README.md` keybinding tables. **Any new action or changed keybinding
+must be added/updated in `flows::palette::palette_commands` in the same change**
+— with the right category and its keybinding in the `keys` field — so the
+palette never lists a stale or missing command. Update all four together
+(footer · help popup · README tables · command palette).
+
 ## File picker (`tui::file_picker`)
 
 A self-contained, headless-safe file chooser (no GUI/portal dependency),
@@ -587,7 +615,8 @@ weight of the action before you press it. Every screen follows the same tiers:
   can't be undone in-app, it's `Shift`** (and still guarded by a confirm).
 - **`Ctrl` = global** — works from any focus, never confused with typed text:
   `Ctrl+C` quit (the **only** quit), `Ctrl+F` in-chat find, `Ctrl+G` global
-  search, `Ctrl+K` quick switcher, `Ctrl+W` positional pane nav.
+  search, `Ctrl+K` quick switcher, `Ctrl+P` command palette, `Ctrl+W`
+  positional pane nav.
 - **`Alt+letter` = jump to a panel** — each combo matches that panel's border
   tag: `Alt+F` Filter, `Alt+C` Chats, `Alt+M` Messages, `Alt+L` Log. These fire
   from any focus (even mid-compose), so a text field can't trap you. Compose
@@ -603,8 +632,10 @@ box) owns bare letters as typed text; a list doesn't type, so its letters are
 free to act. Putting actions on bare letters in lists (and only shifting to
 `Alt`/`Ctrl` where text input would collide) is what makes the app feel like a
 pro TUI instead of a chord soup. The footer shows only a few keys; the full
-per-screen list lives in the help popup and the `README.md` tables — **keep all
-three in sync**.
+per-screen list lives in the help popup, the `README.md` tables and the
+**command palette** (`flows::palette::palette_commands`) — **keep all four in
+sync** whenever an action or keybinding changes (footer · `F1` help · README
+tables · `Ctrl+P` command palette).
 
 ## Theme (`tui::theme`)
 

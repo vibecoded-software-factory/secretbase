@@ -44,6 +44,8 @@ pub enum Screen {
     React,
     /// Quick switcher (Ctrl+K) — fuzzy jump to any conversation.
     QuickSwitcher,
+    /// Command palette (Ctrl+P) — fuzzy list of context-aware actions.
+    CommandPalette,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.

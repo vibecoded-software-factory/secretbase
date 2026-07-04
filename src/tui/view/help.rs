@@ -87,6 +87,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Ctrl+Y", "copy label"),
             ("Ctrl+F", "search this conversation (jump to a match)"),
             ("Ctrl+K", "quick switcher — jump to a conversation"),
+            ("Ctrl+P", "command palette — run any action"),
             ("mouse", "click a message to select, scroll to page history"),
             ("Alt+V", "select mode — act on a message"),
             ("Alt+U", "unpin channel"),
@@ -233,6 +234,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     ("Ctrl+F", "in-chat find (open conversation)"),
                     ("Ctrl+G", "global search"),
                     ("Ctrl+K", "quick switcher — jump to a conversation"),
+                    ("Ctrl+P", "command palette — run any action"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
