@@ -314,6 +314,21 @@ fn or_dash(s: &str) -> String {
     }
 }
 
+/// Quotes `v` as a TOML string value for the settings writer. The reader
+/// (`settings_toml`'s `unquote`) does **not** process escape sequences, so
+/// instead of escaping, characters that would corrupt the config line
+/// (quotes, backslashes, control chars) are stripped. Today's callers only
+/// pass hex conversation ids — which never contain them — so this is a
+/// guard against a future caller widening the value domain, not a change
+/// in behaviour.
+fn toml_quoted(v: &str) -> String {
+    let clean: String = v
+        .chars()
+        .filter(|c| !c.is_control() && *c != '"' && *c != '\\')
+        .collect();
+    format!("\"{clean}\"")
+}
+
 /// `cur ± delta·step`, clamped to `[min, max]` (saturating, no underflow).
 fn step_clamp(cur: u64, delta: isize, step: u64, min: u64, max: u64) -> u64 {
     let next = cur as isize + delta * step as isize;
@@ -1417,7 +1432,7 @@ impl App {
         ids.sort();
         self.settings_cache.favorites = ids.clone();
         self.settings
-            .write_setting("favorites", &format!("\"{}\"", ids.join(",")));
+            .write_setting("favorites", &toml_quoted(&ids.join(",")));
         now_on
     }
 
@@ -1439,7 +1454,7 @@ impl App {
         ids.sort();
         self.settings_cache.muted = ids.clone();
         self.settings
-            .write_setting("muted", &format!("\"{}\"", ids.join(",")));
+            .write_setting("muted", &toml_quoted(&ids.join(",")));
         // Mute gates `conv_is_unread`, which the tree's group unread counts
         // derive from — refresh the cached rows so the badge updates now.
         self.rebuild_tree_rows();

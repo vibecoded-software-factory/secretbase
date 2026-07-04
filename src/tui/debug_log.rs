@@ -50,6 +50,15 @@ pub fn log(line: &str) {
 /// `unsafe` in modern Rust and is forbidden by the crate's
 /// `#![forbid(unsafe_code)]`).
 fn log_to(path: &std::path::Path, line: &str) {
+    // Refuse to write through a symlink: `open(append)` follows one, so a
+    // pre-planted `~/.secretbase.log -> /some/other/file` would redirect
+    // log lines wherever the link points. A regular file (or nothing yet)
+    // is required.
+    if let Ok(meta) = std::fs::symlink_metadata(path)
+        && !meta.is_file()
+    {
+        return;
+    }
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
@@ -118,6 +127,18 @@ mod tests {
         let body = fs::read_to_string(&path).unwrap();
         assert!(body.contains("old line"));
         assert!(body.contains("new line"));
+    }
+
+    #[test]
+    fn log_to_refuses_symlinked_path() {
+        let tmp = TempDir::new().unwrap();
+        let target = tmp.path().join("target.txt");
+        fs::write(&target, b"").unwrap();
+        let link = tmp.path().join("debug.log");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        log_to(&link, "should not land");
+        let body = fs::read_to_string(&target).unwrap();
+        assert!(body.is_empty(), "must not write through a symlink");
     }
 
     #[test]
