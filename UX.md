@@ -294,6 +294,14 @@ on their own:
   the reconciling re-read prunes it; on failure it stays as a red
   `✗ failed · Alt+R to resend`, preserving the body so **`Alt+R`** retries
   it. The compose is cleared at send time (the draft is safe in the outbox).
+- **Jump-to-latest cue** — when the reader is **scrolled up** in history and
+  messages arrive below the fold, a floating accent pill at the foot of the
+  viewport (`conversation::render_messages`) reads **`▼ N new · End`** (the count
+  of arrivals since you scrolled up, from `App::new_since_scroll`, bumped in
+  `chat::handle_incoming_message`), or `▼ latest · End` when merely scrolled up
+  with nothing new. It clears the instant the reader is back at the bottom
+  (`effective_back == 0`). Purely a paint over the last viewport row — it doesn't
+  touch the scroll / `spans_map` math.
 
 Loading states stay honest: the message viewer shows "Loading messages…"
 during the first fetch (not the empty-conversation prompt), and the unread
