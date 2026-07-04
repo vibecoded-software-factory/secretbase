@@ -797,6 +797,9 @@ pub struct App {
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     pub should_quit: bool,
+    /// Set once the worker response channel reports `Disconnected` (every
+    /// worker thread gone) so the failure is surfaced a single time.
+    pub worker_dead: bool,
     pub last_activity: Instant,
     /// Wall-clock timestamp of the last inbox load — used by the run
     /// loop's auto-refresh hook.
@@ -1091,6 +1094,7 @@ impl App {
             settings_theme_idx,
             settings_from: Screen::Inbox,
             should_quit: false,
+            worker_dead: false,
             last_activity: Instant::now(),
             last_inbox_load: Instant::now(),
             mouse_areas: MouseAreas::default(),
@@ -1517,6 +1521,14 @@ impl App {
     /// mismatch". Every `request_*` flow uses this instead of assigning
     /// `in_flight` directly.
     pub fn begin(&mut self, slot: InFlight) -> bool {
+        if self.worker_dead {
+            // No worker is alive to serve it — refuse instantly rather than
+            // claiming a slot whose response can never arrive.
+            self.set_action(ActionState::Error(
+                "worker thread died — restart secretbase".into(),
+            ));
+            return false;
+        }
         if self.in_flight.is_some() {
             self.push_cmd("worker request", false, "busy — request ignored");
             return false;
@@ -1524,6 +1536,51 @@ impl App {
         self.in_flight = Some(slot);
         self.request_started = Some(Instant::now());
         true
+    }
+
+    /// Unwedges the UI after the worker response channel closed — every
+    /// worker thread is gone, so no response will ever arrive. Releases the
+    /// in-flight slot (otherwise `busy_blocks` swallows keys forever) and
+    /// surfaces a persistent error, once.
+    pub fn on_worker_dead(&mut self) {
+        if self.worker_dead {
+            return;
+        }
+        self.worker_dead = true;
+        self.in_flight = None;
+        self.bg_inflight = false;
+        self.pending_batch = None;
+        self.set_action(ActionState::Error(
+            "worker thread died — keybase calls disabled; restart secretbase".into(),
+        ));
+        self.push_cmd("worker", false, "response channel closed — worker died");
+    }
+
+    /// Watchdog for a lost in-flight ticket: every `keybase` call has a
+    /// per-op timeout, so a claimed slot must resolve within the largest
+    /// configured budget. If it doesn't (worker died mid-call, response
+    /// dropped), release the slot so the UI doesn't stay busy forever.
+    /// Called once per run-loop tick.
+    pub fn watchdog_release_stuck_request(&mut self) {
+        let Some(started) = self.request_started else {
+            return;
+        };
+        if self.in_flight.is_none() {
+            return;
+        }
+        let budget = self
+            .settings_cache
+            .download_timeout_secs
+            .max(self.settings_cache.list_inbox_timeout_secs)
+            .saturating_add(30);
+        if started.elapsed() > std::time::Duration::from_secs(budget) {
+            self.in_flight = None;
+            self.pending_batch = None;
+            self.set_action(ActionState::Error(
+                "request got no response in time — released".into(),
+            ));
+            self.push_cmd("worker watchdog", false, "abandoned in-flight request");
+        }
     }
 
     /// Replaces the action state and resets the spinner tick counter so

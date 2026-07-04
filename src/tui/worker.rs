@@ -370,8 +370,10 @@ pub struct WorkerHandle {
     tx: Option<Sender<WorkerRequest>>,
     rx: Option<Receiver<WorkerResponse>>,
     join: Option<JoinHandle<()>>,
-    /// Kept so [`spawn_extra`](Self::spawn_extra) can clone it for a
-    /// background lane that ships onto the same response channel.
+    /// Held until [`spawn_extra`](Self::spawn_extra) **takes** it for the
+    /// background lane (same response channel). After that only the worker
+    /// threads hold senders, so a dead-workers state is observable as
+    /// `Disconnected` on the receive half.
     resp_tx: Option<Sender<WorkerResponse>>,
     extra_tx: Option<Sender<WorkerRequest>>,
     extra_join: Option<JoinHandle<()>>,
@@ -402,12 +404,17 @@ impl WorkerHandle {
     /// shipping onto the shared response channel. Used for the idle
     /// inbox auto-refresh so it never head-of-line-blocks the user's
     /// lane. Returns the request sender for that lane.
+    ///
+    /// Single-use: it **takes** the handle's response sender, so once both
+    /// lanes exist only the worker threads hold senders — if every worker
+    /// dies, the run loop's `try_recv` sees `Disconnected` and can unwedge
+    /// the UI instead of spinning "busy" forever.
     pub fn spawn_extra(
         &mut self,
         mut keybase: Box<dyn KeybasePort + Send>,
     ) -> Sender<WorkerRequest> {
         let (req_tx, req_rx) = channel::<WorkerRequest>();
-        let resp_tx = self.resp_tx.as_ref().expect("resp_tx present").clone();
+        let resp_tx = self.resp_tx.take().expect("spawn_extra is single-use");
         let join = std::thread::spawn(move || {
             // One-shot startup chores on this idle lane, off the render
             // thread: warm the syntect grammar/theme dumps (so the first
