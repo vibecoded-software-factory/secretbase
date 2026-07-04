@@ -9,13 +9,19 @@
 //!
 //! This is a **push** stream, distinct from the request/response
 //! [`super::session::ApiSession`]: it has no stdin protocol, it only
-//! emits. If the process dies (logged out, service restart) the reader
-//! thread ends and events simply stop — the periodic inbox resync is the
-//! safety net.
+//! emits. If the process dies (logged out, service restart, crash) a
+//! **supervisor thread respawns it with backoff** — real-time updates
+//! recover on their own instead of silently stopping for the rest of
+//! the session (the periodic inbox resync remains the safety net for
+//! anything missed while the stream was down, and a
+//! [`ChatEvent::StreamClosed`] tells the UI about the interruption).
 
 use std::io::{BufRead, BufReader, ErrorKind, Read};
 use std::process::{Child, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use zeroize::Zeroize;
@@ -24,14 +30,27 @@ use crate::domain::ChatEvent;
 
 use super::parse_message;
 
-/// Owns the listener subprocess + the channel its reader thread feeds.
-/// Dropping it kills the child (and the reader thread then sees EOF and
-/// exits), so there are no orphaned `keybase` processes.
+/// Maximum respawn backoff. Doubling from 1 s and capping here keeps a
+/// logged-out session (where `api-listen` exits immediately) from busy
+/// re-spawning, while a post-login retry lands within half a minute.
+const RESPAWN_BACKOFF_MAX_SECS: u64 = 30;
+
+/// A child that survived this long counts as a healthy run — the next
+/// failure starts the backoff from scratch instead of continuing it.
+const HEALTHY_RUN_SECS: u64 = 60;
+
+/// Owns the listener supervisor + the channel its reader feeds. Dropping
+/// it stops the supervisor and kills the current child, so there are no
+/// orphaned `keybase` processes.
 pub struct ChatListener {
-    child: Child,
+    /// Tells the supervisor to stop instead of respawning.
+    shutdown: Arc<AtomicBool>,
+    /// The currently-running child, shared with the supervisor: killing
+    /// it from Drop unblocks the supervisor's blocking read.
+    child: Arc<Mutex<Option<Child>>>,
     /// Receive half — parsed events. Moved out once with [`Self::take_rx`]
     /// into `App`; the guard itself stays alive in the run scope so the
-    /// child is killed on exit (Drop).
+    /// supervisor is stopped on exit (Drop).
     rx: Option<Receiver<ChatEvent>>,
 }
 
@@ -45,16 +64,20 @@ impl ChatListener {
 
 impl Drop for ChatListener {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.shutdown.store(true, Ordering::SeqCst);
+        if let Ok(mut slot) = self.child.lock()
+            && let Some(mut child) = slot.take()
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
-/// Spawns `keybase chat api-listen` and a reader thread that parses each
-/// JSON line into a [`ChatEvent`]. `--convs` also reports new/joined
-/// conversations; `--hide-exploding` skips ephemeral messages.
-pub fn spawn_chat_listener() -> std::io::Result<ChatListener> {
-    let mut child = Command::new("keybase")
+/// Spawns one `keybase chat api-listen` child. `--convs` also reports
+/// new/joined conversations; `--hide-exploding` skips ephemeral messages.
+fn spawn_child() -> std::io::Result<Child> {
+    Command::new("keybase")
         .args(["chat", "api-listen", "--convs", "--hide-exploding"])
         .stdin(Stdio::null())
         // Notices ("Listening for chat notifications…") go to stderr;
@@ -62,14 +85,76 @@ pub fn spawn_chat_listener() -> std::io::Result<ChatListener> {
         // wedge a full pipe.
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
-        .spawn()?;
-    let stdout = child.stdout.take().expect("stdout piped");
+        .spawn()
+}
+
+/// Spawns the listener and its supervisor thread. The first child is
+/// spawned synchronously so a missing `keybase` binary still surfaces as
+/// an `Err` to the caller; after that the supervisor owns the lifecycle,
+/// respawning the stream with backoff whenever it ends.
+pub fn spawn_chat_listener() -> std::io::Result<ChatListener> {
+    let child = spawn_child()?;
+    let slot = Arc::new(Mutex::new(Some(child)));
+    let shutdown = Arc::new(AtomicBool::new(false));
     let (tx, rx) = channel::<ChatEvent>();
-    std::thread::spawn(move || reader_loop(stdout, tx));
+    {
+        let slot = Arc::clone(&slot);
+        let shutdown = Arc::clone(&shutdown);
+        std::thread::spawn(move || supervise(slot, shutdown, tx));
+    }
     Ok(ChatListener {
-        child,
+        shutdown,
+        child: slot,
         rx: Some(rx),
     })
+}
+
+/// The supervisor: reads the current child until its stream ends, then —
+/// unless shutting down or the receiver is gone — reports the outage,
+/// waits out the backoff and respawns. A run longer than
+/// [`HEALTHY_RUN_SECS`] resets the backoff.
+fn supervise(slot: Arc<Mutex<Option<Child>>>, shutdown: Arc<AtomicBool>, tx: Sender<ChatEvent>) {
+    let mut backoff = Duration::from_secs(1);
+    loop {
+        let stdout = slot
+            .lock()
+            .ok()
+            .and_then(|mut s| s.as_mut().and_then(|c| c.stdout.take()));
+        if let Some(stdout) = stdout {
+            let started = Instant::now();
+            reader_loop(stdout, &tx);
+            // Reap the finished child (or the one Drop already killed).
+            if let Ok(mut s) = slot.lock()
+                && let Some(mut c) = s.take()
+            {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            if started.elapsed() >= Duration::from_secs(HEALTHY_RUN_SECS) {
+                backoff = Duration::from_secs(1);
+            }
+        }
+        if shutdown.load(Ordering::SeqCst) {
+            return;
+        }
+        // Tell the UI real-time updates were interrupted (send failure ⇒
+        // the app is gone — stop).
+        if tx.send(ChatEvent::StreamClosed).is_err() {
+            return;
+        }
+        std::thread::sleep(backoff);
+        backoff = (backoff * 2).min(Duration::from_secs(RESPAWN_BACKOFF_MAX_SECS));
+        if shutdown.load(Ordering::SeqCst) {
+            return;
+        }
+        // A spawn failure (keybase missing / transient) just loops and
+        // retries with backoff.
+        if let Ok(child) = spawn_child()
+            && let Ok(mut s) = slot.lock()
+        {
+            *s = Some(child);
+        }
+    }
 }
 
 /// Hard cap on one buffered listener line. A healthy `api-listen` emits one
@@ -94,7 +179,7 @@ enum LineRead {
 /// Drains stdout line-by-line, forwarding every parseable event. Exits
 /// on EOF / read error (process gone) or once the receiver is dropped.
 /// The line buffer is wiped between events (it holds chat plaintext).
-fn reader_loop(stdout: ChildStdout, tx: Sender<ChatEvent>) {
+fn reader_loop(stdout: ChildStdout, tx: &Sender<ChatEvent>) {
     let mut reader = BufReader::new(stdout);
     let mut buf: Vec<u8> = Vec::new();
     loop {
