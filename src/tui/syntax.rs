@@ -1,12 +1,12 @@
 //! Syntax highlighting for fenced code blocks, via [`syntect`].
 //!
 //! The heavy `SyntaxSet` / `ThemeSet` (the bundled Sublime grammars + themes)
-//! are loaded once, lazily, on the first code block rendered. Because the
-//! message viewer rebuilds every loaded message's lines on every frame, the
-//! per-block result is memoized by a hash of `(dark, lang, code)` so scrolling
-//! doesn't re-highlight — the cache is keyed on content, not panel width, so
-//! the cheap hard-wrap still happens fresh each frame and a resize needs no
-//! invalidation.
+//! are loaded lazily (and pre-warmed from a background worker at startup —
+//! [`preload`]). The per-block result is memoized by a hash of
+//! `(dark, lang, code)` so rebuilding a message's lines (on a history /
+//! width / theme change) doesn't re-highlight — the memo is keyed on
+//! content, not panel width, so the cheap hard-wrap re-runs and a resize
+//! needs no invalidation here.
 //!
 //! Only the **foreground** color of each token is used; the terminal background
 //! shows through, so highlighted code blends with any secretbase theme (and we
@@ -15,6 +15,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 use std::sync::LazyLock;
 
 use ratatui::style::Color;
@@ -40,13 +41,23 @@ const LIGHT_THEME: &str = "InspiredGitHub";
 thread_local! {
     /// `hash(dark, lang, code)` → highlighted segments per source line. The
     /// render thread is the only caller, so a `thread_local` cache needs no
-    /// locking. Cleared wholesale when it grows past [`MEMO_CAP`].
-    static MEMO: RefCell<HashMap<u64, Highlighted>> = RefCell::new(HashMap::new());
+    /// locking (and `Rc` hits are a pointer bump, not a deep clone of every
+    /// token string). Cleared wholesale when it grows past [`MEMO_CAP`].
+    static MEMO: RefCell<HashMap<u64, Rc<Highlighted>>> = RefCell::new(HashMap::new());
 }
 
 /// Upper bound on cached code blocks before the memo is dropped (a session
 /// viewing thousands of distinct snippets shouldn't grow unbounded).
 const MEMO_CAP: usize = 256;
+
+/// Forces the lazy `SyntaxSet`/`ThemeSet` loads. Called from a background
+/// worker thread at startup so the first *rendered* code block doesn't pay
+/// the dump-decompress hitch on the render thread (the `LazyLock`s are
+/// thread-safe; whoever gets there first does the load, everyone else waits).
+pub fn preload() {
+    let _ = &*SYNTAXES;
+    let _ = &*THEMES;
+}
 
 fn memo_key(dark: bool, lang: &str, code: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -66,7 +77,7 @@ fn to_ratatui(c: syntect::highlighting::Color) -> Color {
 /// with the trailing newline stripped. `None` when `lang` is empty/unknown (the
 /// caller then renders the block in a single flat color), so an unrecognised
 /// fence never throws away the code. `dark` selects the dark vs light theme.
-pub fn highlight(code: &str, lang: &str, dark: bool) -> Option<Highlighted> {
+pub fn highlight(code: &str, lang: &str, dark: bool) -> Option<Rc<Highlighted>> {
     if lang.is_empty() {
         return None;
     }
@@ -98,12 +109,13 @@ pub fn highlight(code: &str, lang: &str, dark: bool) -> Option<Highlighted> {
         out.push(segs);
     }
 
+    let out = Rc::new(out);
     MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if m.len() >= MEMO_CAP {
             m.clear();
         }
-        m.insert(key, out.clone());
+        m.insert(key, Rc::clone(&out));
     });
     Some(out)
 }

@@ -1858,7 +1858,7 @@ fn rebuild_pinned_finds_latest_pin_in_history() {
         },
         text_msg(3, "alice", "later"),
     ];
-    rig.app.rebuild_pinned();
+    rig.app.rebuild_msg_meta();
     assert_eq!(rig.app.pinned_msg_id, Some(1));
 }
 
@@ -1891,7 +1891,7 @@ fn rebuild_pinned_clears_when_target_zero() {
             mentions: Vec::new(),
         },
     ];
-    rig.app.rebuild_pinned();
+    rig.app.rebuild_msg_meta();
     assert_eq!(rig.app.pinned_msg_id, None);
 }
 
@@ -1899,7 +1899,7 @@ fn rebuild_pinned_clears_when_target_zero() {
 fn rebuild_pinned_yields_none_when_no_pin_in_history() {
     let mut rig = build_rig();
     rig.app.messages = vec![text_msg(1, "alice", "x")];
-    rig.app.rebuild_pinned();
+    rig.app.rebuild_msg_meta();
     assert_eq!(rig.app.pinned_msg_id, None);
 }
 

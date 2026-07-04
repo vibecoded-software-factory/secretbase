@@ -223,10 +223,9 @@ pub fn handle_mark_read_response(app: &mut App, result: Result<(), KeybaseError>
             if let Some(c) = app.conversations.iter_mut().find(|c| c.id == conv_id) {
                 c.unread = false;
             }
-            // Refresh the lowered cache + per-filter counts so the
-            // sidebar "Unread N" and the Unread filter membership stay
-            // consistent with the flipped flag, then rebuild the view.
-            app.rebuild_lowered();
+            // Rebuild the view so the Unread filter membership tracks the
+            // flipped flag. (The lowered projection only carries names/labels,
+            // so it doesn't need a rebuild for an unread change.)
             app.rebuild_filter();
             app.set_action(ActionState::Done("Marked as read".into()));
             app.push_cmd("keybase chat api mark", true, "ok");
@@ -442,6 +441,9 @@ fn enter_conversation(app: &mut App, id: String) {
     // session (None on a first-ever open → no divider).
     app.unread_boundary = app.conv_last_seen.get(&id).copied();
     app.messages.clear();
+    // Reset the per-history projections (pin / headline / id index) so the
+    // loading view can't show the previous conversation's pin or topic.
+    app.rebuild_msg_meta();
     app.messages_scroll = 0;
     app.new_since_scroll = 0;
     app.compose_open = true;
@@ -474,6 +476,7 @@ fn reveal_in_tree(app: &mut App, conv_id: &str) {
             App::DMS_KEY.to_string()
         };
         app.expanded.insert(key);
+        app.rebuild_tree_rows();
     }
     if let Some(pos) = app.tree_rows().iter().position(|r| {
         matches!(r, crate::tui::app::TreeRow::Conv { idx } if app.conversations[*idx].id == conv_id)
@@ -514,6 +517,7 @@ pub fn close_conversation(app: &mut App) {
     app.open_conv_id = None;
     app.unread_boundary = None;
     app.messages.clear();
+    app.rebuild_msg_meta();
     app.messages_scroll = 0;
     app.messages_next = None;
     app.messages_loading_older = false;
@@ -569,6 +573,25 @@ pub fn quick_switcher_open_selected(app: &mut App) {
 // ── Load messages (first page) ───────────────────────────────────────
 
 pub fn request_load_messages(app: &mut App) {
+    request_load_messages_num(app, MESSAGES_PER_PAGE);
+}
+
+/// Cap on a depth-preserving re-read ([`request_reload_messages`]), so a
+/// reader who paged back thousands of messages doesn't turn every control
+/// event into a huge fetch. Beyond it the oldest loaded scrollback is
+/// dropped (the plain first-page behaviour).
+const RELOAD_DEPTH_MAX: u32 = MESSAGES_PER_PAGE * 8;
+
+/// Quiet re-read of the open conversation that asks for **as many messages
+/// as are currently loaded** (min one page, capped) instead of just the
+/// first page — so a re-read triggered by an edit / delete / reaction /
+/// pin doesn't throw away the scrollback the reader paged into.
+pub fn request_reload_messages(app: &mut App) {
+    let loaded = u32::try_from(app.messages.len()).unwrap_or(RELOAD_DEPTH_MAX);
+    request_load_messages_num(app, loaded.clamp(MESSAGES_PER_PAGE, RELOAD_DEPTH_MAX));
+}
+
+fn request_load_messages_num(app: &mut App, num: u32) {
     let Some(conv_id) = app.open_conv_id.clone() else {
         app.set_action(ActionState::Error("No conversation open".into()));
         return;
@@ -596,7 +619,7 @@ pub fn request_load_messages(app: &mut App) {
     app.set_action(ActionState::Running("Loading messages…".into()));
     let _ = app.worker_tx.send(WorkerRequest::ReadMessages {
         channel,
-        num: MESSAGES_PER_PAGE,
+        num,
         peek,
         next_cursor: None,
     });
@@ -621,7 +644,7 @@ pub fn handle_load_messages_response(
             let n = app.messages.len();
             app.messages_next = next;
             app.messages_loading_older = false;
-            app.rebuild_pinned();
+            app.rebuild_msg_meta();
             // A control-op re-read (delete/edit/react) keeps the reader where
             // they were; a fresh open/refresh snaps to the latest message.
             if !std::mem::take(&mut app.preserve_msg_scroll) {
@@ -659,7 +682,6 @@ pub fn handle_load_messages_response(
                     .map(|c| std::mem::replace(&mut c.unread, false))
                     .unwrap_or(false);
                 if cleared {
-                    app.rebuild_lowered();
                     app.rebuild_filter();
                 }
             }
@@ -710,12 +732,12 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
         // which is instant and needs no round-trip.
         if is_control {
             // A live edit/delete/reaction reprojects in place — don't yank the
-            // reader to the bottom.
+            // reader to the bottom, and keep the loaded scrollback depth.
             app.preserve_msg_scroll = true;
-            request_load_messages(app);
+            request_reload_messages(app);
         } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
             app.messages.push(message);
-            app.rebuild_pinned();
+            app.rebuild_msg_meta();
             // If the reader is scrolled up in history, a new arrival lands below
             // the fold — count it for the floating "▼ N new · End" jump cue.
             if app.messages_scroll > 0 && !from_me {
@@ -740,7 +762,9 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
         false
     };
     if known {
-        app.rebuild_lowered();
+        // A bump only touches recency/unread — fields the lowered projection
+        // doesn't carry — so rebuilding it here (N conversations × 4 strings,
+        // each zeroize-wiped on drop, per pushed message) would be pure waste.
         app.rebuild_filter();
     } else {
         // First message of a conversation we don't have yet.
@@ -794,7 +818,7 @@ pub fn handle_load_older_messages_response(
             app.messages = older;
             app.messages_next = next;
             app.messages_loading_older = false;
-            app.rebuild_pinned();
+            app.rebuild_msg_meta();
             app.set_action(ActionState::Done(format!("Loaded {n} older messages")));
             app.push_cmd(
                 "keybase chat api read (older)",
@@ -2189,7 +2213,7 @@ pub fn handle_save_edit_response(app: &mut App, result: Result<(), KeybaseError>
             app.set_action(ActionState::Done("Edit saved".into()));
             app.push_cmd("keybase chat api edit", true, format!("msg #{target_id}"));
             app.preserve_msg_scroll = true; // stay where the reader was
-            request_load_messages(app);
+            request_reload_messages(app);
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));
@@ -2561,7 +2585,7 @@ fn finish_selection_batch(app: &mut App, reload: bool) {
     app.select_anchor = None;
     if reload {
         app.preserve_msg_scroll = true; // stay put; stay in Select mode
-        request_load_messages(app);
+        request_reload_messages(app);
     }
 }
 
@@ -2674,6 +2698,8 @@ pub fn open_react_for_selected(app: &mut App) {
     }
     app.react.clear();
     app.react_selected = 0;
+    // Fresh query + possibly new frecency since the last open → refilter.
+    app.rebuild_emoji_filter();
     app.screen = crate::tui::screens::Screen::React;
     // The standard set is seeded at construction; lazily fetch the team's
     // custom emojis the first time the picker opens (merged on top), cached
@@ -2716,6 +2742,12 @@ pub fn handle_emojis_response(
                 }
             }
             app.emojis = merged;
+            app.rebuild_emoji_index();
+            // The picker may be open (the fetch is async) — refilter so the
+            // merged custom emojis appear without a keystroke.
+            app.rebuild_emoji_filter();
+            // Reaction chips resolve glyphs through the catalogue.
+            app.invalidate_msg_render_cache();
             app.emojis_loaded = true;
             app.push_cmd(
                 "keybase chat api emojilist",
@@ -2744,6 +2776,9 @@ pub fn close_react(app: &mut App) {
 }
 
 pub fn request_send_reaction(app: &mut App) {
+    // Re-sync the cached filter with the query before committing — belt and
+    // braces for any path that set the query without a picker keystroke.
+    app.rebuild_emoji_filter();
     // Prefer the highlighted emoji from the picker; fall back to the typed
     // text as a literal custom `:shortcode:` when nothing matches the query.
     let filtered = app.filtered_emoji_indices();
@@ -2878,7 +2913,7 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
             app.msg_marks.clear();
             app.select_anchor = None;
             app.preserve_msg_scroll = true;
-            request_load_messages(app);
+            request_reload_messages(app);
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));
@@ -2904,7 +2939,7 @@ pub fn handle_unpin_response(app: &mut App, result: Result<(), KeybaseError>) {
             app.set_action(ActionState::Done("Pin cleared".into()));
             app.push_cmd("keybase chat api unpin", true, "ok");
             // Reload so the 📌 banner clears from fresh history.
-            request_load_messages(app);
+            request_reload_messages(app);
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));
