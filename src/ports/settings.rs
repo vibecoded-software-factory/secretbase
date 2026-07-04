@@ -88,13 +88,15 @@ pub trait SettingsPort {
     /// Persists a single top-level `key = value`, preserving every other key
     /// and section. `value` must already be TOML-formatted by the caller:
     /// bare for numbers/bools (`30`, `true`), quoted for strings (`"kitty"`).
-    /// Best-effort, like every writer here.
-    fn write_setting(&self, key: &str, value: &str);
+    /// Never fatal; returns whether the write landed (`false` = read-only
+    /// filesystem / full disk — the caller should inform the user that the
+    /// change won't survive a restart).
+    fn write_setting(&self, key: &str, value: &str) -> bool;
 
     /// Persists the chosen theme preset as `name = "<preset>"` inside the
     /// `[theme]` section, preserving every other key (incl. per-color
-    /// overrides). Best-effort, like the other writers.
-    fn write_theme_name(&self, name: &str);
+    /// overrides). Same success contract as [`Self::write_setting`].
+    fn write_theme_name(&self, name: &str) -> bool;
 
     /// Directory the config file lives in — used by the theme loader.
     fn config_dir(&self) -> PathBuf;

@@ -1286,7 +1286,12 @@ impl App {
         };
         self.settings_theme_idx = idx;
         self.theme = Theme::from_palette(&p.palette());
-        self.settings.write_theme_name(p.name());
+        if !self.settings.write_theme_name(p.name()) {
+            self.set_action(ActionState::Error(
+                "theme applied but not saved (config not writable)".into(),
+            ));
+            self.push_cmd("settings write", false, "theme");
+        }
         // Message blocks bake theme colours into their spans.
         self.invalidate_msg_render_cache();
     }
@@ -1399,7 +1404,14 @@ impl App {
                 ("icon_style", format!("\"{next}\""))
             }
         };
-        self.settings.write_setting(key, &value);
+        if !self.settings.write_setting(key, &value) {
+            // The change is applied live either way; the user must know it
+            // won't survive a restart.
+            self.set_action(ActionState::Error(
+                "setting applied but not saved (config not writable)".into(),
+            ));
+            self.push_cmd("settings write", false, key);
+        }
         // Several settings feed message blocks (emoji/icon style, image
         // protocol) — invalidating on any adjust is cheap and can't go stale.
         self.invalidate_msg_render_cache();
@@ -1429,8 +1441,12 @@ impl App {
         let mut ids: Vec<String> = self.favorites.iter().cloned().collect();
         ids.sort();
         self.settings_cache.favorites = ids.clone();
-        self.settings
-            .write_setting("favorites", &toml_quoted(&ids.join(",")));
+        if !self
+            .settings
+            .write_setting("favorites", &toml_quoted(&ids.join(",")))
+        {
+            self.push_cmd("settings write", false, "favorites not saved");
+        }
         now_on
     }
 
@@ -1451,8 +1467,12 @@ impl App {
         let mut ids: Vec<String> = self.muted.iter().cloned().collect();
         ids.sort();
         self.settings_cache.muted = ids.clone();
-        self.settings
-            .write_setting("muted", &toml_quoted(&ids.join(",")));
+        if !self
+            .settings
+            .write_setting("muted", &toml_quoted(&ids.join(",")))
+        {
+            self.push_cmd("settings write", false, "muted not saved");
+        }
         // Mute gates `conv_is_unread`, which the tree's group unread counts
         // derive from — refresh the cached rows so the badge updates now.
         self.rebuild_tree_rows();
@@ -2026,8 +2046,12 @@ mod tests {
         fn read(&self) -> UserSettings {
             UserSettings::default()
         }
-        fn write_setting(&self, _: &str, _: &str) {}
-        fn write_theme_name(&self, _: &str) {}
+        fn write_setting(&self, _: &str, _: &str) -> bool {
+            true
+        }
+        fn write_theme_name(&self, _: &str) -> bool {
+            true
+        }
         fn config_dir(&self) -> PathBuf {
             PathBuf::from(".")
         }
