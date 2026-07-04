@@ -593,9 +593,12 @@ pub struct App {
     /// popup's cancel path returns the user to Compose instead of
     /// leaving them stuck in Select mode.
     pub select_from_compose: bool,
-    /// Messages marked in Select mode for a multi-select action (indices into
-    /// [`Self::messages`]). Empty = the action falls back to the cursor message.
-    pub msg_marks: HashSet<usize>,
+    /// Messages marked in Select mode for a multi-select action, by
+    /// **message id** — an id survives the re-read that reprojects the list
+    /// (a remote edit/delete shifts every index), so a batch action can
+    /// never land on the wrong message. Empty = the action falls back to
+    /// the cursor message.
+    pub msg_marks: HashSet<u64>,
     /// A **sequential** batch of per-message ops (delete / react) over the
     /// multi-selection, in progress. The worker is serial, so the batch fires
     /// one request at a time — each response advances to the next — instead of

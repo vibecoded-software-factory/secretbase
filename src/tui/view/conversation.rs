@@ -423,9 +423,10 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
 
             let start = off;
             let is_selected = app.selected_msg_idx == Some(idx);
-            // Marked messages (multi-select for copy) get the same shading as the
-            // cursor — the cursor is told apart by its action bar below.
-            let is_marked = app.msg_marks.contains(&idx);
+            // Marked messages (multi-select for copy) get the same shading as
+            // the cursor — the cursor is told apart by its action bar below.
+            // Marks are message ids, stable across re-reads.
+            let is_marked = app.msg_marks.contains(&m.id);
             if is_selected {
                 selected_line = Some(start);
             }

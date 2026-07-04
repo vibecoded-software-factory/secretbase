@@ -1055,9 +1055,11 @@ fn delete_acts_on_the_whole_marked_selection_sequentially() {
         text_msg(11, "me", "b"),
         text_msg(12, "me", "c"),
     ];
-    // Mark all three; the batch must delete every one, not just the cursor.
+    rig.app.rebuild_msg_meta();
+    // Mark all three (by id); the batch must delete every one, not just the
+    // cursor.
     rig.app.selected_msg_idx = Some(2);
-    rig.app.msg_marks = [0usize, 1, 2].into_iter().collect();
+    rig.app.msg_marks = [10u64, 11, 12].into_iter().collect();
     request_delete_selected_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let mut deleted = rig.mock.st().deletes.clone();
@@ -1083,12 +1085,53 @@ fn delete_skips_other_peoples_messages() {
     );
     rig.app.identity.username = "me".into();
     rig.app.messages = vec![text_msg(20, "me", "mine"), text_msg(21, "alice", "theirs")];
+    rig.app.rebuild_msg_meta();
     rig.app.selected_msg_idx = Some(0);
-    rig.app.msg_marks = [0usize, 1].into_iter().collect();
+    rig.app.msg_marks = [20u64, 21].into_iter().collect();
     request_delete_selected_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // Only the own message is deleted; alice's is left alone.
     assert_eq!(rig.mock.st().deletes, vec![20]);
+}
+
+#[test]
+fn marks_survive_a_reprojecting_reload_by_id() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.identity.username = "me".into();
+    rig.app.messages = vec![
+        text_msg(1, "alice", "old"),
+        text_msg(2, "me", "keep-a"),
+        text_msg(3, "me", "keep-b"),
+    ];
+    rig.app.rebuild_msg_meta();
+    rig.app.selected_msg_idx = Some(2); // cursor on id 3
+    rig.app.msg_marks = [2u64, 3].into_iter().collect();
+    // A remote delete removed message 1 — the re-read returns a list where
+    // every index shifted down by one (mock stores newest-first; the read
+    // handler reverses).
+    rig.mock.st().messages = vec![text_msg(3, "me", "keep-b"), text_msg(2, "me", "keep-a")];
+    rig.app.preserve_msg_scroll = true;
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Marks still denote the same messages (ids, not the shifted indices)…
+    let want: std::collections::HashSet<u64> = [2u64, 3].into_iter().collect();
+    assert_eq!(rig.app.msg_marks, want);
+    // …and the cursor re-found its message (id 3) at its new index.
+    assert_eq!(rig.app.selected_msg_idx, Some(1));
+
+    // A mark whose message vanished is pruned on the next reload.
+    rig.mock.st().messages = vec![text_msg(2, "me", "keep-a")];
+    rig.app.preserve_msg_scroll = true;
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    let want: std::collections::HashSet<u64> = [2u64].into_iter().collect();
+    assert_eq!(rig.app.msg_marks, want);
 }
 
 // ── do_send_reaction → request_send_reaction ─────────────────────────
@@ -3198,6 +3241,7 @@ fn chat_multiselect_copies_messages() {
         mk(2, "beto", "chau"),
         mk(3, "ana", "ok"),
     ];
+    rig.app.rebuild_msg_meta();
     enter_select_mode(&mut rig.app); // cursor on the last message, marks cleared
     rig.app.selected_msg_idx = Some(0);
     msg_toggle_mark(&mut rig.app);

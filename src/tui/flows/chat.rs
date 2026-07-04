@@ -599,6 +599,12 @@ pub fn handle_load_messages_response(
     }
     match result {
         Ok((mut msgs, next)) => {
+            // Which message the Select-mode cursor sat on, by id — captured
+            // before the list is replaced so it can be re-found afterwards.
+            let prev_cursor_id = app
+                .selected_msg_idx
+                .and_then(|i| app.messages.get(i))
+                .map(|m| m.id);
             msgs.reverse();
             app.messages = project_messages(msgs);
             app.rebuild_conv_members(); // add the people who've spoken
@@ -611,15 +617,22 @@ pub fn handle_load_messages_response(
             if !std::mem::take(&mut app.preserve_msg_scroll) {
                 app.messages_scroll = 0;
             }
-            // Re-anchor the Select-mode cursor: rows deleted in a batch are gone,
-            // so a dangling index would point at the wrong message. Clamp it into
-            // range (or drop it if the conversation is now empty).
-            if app.selected_msg_idx.is_some() {
-                if app.messages.is_empty() {
-                    app.selected_msg_idx = None;
-                } else if let Some(i) = app.selected_msg_idx {
-                    app.selected_msg_idx = Some(i.min(app.messages.len() - 1));
-                }
+            // Re-anchor Select mode across the reprojection. Marks are ids:
+            // prune any whose message is gone (batch- or remote-deleted).
+            // The cursor re-seeks its message by id; only when that message
+            // no longer exists does it fall back to clamping the old index
+            // (or clearing, if the conversation is now empty).
+            app.msg_marks.retain(|id| app.msg_index.contains_key(id));
+            if let Some(i) = app.selected_msg_idx {
+                app.selected_msg_idx = if app.messages.is_empty() {
+                    None
+                } else {
+                    Some(
+                        prev_cursor_id
+                            .and_then(|id| app.msg_index.get(&id).copied())
+                            .unwrap_or_else(|| i.min(app.messages.len() - 1)),
+                    )
+                };
             }
             // This fresh read includes any optimistic send that just
             // succeeded, so drop the Delivered bubbles for this
@@ -1917,12 +1930,16 @@ pub fn leave_select_mode(app: &mut App) {
 
 /// Toggles the mark on the cursor message (manual one-by-one multi-select).
 pub fn msg_toggle_mark(app: &mut App) {
-    let Some(i) = app.selected_msg_idx else {
+    let Some(id) = app
+        .selected_msg_idx
+        .and_then(|i| app.messages.get(i))
+        .map(|m| m.id)
+    else {
         return;
     };
     app.select_anchor = None;
-    if !app.msg_marks.remove(&i) {
-        app.msg_marks.insert(i);
+    if !app.msg_marks.remove(&id) {
+        app.msg_marks.insert(id);
     }
 }
 
@@ -1937,7 +1954,10 @@ pub fn select_extend(app: &mut App, delta: isize) {
     let new = (cur as isize + delta).clamp(0, max as isize) as usize;
     app.selected_msg_idx = Some(new);
     let (lo, hi) = (anchor.min(new), anchor.max(new));
-    app.msg_marks = (lo..=hi).collect();
+    app.msg_marks = (lo..=hi)
+        .filter_map(|i| app.messages.get(i))
+        .map(|m| m.id)
+        .collect();
 }
 
 /// Copies the selected messages (marked, or the cursor message) to the
@@ -1951,8 +1971,7 @@ pub fn do_copy_messages(app: &mut App, full: bool) {
         let mut v: Vec<usize> = app
             .msg_marks
             .iter()
-            .copied()
-            .filter(|&i| i < app.messages.len())
+            .filter_map(|id| app.msg_index.get(id).copied())
             .collect();
         v.sort_unstable();
         v
@@ -2518,7 +2537,7 @@ fn selection_target_ids(app: &App, own_only: bool) -> Vec<u64> {
         let mut v: Vec<u64> = app
             .msg_marks
             .iter()
-            .filter_map(|&i| app.messages.get(i))
+            .filter_map(|id| app.msg_index.get(id).and_then(|&i| app.messages.get(i)))
             .filter(keep)
             .map(|m| m.id)
             .collect();
