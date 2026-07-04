@@ -433,8 +433,14 @@ pub fn open_selected_conversation(app: &mut App) {
 /// Shared conversation-open path: stash the previously-open draft, switch to
 /// `id`, restore its draft, and load its messages.
 fn enter_conversation(app: &mut App, id: String) {
+    // Record how far the outgoing conversation was read before switching, so its
+    // next open can place the `new messages` divider above anything since.
+    record_conv_seen(app);
     stash_draft(app);
     app.open_conv_id = Some(id.clone());
+    // Seed the unread boundary from what we last saw of *this* conversation this
+    // session (None on a first-ever open → no divider).
+    app.unread_boundary = app.conv_last_seen.get(&id).copied();
     app.messages.clear();
     app.messages_scroll = 0;
     app.compose_open = true;
@@ -501,10 +507,12 @@ fn restore_draft(app: &mut App, id: &str) {
 }
 
 pub fn close_conversation(app: &mut App) {
+    record_conv_seen(app);
     stash_draft(app);
     app.pending_search_jump = None;
     close_conv_search(app);
     app.open_conv_id = None;
+    app.unread_boundary = None;
     app.messages.clear();
     app.messages_scroll = 0;
     app.messages_next = None;
@@ -512,6 +520,18 @@ pub fn close_conversation(app: &mut App) {
     app.compose_clear();
     app.screen = crate::tui::screens::Screen::Inbox;
     app.focus = crate::tui::screens::Focus::Tree;
+}
+
+/// Records the highest loaded message id of the open conversation as **seen**
+/// (session-local), so the next open can anchor the `new messages` divider above
+/// whatever arrived since. No-op when nothing is open / loaded.
+fn record_conv_seen(app: &mut App) {
+    if let Some(id) = app.open_conv_id.clone()
+        && let Some(last) = app.messages.last()
+    {
+        let entry = app.conv_last_seen.entry(id).or_insert(0);
+        *entry = (*entry).max(last.id);
+    }
 }
 
 /// Opens a conversation directly by id (used by the quick switcher, which
