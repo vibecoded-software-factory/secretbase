@@ -18,25 +18,99 @@ use crate::domain::{
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
-use crate::tui::view::widgets::{draw_search_box, editor_lines, trim_end_ellipsis};
+use crate::tui::view::widgets::{editor_lines, trim_end_ellipsis};
 
-/// Renders the chat's in-conversation **search** box (`searchregexp`, Ctrl+F)
-/// into `area`. The conversation name now lives on the Messages panel title
-/// ([`chat_title`]), so the header is just this search box.
+/// The latest channel topic/headline set in the loaded history, if any — shown
+/// in the chat header. Scans newest-first for a `headline` system message.
+fn latest_headline(messages: &[Message]) -> Option<String> {
+    messages.iter().rev().find_map(|m| match &m.content {
+        MessageContent::Headline { headline } if !headline.trim().is_empty() => {
+            Some(headline.clone())
+        }
+        _ => None,
+    })
+}
+
+/// Renders the **chat header** into `area` — the conversation name (box title)
+/// plus a dim metadata row (type · participants/topic · `📌 pin`). Info chrome,
+/// non-focusable (in-conversation search is the `Ctrl+F` modal now, not here).
+/// A muted placeholder when no conversation is open.
 pub(crate) fn draw_chat_header(frame: &mut Frame, app: &App, area: Rect) {
-    draw_search_box(
-        frame,
-        app,
-        area,
-        "Ctrl+F",
-        "Search",
-        "search this chat",
-        &app.conv_search,
-        app.focus == Focus::ChatSearch,
-        // Unreachable when no conversation is open (Ctrl+F / the Tab stop are
-        // gated) — render it disabled (muted) so it reads as unavailable.
-        app.open_conv_id.is_none(),
-    );
+    let t = &app.theme;
+    let Some(id) = app.open_conv_id.as_deref() else {
+        let block = crate::tui::view::disabled_block("Conversation", app);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "  no conversation open",
+                Style::default().fg(t.muted),
+            ))),
+            inner,
+        );
+        return;
+    };
+    let idx = app.conversations.iter().position(|c| c.id == id);
+    let name = idx
+        .and_then(|i| app.conversations_lowered.get(i))
+        .map(|l| l.display_label.clone())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Conversation".to_string());
+
+    // Metadata row: conversation type + participants/topic + pin.
+    let mut meta: Vec<Span<'static>> = Vec::new();
+    if let Some(c) = idx.map(|i| &app.conversations[i]) {
+        if c.channel.members_type.is_team() {
+            meta.push(Span::styled(
+                "team channel",
+                Style::default().fg(t.conv_team),
+            ));
+        } else {
+            let me = app.identity.username.as_str();
+            let people = c
+                .channel
+                .name
+                .split(',')
+                .map(str::trim)
+                .filter(|u| !u.is_empty())
+                .count();
+            let others = c
+                .channel
+                .name
+                .split(',')
+                .map(str::trim)
+                .filter(|u| !u.is_empty() && *u != me)
+                .count();
+            let label = if others == 0 {
+                "note to self".to_string()
+            } else if people <= 2 {
+                "direct message".to_string()
+            } else {
+                format!("group · {people} people")
+            };
+            meta.push(Span::styled(label, Style::default().fg(t.conv_dm)));
+        }
+    }
+    if let Some(topic) = latest_headline(&app.messages) {
+        let topic = trim_end_ellipsis(topic.lines().next().unwrap_or(""), 40);
+        meta.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
+        meta.push(Span::styled(
+            format!("\u{201c}{topic}\u{201d}"),
+            Style::default().fg(t.dim),
+        ));
+    }
+    if let Some(pid) = app.pinned_msg_id {
+        meta.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
+        meta.push(Span::styled(
+            format!("📌 #{pid}"),
+            Style::default().fg(t.conv_unread),
+        ));
+    }
+
+    let block = titled_block(&name, false, app);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(Paragraph::new(Line::from(meta)), inner);
 }
 
 /// Renders the chat **body** — message history + compose box — into `area`.
@@ -104,9 +178,7 @@ fn draw_mention_popup(frame: &mut Frame, app: &App, compose_area: Rect) {
 
 /// The status-strip hint for the chat, by interaction mode.
 pub(crate) fn chat_hint(app: &App) -> &'static str {
-    if app.conv_search_active {
-        "type · Enter search/jump · ↑/↓ pick · Esc close"
-    } else if app.selected_msg_idx.is_some() {
+    if app.selected_msg_idx.is_some() {
         "↑/↓ move · Space mark · e edit · Shift+X del · + react · y copy · Esc back"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
@@ -156,105 +228,13 @@ fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-/// The Messages-panel title: `Messages — <conversation name>` (plus `📌 #id`
-/// when a message is pinned). Folding the name in here lets us drop the
-/// separate "Conversation" header box.
-fn chat_title(app: &App) -> String {
-    let name = app
-        .open_conv_id
-        .as_deref()
-        .and_then(|id| {
-            app.conversations
-                .iter()
-                .position(|c| c.id == id)
-                .and_then(|idx| {
-                    app.conversations_lowered
-                        .get(idx)
-                        .map(|l| l.display_label.clone())
-                })
-        })
-        .unwrap_or_default();
-    // `─[Alt+M]-` border tag → Alt+M focuses the chat (works mid-compose).
-    let mut title = if name.is_empty() {
-        "─[Alt+M]-Messages".to_string()
-    } else {
-        format!("─[Alt+M]-Messages — {name}")
-    };
-    if let Some(pid) = app.pinned_msg_id {
-        title.push_str(&format!("  📌 #{pid}"));
-    }
-    title
-}
-
-/// Renders the `searchregexp` match list in the message viewport while the
-/// in-conversation search is active. `Enter` jumps to the highlighted hit.
-fn render_conv_search_results(frame: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
-    let now_s = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let results = &app.conv_search_results;
-    let sel = app
-        .conv_search_selected
-        .min(results.len().saturating_sub(1));
-    // Each result spans two rows (snippet + a dim day/time line), so the
-    // viewport and scroll are computed in result units, not raw rows.
-    let vh = area.height.saturating_sub(2).max(1) as usize;
-    let per_view = (vh / 2).max(1);
-    let scroll = if sel >= per_view {
-        sel + 1 - per_view
-    } else {
-        0
-    };
-    let max_w = area.width.saturating_sub(6).max(8) as usize;
-
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    for (i, hit) in results.iter().enumerate().skip(scroll).take(per_view) {
-        let selected = i == sel;
-        let snippet = trim_end_ellipsis(hit.body_summary.lines().next().unwrap_or(""), max_w);
-        let mut spans = vec![
-            Span::styled(
-                if selected { "▶ " } else { "  " }.to_string(),
-                Style::default().fg(t.accent),
-            ),
-            Span::styled(format!("{}: ", hit.sender), Style::default().fg(t.dim)),
-            Span::styled(snippet, Style::default().fg(t.foreground)),
-        ];
-        // Day + time under the snippet, for context (à la the chat header).
-        let when = if hit.sent_at > 0 {
-            message_time(hit.sent_at, now_s)
-        } else {
-            "—".to_string()
-        };
-        let mut time_spans = vec![Span::styled(
-            format!("      {when}"),
-            Style::default().fg(t.placeholder),
-        )];
-        if selected {
-            for s in &mut spans {
-                s.style = s.style.bg(t.selected_bg);
-            }
-            for s in &mut time_spans {
-                s.style = s.style.bg(t.selected_bg);
-            }
-        }
-        lines.push(Line::from(spans));
-        lines.push(Line::from(time_spans));
-    }
-    let title = format!("Matches · {}", results.len());
-    frame.render_widget(
-        Paragraph::new(lines).block(titled_block(&title, true, app)),
-        area,
-    );
+/// The Messages-panel title — just the `─[Alt+M]-` go-to tag; the conversation
+/// name, topic and pin live in the chat header ([`draw_chat_header`]) now.
+fn chat_title() -> String {
+    "─[Alt+M]-Messages".to_string()
 }
 
 fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
-    // While searching the conversation, the body shows the match list.
-    if app.conv_search_active && !app.conv_search_results.is_empty() {
-        render_conv_search_results(frame, app, area);
-        return;
-    }
     let t = app.theme.clone();
     let now_s = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -295,7 +275,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 )),
             ]
         };
-        let title = chat_title(app);
+        let title = chat_title();
         frame.render_widget(
             Paragraph::new(lines).block(titled_block(&title, app.focus == Focus::Chat, app)),
             area,
@@ -524,7 +504,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // the offset to a tiny value via a truncating cast.
     let scroll_u16 = scroll_y.min(u16::MAX as usize) as u16;
     let dim = app.theme.dim;
-    let title = chat_title(app);
+    let title = chat_title();
     let block = titled_block(&title, app.focus == Focus::Chat, app)
         .title_bottom(Line::from(Span::styled(counter, Style::default().fg(dim))).right_aligned());
     frame.render_widget(

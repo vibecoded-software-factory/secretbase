@@ -6,6 +6,7 @@
 
 pub mod action;
 pub mod channels;
+pub mod conv_search;
 pub mod conversation;
 pub mod help;
 pub mod inbox;
@@ -60,6 +61,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::Members
         | Screen::SearchGlobal
         | Screen::ConfirmDeleteMessage
+        | Screen::ConvSearch
         | Screen::React => Screen::Inbox,
         // The quick switcher / command palette float over wherever opened.
         Screen::QuickSwitcher => app.switcher_from,
@@ -155,6 +157,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::React => popups::react_input(frame, app),
         Screen::QuickSwitcher => popups::quick_switcher(frame, app),
         Screen::CommandPalette => palette::draw(frame, app),
+        Screen::ConvSearch => conv_search::draw(frame, app),
         _ => {}
     }
 

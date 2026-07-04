@@ -2218,11 +2218,11 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
     request_conv_search(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.app.conv_search_results.len(), 1);
-    // Enter on the hit jumps to + selects the message and closes search.
+    // Enter on the hit jumps to + selects the message and closes the modal.
     conv_search_jump_selected(&mut rig.app);
     let idx = rig.app.selected_msg_idx.expect("a message is selected");
     assert_eq!(rig.app.messages[idx].id, 7);
-    assert!(!rig.app.conv_search_active);
+    assert_ne!(rig.app.screen, Screen::ConvSearch);
     assert!(rig.app.conv_search_results.is_empty());
 }
 
@@ -3059,7 +3059,7 @@ fn tree_back_closes_open_chat() {
 }
 
 #[test]
-fn tab_reaches_chat_search_and_toggles_search_mode() {
+fn ctrl_f_opens_and_closes_the_conv_search_modal() {
     use crate::tui::screens::Focus;
     let mut rig = build_rig();
     preload_inbox(
@@ -3069,15 +3069,13 @@ fn tab_reaches_chat_search_and_toggles_search_mode() {
         "c1",
     );
     rig.app.screen = Screen::Inbox;
-    // From the chat, Tab lands on the in-chat search box and activates search.
     rig.app.focus = Focus::Chat;
-    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::ChatSearch);
-    assert!(rig.app.conv_search_active);
-    // Tabbing off it leaves search mode again.
-    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_ne!(rig.app.focus, Focus::ChatSearch);
-    assert!(!rig.app.conv_search_active);
+    // Ctrl+F opens the in-conversation search modal (not a focusable panel).
+    press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::CONTROL);
+    assert_eq!(rig.app.screen, Screen::ConvSearch);
+    // Esc closes it back to the inbox.
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert_eq!(rig.app.screen, Screen::Inbox);
 }
 
 #[test]
@@ -3121,8 +3119,7 @@ fn go_to_keys_focus_each_panel() {
     press(&mut rig.app, KeyCode::Char('m'), KeyModifiers::ALT);
     assert_eq!(rig.app.focus, Focus::Chat);
     press(&mut rig.app, KeyCode::Char('f'), KeyModifiers::CONTROL);
-    assert_eq!(rig.app.focus, Focus::ChatSearch);
-    assert!(rig.app.conv_search_active);
+    assert_eq!(rig.app.screen, Screen::ConvSearch);
 }
 
 #[test]
@@ -3139,14 +3136,17 @@ fn ctrl_w_window_nav_moves_between_panels() {
     rig.app.focus = Focus::Chat;
 
     // Ctrl+W arms the leader; it stays armed across consecutive directions so
-    // two keys make a diagonal: k (up) then h (left) = chat → search box.
+    // two keys chain: k (up) chat → filter, then j (down) filter → chats.
     press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
     assert!(rig.app.pending_pane_nav);
-    press(&mut rig.app, KeyCode::Char('k'), KeyModifiers::NONE); // up → chat search
-    assert_eq!(rig.app.focus, Focus::ChatSearch);
-    assert!(rig.app.pending_pane_nav, "still armed for a diagonal");
-    press(&mut rig.app, KeyCode::Char('h'), KeyModifiers::NONE); // left → filter
+    press(&mut rig.app, KeyCode::Char('k'), KeyModifiers::NONE); // up → filter
     assert_eq!(rig.app.focus, Focus::Search);
+    assert!(
+        rig.app.pending_pane_nav,
+        "still armed for the next direction"
+    );
+    press(&mut rig.app, KeyCode::Char('j'), KeyModifiers::NONE); // down → chats
+    assert_eq!(rig.app.focus, Focus::Tree);
 
     // Esc leaves window-nav mode.
     press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);

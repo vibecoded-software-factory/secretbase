@@ -54,6 +54,10 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
             let len = crate::tui::flows::palette::filtered_commands(app).len();
             app.palette_selected = clamp_move(app.palette_selected, delta, len);
         }
+        Screen::ConvSearch => {
+            let len = app.conv_search_results.len();
+            app.conv_search_selected = clamp_move(app.conv_search_selected, delta, len);
+        }
         Screen::Help => {
             app.help_scroll = if delta < 0 {
                 app.help_scroll.saturating_sub(3)

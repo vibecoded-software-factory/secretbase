@@ -624,10 +624,8 @@ pub struct App {
     pub pending_search_jump: Option<u64>,
 
     // ── In-conversation search (Ctrl+F → keybase chat api searchregexp) ──
-    /// Query for the search box at the top of the conversation screen.
+    /// Query for the `Ctrl+F` in-conversation search modal (`Screen::ConvSearch`).
     pub conv_search: LineEditor,
-    /// Whether the conversation search box holds focus.
-    pub conv_search_active: bool,
     /// Matches from `searchregexp`, scoped to the open conversation.
     pub conv_search_results: Vec<InboxHit>,
     /// Selected row in `conv_search_results`.
@@ -993,7 +991,6 @@ impl App {
             palette_from: Screen::Inbox,
             pending_search_jump: None,
             conv_search: LineEditor::default(),
-            conv_search_active: false,
             conv_search_results: Vec::new(),
             conv_search_selected: 0,
             new_conv: LineEditor::default(),
@@ -1372,6 +1369,7 @@ impl App {
             Screen::NewConversation
             | Screen::UnhideConversation
             | Screen::SearchGlobal
+            | Screen::ConvSearch
             | Screen::React
             | Screen::QuickSwitcher => UiMode::Search,
             // Modal browsers: Search while an inline text mode is open, else Normal.
@@ -1394,7 +1392,7 @@ impl App {
                     UiMode::Select
                 } else {
                     match self.focus {
-                        Focus::Search | Focus::ChatSearch => UiMode::Search,
+                        Focus::Search => UiMode::Search,
                         Focus::Chat if self.open_conv_id.is_some() => UiMode::Compose,
                         _ => UiMode::Normal,
                     }
@@ -1502,6 +1500,7 @@ impl App {
                     | Screen::React
                     | Screen::QuickSwitcher
                     | Screen::CommandPalette
+                    | Screen::ConvSearch
             )
     }
 
@@ -1602,9 +1601,9 @@ impl App {
     /// the chat's compose mode with at least one match.
     pub fn mention_popup_active(&self) -> bool {
         self.focus == Focus::Chat
+            && self.screen == Screen::Inbox
             && self.open_conv_id.is_some()
             && self.selected_msg_idx.is_none()
-            && !self.conv_search_active
             && self.edit_target_id.is_none()
             && !self.mention_matches().is_empty()
     }

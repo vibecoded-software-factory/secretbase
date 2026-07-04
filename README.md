@@ -105,11 +105,11 @@ stays in sync with these tables.
 | `Enter` / `→` / `l`     | Open conversation / expand group |
 | `←` / `h`               | Close chat / collapse group |
 | `/`                     | Focus the chat **F**ilter (or `Alt+F`) |
-| `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · chat-search · log) |
+| `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · log) |
 | `Ctrl+W` then `h`/`j`/`k`/`l` (or arrows) | Move between panels **positionally** (vim window-nav); stays armed so two keys do a diagonal (`Esc` exits) |
 | `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Messages (works mid-compose) |
 | `Alt+F` / `Alt+L`       | Go to `[Alt+F]` Filter / `[Alt+L]` Command log |
-| `Ctrl+F`                | In-chat search (open conversation) |
+| `Ctrl+F`                | In-chat search — modal (open conversation) |
 | `Ctrl+G`                | Global search |
 | `Ctrl+K`                | Quick switcher — jump to a conversation |
 | `Ctrl+P`                | Command palette — run any action |

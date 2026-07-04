@@ -57,7 +57,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+L");
     let hint = if app.pending_pane_nav {
         "Ctrl+W move: h/j/k/l or arrows · two keys = diagonal · Esc exit"
-    } else if matches!(app.focus, Focus::Chat | Focus::ChatSearch) && app.open_conv_id.is_some() {
+    } else if app.focus == Focus::Chat && app.open_conv_id.is_some() {
         crate::tui::view::conversation::chat_hint(app)
     } else {
         footer_hint(app)
@@ -76,8 +76,7 @@ fn footer_hint(app: &App) -> &'static str {
         // Only panel-local actions here — the go-to keys already live in each
         // section's border tag, so don't repeat them.
         Focus::Tree => "↑/↓ nav · l open · n new · r refresh · Shift+I ignore · / filter · Tab",
-        Focus::Chat => "Enter send · Esc back · Tab focus",
-        Focus::ChatSearch => "type · Enter jump · Esc close · Tab focus",
+        Focus::Chat => "Enter send · Ctrl+F search · Alt+V select · Esc back · Tab",
         Focus::CmdLog => "↑/↓ move · Alt+Shift+K/J range · Space mark · y/c copy · Tab",
     }
 }

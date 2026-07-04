@@ -449,7 +449,6 @@ fn enter_conversation(app: &mut App, id: String) {
     app.reply_to_id = None;
     app.selected_msg_idx = None;
     app.pending_search_jump = None;
-    app.conv_search_active = false;
     app.conv_search.clear();
     app.conv_search_results.clear();
     app.conv_search_selected = 0;
@@ -1827,22 +1826,26 @@ fn try_jump_to_search_target(app: &mut App) {
 /// Max matches requested from `searchregexp` for the in-conversation search.
 const CONV_SEARCH_MAX_HITS: u32 = 50;
 
-/// Focuses the conversation search box (also a Tab stop: `Focus::ChatSearch`).
+/// Opens the in-conversation search **modal** (`Screen::ConvSearch`, `Ctrl+F`) —
+/// a centered `searchregexp` box + results, like the global-search modal. No-op
+/// when no conversation is open.
 pub fn open_conv_search(app: &mut App) {
-    app.conv_search_active = true;
-    app.conv_search_selected = 0;
-    app.focus = crate::tui::screens::Focus::ChatSearch;
-}
-
-/// Closes the search box and clears its query + results, returning focus to
-/// the chat.
-pub fn close_conv_search(app: &mut App) {
-    app.conv_search_active = false;
+    if app.open_conv_id.is_none() {
+        return;
+    }
     app.conv_search.clear();
     app.conv_search_results.clear();
     app.conv_search_selected = 0;
-    if app.focus == crate::tui::screens::Focus::ChatSearch {
-        app.focus = crate::tui::screens::Focus::Chat;
+    app.screen = crate::tui::screens::Screen::ConvSearch;
+}
+
+/// Closes the search modal, clearing its query + results, back to the inbox/chat.
+pub fn close_conv_search(app: &mut App) {
+    app.conv_search.clear();
+    app.conv_search_results.clear();
+    app.conv_search_selected = 0;
+    if app.screen == crate::tui::screens::Screen::ConvSearch {
+        app.screen = crate::tui::screens::Screen::Inbox;
     }
 }
 
@@ -1892,6 +1895,8 @@ pub fn conv_search_jump_selected(app: &mut App) {
     };
     let target = hit.message_id;
     close_conv_search(app);
+    // Land focus on the chat so the jumped-to message is in Select mode.
+    app.focus = crate::tui::screens::Focus::Chat;
     app.pending_search_jump = Some(target);
     try_jump_to_search_target(app);
 }

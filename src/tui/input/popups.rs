@@ -205,6 +205,38 @@ pub fn react(app: &mut App, key: KeyEvent) {
     }
 }
 
+// ── In-conversation search modal (Ctrl+F → searchregexp) ──────────────
+
+pub fn conv_search(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => chat::close_conv_search(app),
+        KeyCode::Enter => {
+            if app.conv_search_results.is_empty() {
+                chat::request_conv_search(app);
+            } else {
+                chat::conv_search_jump_selected(app);
+            }
+        }
+        KeyCode::F(5) => chat::request_conv_search(app),
+        _ if common::list_nav_arrows(
+            &key,
+            app.conv_search_results.len(),
+            app.conv_search_selected,
+            |i| app.conv_search_selected = i,
+        ) => {}
+        _ => {
+            let before = app.conv_search.text().to_string();
+            common::route_line_editor(&mut app.conv_search, key);
+            // Editing the query invalidates the old results so the next Enter
+            // re-runs the search instead of jumping to a stale hit.
+            if app.conv_search.text() != before {
+                app.conv_search_results.clear();
+                app.conv_search_selected = 0;
+            }
+        }
+    }
+}
+
 // ── Command palette (Ctrl+P) ──────────────────────────────────────────
 
 pub fn command_palette(app: &mut App, key: KeyEvent) {
