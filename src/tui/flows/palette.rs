@@ -29,6 +29,15 @@ pub enum PaletteAction {
     Attach,
     SelectMode,
     CloseConversation,
+    Members,
+    // Select-mode message actions (act on the cursor message).
+    EditMessage,
+    ReplyMessage,
+    ReactMessage,
+    PinMessage,
+    DownloadAttachment,
+    CopyMessage,
+    DeleteMessage,
     QuickSwitcher,
     GlobalSearch,
     Teams,
@@ -158,6 +167,12 @@ fn palette_commands(app: &App) -> Vec<Command> {
     }
     // ── Conversation (only when one is open) ──
     if conv_open {
+        let open_is_team = app
+            .open_conv_id
+            .as_ref()
+            .and_then(|id| app.conversations.iter().find(|c| &c.id == id))
+            .map(|c| c.channel.members_type.is_team())
+            .unwrap_or(false);
         v.push(cmd(
             ConvSearch,
             "Search this conversation",
@@ -172,19 +187,78 @@ fn palette_commands(app: &App) -> Vec<Command> {
             "upload image file",
             "Conversation",
         ));
-        v.push(cmd(
-            SelectMode,
-            "Select messages",
-            "Alt+V",
-            "edit delete react pin reply copy",
-            "Conversation",
-        ));
+        // Offer "Select messages" only when not already selecting — the Message
+        // group below covers the per-message actions in that mode.
+        if app.selected_msg_idx.is_none() {
+            v.push(cmd(
+                SelectMode,
+                "Select messages",
+                "Alt+V",
+                "edit delete react pin reply copy",
+                "Conversation",
+            ));
+        }
+        if open_is_team {
+            v.push(cmd(
+                Members,
+                "Members",
+                "Alt+P",
+                "who users add remove",
+                "Conversation",
+            ));
+        }
         v.push(cmd(
             CloseConversation,
             "Close conversation",
             "Esc",
             "back",
             "Conversation",
+        ));
+    }
+    // ── Message (only in Select mode, acting on the cursor message) ──
+    if app.selected_msg_idx.is_some() {
+        v.push(cmd(
+            EditMessage,
+            "Edit message",
+            "e",
+            "modify own",
+            "Message",
+        ));
+        v.push(cmd(
+            ReplyMessage,
+            "Reply to message",
+            "r",
+            "thread",
+            "Message",
+        ));
+        v.push(cmd(
+            ReactMessage,
+            "React to message",
+            "+",
+            "emoji",
+            "Message",
+        ));
+        v.push(cmd(PinMessage, "Pin message", "p", "unpin", "Message"));
+        v.push(cmd(
+            DownloadAttachment,
+            "Download attachment",
+            "s",
+            "save file",
+            "Message",
+        ));
+        v.push(cmd(
+            CopyMessage,
+            "Copy message",
+            "y",
+            "clipboard yank",
+            "Message",
+        ));
+        v.push(cmd(
+            DeleteMessage,
+            "Delete message(s)",
+            "Shift+X",
+            "remove own",
+            "Message",
         ));
     }
     // ── Navigate ──
@@ -301,6 +375,14 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
             chat::enter_select_mode(app);
         }
         CloseConversation => chat::close_conversation(app),
+        Members => chat::open_members_from_conversation(app),
+        EditMessage => chat::open_edit_for_selected(app),
+        ReplyMessage => chat::start_reply_for_selected(app),
+        ReactMessage => chat::open_react_for_selected(app),
+        PinMessage => chat::request_pin_selected_message(app),
+        DownloadAttachment => chat::open_download_for_selected(app),
+        CopyMessage => chat::do_copy_messages(app, true),
+        DeleteMessage => chat::open_delete_for_selected(app),
         QuickSwitcher => chat::open_quick_switcher(app),
         GlobalSearch => chat::open_search_global(app),
         Teams => teams::open_teams(app),
@@ -310,5 +392,172 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
             app.help_scroll = 0;
             app.screen = Screen::Help;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{
+        Channel, Conversation, MemberStatus, MembersType, Message, MessageContent, TopicType,
+    };
+    use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
+    use crate::tui::worker::{WorkerRequest, WorkerResponse};
+    use std::path::PathBuf;
+    use std::sync::mpsc::channel;
+
+    struct FakeClipboard;
+    impl ClipboardPort for FakeClipboard {
+        fn write(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    struct FakeOpener;
+    impl OpenerPort for FakeOpener {
+        fn open(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    struct FakeSettings;
+    impl SettingsPort for FakeSettings {
+        fn read(&self) -> UserSettings {
+            UserSettings::default()
+        }
+        fn write_setting(&self, _: &str, _: &str) {}
+        fn write_theme_name(&self, _: &str) {}
+        fn config_dir(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
+    }
+
+    fn fresh_app() -> App {
+        let (req_tx, _r) = channel::<WorkerRequest>();
+        let (bg_tx, _b) = channel::<WorkerRequest>();
+        let (_s, resp_rx) = channel::<WorkerResponse>();
+        App::new(
+            req_tx,
+            bg_tx,
+            resp_rx,
+            None,
+            Box::new(FakeClipboard),
+            Box::new(FakeOpener),
+            Box::new(FakeSettings),
+        )
+    }
+
+    fn conv(id: &str, members: MembersType) -> Conversation {
+        Conversation {
+            id: id.into(),
+            channel: Channel {
+                name: "alice".into(),
+                members_type: members,
+                topic_type: TopicType::Chat,
+                topic_name: (members == MembersType::Team).then(|| "general".into()),
+                public: false,
+            },
+            is_default_conv: true,
+            unread: false,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: MemberStatus::Active,
+            creator_info: None,
+        }
+    }
+
+    fn actions(app: &App) -> Vec<PaletteAction> {
+        filtered_commands(app)
+            .into_iter()
+            .map(|c| c.action)
+            .collect()
+    }
+
+    #[test]
+    fn core_commands_present_context_ones_gated() {
+        let app = fresh_app();
+        let a = actions(&app);
+        for want in [
+            PaletteAction::NewConversation,
+            PaletteAction::RefreshInbox,
+            PaletteAction::Unhide,
+            PaletteAction::QuickSwitcher,
+            PaletteAction::GlobalSearch,
+            PaletteAction::Teams,
+            PaletteAction::Settings,
+            PaletteAction::Help,
+        ] {
+            assert!(a.contains(&want), "core command missing: {want:?}");
+        }
+        // Nothing selected/open → conversation, members and message actions absent.
+        for gone in [
+            PaletteAction::MarkRead,
+            PaletteAction::ConvSearch,
+            PaletteAction::Members,
+            PaletteAction::EditMessage,
+        ] {
+            assert!(!a.contains(&gone), "should be gated out: {gone:?}");
+        }
+    }
+
+    #[test]
+    fn message_commands_only_in_select_mode_and_members_only_on_team() {
+        let mut app = fresh_app();
+        app.conversations.push(conv("c1", MembersType::Team));
+        app.open_conv_id = Some("c1".into());
+        let mut m = Message::default();
+        m.id = 1;
+        m.content = MessageContent::Text("hi".into());
+        app.messages.push(m);
+
+        // Open (team, not selecting): Conversation group + Members, no Message group.
+        let a = actions(&app);
+        assert!(a.contains(&PaletteAction::ConvSearch));
+        assert!(a.contains(&PaletteAction::SelectMode));
+        assert!(
+            a.contains(&PaletteAction::Members),
+            "team channel → Members"
+        );
+        assert!(!a.contains(&PaletteAction::EditMessage));
+
+        // Enter select mode → the Message group appears, SelectMode drops out.
+        app.selected_msg_idx = Some(0);
+        let a = actions(&app);
+        for want in [
+            PaletteAction::EditMessage,
+            PaletteAction::ReplyMessage,
+            PaletteAction::ReactMessage,
+            PaletteAction::PinMessage,
+            PaletteAction::CopyMessage,
+            PaletteAction::DeleteMessage,
+        ] {
+            assert!(a.contains(&want), "select-mode command missing: {want:?}");
+        }
+        assert!(
+            !a.contains(&PaletteAction::SelectMode),
+            "SelectMode hidden while already selecting"
+        );
+    }
+
+    #[test]
+    fn members_absent_on_a_dm() {
+        let mut app = fresh_app();
+        app.conversations
+            .push(conv("d1", MembersType::ImpTeamNative));
+        app.open_conv_id = Some("d1".into());
+        assert!(!actions(&app).contains(&PaletteAction::Members));
+    }
+
+    #[test]
+    fn query_filters_by_label_and_keywords() {
+        let mut app = fresh_app();
+        app.palette.set("teams");
+        let a = actions(&app);
+        assert!(a.contains(&PaletteAction::Teams));
+        assert!(!a.contains(&PaletteAction::Settings));
+        // Match by keyword, not just label: "preferences" is a Settings keyword.
+        app.palette.set("preferences");
+        assert!(actions(&app).contains(&PaletteAction::Settings));
+        // A no-match query yields nothing.
+        app.palette.set("zzzzz");
+        assert!(actions(&app).is_empty());
     }
 }

@@ -340,8 +340,11 @@ returns to `App::palette_from`). A fuzzy query box over a **context-aware**
 list of commands (`flows::palette::palette_commands` — only the actions valid
 where you are: the per-conversation status verbs need a selected/open chat, the
 `Conversation` group only shows with a chat open, the channel browser only on a
-team). With an **empty** query the rows are grouped under category headers
-(`Chat` · `Conversation` · `Navigate` · `App`, via `palette_rows` →
+team, **Members** only on a team channel, and the **Message** group (edit /
+reply / react / pin / download / copy / delete the cursor message) only in
+Select mode — with "Select messages" itself hidden once you're already
+selecting). With an **empty** query the rows are grouped under category headers
+(`Chat` · `Conversation` · `Message` · `Navigate` · `App`, via `palette_rows` →
 `PaletteRow::{Header,Cmd}`); **typing** collapses to a flat filtered list
 (substring over label + keywords). Each row shows its **keybinding**
 right-aligned, so the palette doubles as an executable cheat-sheet — the `F1`
