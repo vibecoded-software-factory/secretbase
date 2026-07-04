@@ -19,34 +19,28 @@ use crate::tui::view::widgets::{
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
-    // No identity bar on the Home — the user knows who they're logged in as;
-    // the rows go to the chat instead.
+    // No identity bar on the Home — the user knows who they're logged in as.
     let main = Layout::vertical([
-        Constraint::Length(3), // shared header row (filter / name / search)
-        Constraint::Min(5),    // body (tree | chat)
+        Constraint::Min(8), // tree column | chat column (both full-height here)
         Constraint::Length(cmdlog_height(area.height)), // command log (responsive)
         Constraint::Length(1), // status strip
     ])
     .split(area);
-    let (header, body, cmdlog, status) = (main[0], main[1], main[2], main[3]);
+    let (topbody, cmdlog, status) = (main[0], main[1], main[2]);
 
-    // One shared header row: the tree filter (above the tree) + the in-chat
-    // search (above the chat). The conversation name lives on the Messages
-    // panel title, so it doesn't need its own slot here. The tree column is
-    // width-responsive (`tree_pane_width`) — the header + body must match.
+    // Two columns: the tree pane (width-responsive) on the left, the chat on the
+    // right. The **chat column spans the full height** — its own optional
+    // adaptive header (a pin / topic, or nothing) + messages + compose — so no
+    // permanent header row is reserved above it.
     let tree_w = tree_pane_width(area.width);
-    let head = Layout::horizontal([Constraint::Length(tree_w), Constraint::Min(20)]).split(header);
-    let search_area = head[0];
-    let chat_search_area = head[1];
+    let cols = Layout::horizontal([Constraint::Length(tree_w), Constraint::Min(24)]).split(topbody);
+    let (left_col, chat_area) = (cols[0], cols[1]);
 
-    // Body: the conversation tree (DMs + teams) on the left, the open chat
-    // on the right — the unified two-pane "Home".
-    let cols = Layout::horizontal([Constraint::Length(tree_w), Constraint::Min(24)]).split(body);
-    let tree_area = cols[0];
-    let chat_area = cols[1];
+    // Left column: the filter box (3 rows) atop the conversation tree.
+    let left = Layout::vertical([Constraint::Length(3), Constraint::Min(2)]).split(left_col);
+    let (search_area, tree_area) = (left[0], left[1]);
 
     render_search(frame, app, search_area);
-    crate::tui::view::conversation::draw_chat_header(frame, app, chat_search_area);
     render_tree(frame, app, tree_area);
     if app.open_conv_id.is_some() {
         crate::tui::view::conversation::draw_chat(frame, app, chat_area);
