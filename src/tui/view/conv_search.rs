@@ -107,7 +107,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
         };
         let mut time_spans = vec![Span::styled(
             format!("      {when}"),
-            Style::default().fg(t.placeholder),
+            // dim, not placeholder: the time is why this row exists —
+            // secondary-but-needed content never goes in the recessive band.
+            Style::default().fg(t.dim),
         )];
         if selected {
             for s in &mut spans {

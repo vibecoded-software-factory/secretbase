@@ -183,7 +183,8 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                         "Log in — paper key (new device) · terminal button (already provisioned)",
                     ),
                     ("F5", "retry the status check"),
-                    ("Esc / Ctrl+C", "quit"),
+                    ("Esc", "clear the focused field"),
+                    ("Ctrl+C", "quit"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
@@ -282,8 +283,8 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     "",
                     "  Ignore hides the chat until its next message.",
                     "  Block / Report hide it for good — they leave the",
-                    "  inbox list, so restore them by name with Alt+H.",
-                    "  (Mute, Alt+U, keeps it visible but silent.)",
+                    "  inbox list, so restore them by name with Shift+H.",
+                    "  (Mute, u, keeps it visible but silent.)",
                 ] {
                     lines.push(Line::from(Span::styled(n.to_string(), note)));
                 }

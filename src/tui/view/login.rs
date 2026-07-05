@@ -178,7 +178,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_hint_bar(
         frame,
         bar_chunk,
-        "Tab field · Enter login · F2 reveal · F5 retry · Esc quit",
+        "Tab field · Enter login · F2 reveal · F5 retry · Ctrl+C quit",
         &t,
     );
 }

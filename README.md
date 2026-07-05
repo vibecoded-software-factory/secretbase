@@ -142,7 +142,7 @@ collapse a group); the header search fuzzy-filters it.
 | `Alt+Enter`             | New line (multi-line message) |
 | `@…` then `Tab`         | Mention autocomplete (`↑`/`↓` pick) |
 | `↑` / `↓` · `PgUp` / `PgDn` | Scroll history |
-| `←` / `→` · `Home` / `End`  | Compose cursor |
+| `←` / `→` · `Home` / `End`  | Compose cursor (empty compose: `Home`/`End` jump to oldest / latest message) |
 | `Ctrl+F`                | Search this conversation (jump to a match) |
 | mouse                   | Click a message to select, scroll to page history |
 | `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
@@ -190,7 +190,8 @@ channel): `a` add · `Shift+X` remove · `F5` refresh.
 | `F2`                    | Reveal / hide the paper key |
 | `Enter`                 | Log in (paper key on a field/`Log in`; native on `Log in in terminal`) |
 | `F5`                    | Retry the status check |
-| `Esc` / `Ctrl+C`        | Quit |
+| `Esc`                   | Clear the focused field |
+| `Ctrl+C`                | Quit |
 
 ### Global
 
