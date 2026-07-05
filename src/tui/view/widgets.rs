@@ -336,6 +336,11 @@ pub struct PickerModal<'a> {
     pub empty: Vec<Line<'static>>,
     /// Bottom legend, rendered through [`legend_line`] (fitted, centered).
     pub legend: &'a [(&'a str, &'a str)],
+    /// When set, replaces the legend row — the inline **action row** the
+    /// channel browser / members view swap in for their create/rename/add
+    /// input modes and inline confirms ([`inline_input_line`] /
+    /// [`inline_confirm_line`]).
+    pub footer: Option<Line<'static>>,
 }
 
 /// Inner content width of the standard picker modal — for callers that
@@ -430,10 +435,102 @@ pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
         frame.render_widget(Paragraph::new(visible), chunks[2]);
     }
 
-    frame.render_widget(
-        Paragraph::new(legend_line(m.legend, chunks[3].width as usize, theme))
+    match m.footer {
+        Some(line) => frame.render_widget(Paragraph::new(line), chunks[3]),
+        None => frame.render_widget(
+            Paragraph::new(legend_line(m.legend, chunks[3].width as usize, theme))
+                .alignment(Alignment::Center),
+            chunks[3],
+        ),
+    }
+}
+
+/// The inline bottom-row **input mode** (channel create/rename, member add):
+/// dim label + the editor + a muted `(Enter <verb> · Esc cancel)` hint.
+pub fn inline_input_line(
+    label: &str,
+    editor: &LineEditor,
+    verb: &str,
+    theme: &Theme,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        format!(" {label}"),
+        Style::default().fg(theme.dim),
+    )];
+    spans.extend(editor_spans(editor, true, theme));
+    spans.push(Span::styled(
+        format!("   (Enter {verb} · Esc cancel)"),
+        Style::default().fg(theme.muted),
+    ));
+    Line::from(spans)
+}
+
+/// The inline bottom-row **confirm**: danger prompt + optional dim note +
+/// the shared [`button`] pair (default highlight = cancel) + the one
+/// canonical hint — including `y`/`n`, which [`confirm_key`] has always
+/// accepted (the popup and the inline copies used to disagree about
+/// advertising it).
+///
+/// [`confirm_key`]: crate::tui::input::common::confirm_key
+pub fn inline_confirm_line(
+    prompt: &str,
+    note: &str,
+    confirm_verb: &str,
+    yes: bool,
+    theme: &Theme,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        format!(" {prompt} "),
+        Style::default()
+            .fg(theme.error)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if !note.is_empty() {
+        spans.push(Span::styled(
+            format!("{note}  "),
+            Style::default().fg(theme.dim),
+        ));
+    }
+    spans.push(button(confirm_verb, yes, theme));
+    spans.push(Span::raw(" "));
+    spans.push(button("cancel", !yes, theme));
+    spans.push(Span::styled(
+        "   (←/→ · Enter · y/n · Esc)".to_string(),
+        Style::default().fg(theme.muted),
+    ));
+    Line::from(spans)
+}
+
+/// A small centered **single-input popup** (new conversation, unhide):
+/// emphasized title, a labeled editor row, and a fitted legend — the same
+/// popup twice was the whole pattern, now parameterized.
+pub fn draw_input_popup(
+    frame: &mut Frame,
+    theme: &Theme,
+    title: &str,
+    label: &str,
+    editor: &LineEditor,
+    legend: &[(&str, &str)],
+) {
+    let area = center_rect(60, 7, frame.area());
+    frame.render_widget(Clear, area);
+    let mut field = vec![Span::styled(
+        format!("  {label}"),
+        Style::default().fg(theme.dim),
+    )];
+    field.extend(editor_spans(editor, true, theme));
+    let lines = vec![
+        Line::from(Span::styled(format!(" {title} "), theme.emphasis()))
             .alignment(Alignment::Center),
-        chunks[3],
+        Line::from(""),
+        Line::from(field),
+        Line::from(""),
+        legend_line(legend, area.width.saturating_sub(2) as usize, theme)
+            .alignment(Alignment::Center),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines).block(rounded_block(Style::default().fg(theme.accent))),
+        area,
     );
 }
 
@@ -524,7 +621,10 @@ pub fn draw_confirm_popup(
         button("confirm", confirmed, theme),
         Span::raw("   "),
         button("cancel", !confirmed, theme),
-        Span::styled("   (←/→ · Enter · Esc)", Style::default().fg(theme.muted)),
+        Span::styled(
+            "   (←/→ · Enter · y/n · Esc)",
+            Style::default().fg(theme.muted),
+        ),
     ]));
     frame.render_widget(Paragraph::new(lines), inner);
 }

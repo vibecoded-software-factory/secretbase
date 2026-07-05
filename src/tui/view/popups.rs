@@ -61,6 +61,7 @@ pub fn react_input(frame: &mut Frame, app: &App) {
                 ("Enter", "reacts with ▶ (empty query = most-used)"),
                 ("Esc", "cancel"),
             ],
+            footer: None,
         },
     );
 }
@@ -128,6 +129,7 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
                 ("", "type to search"),
                 ("Esc", "cancel"),
             ],
+            footer: None,
         },
     );
 }
