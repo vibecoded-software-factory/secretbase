@@ -951,11 +951,48 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
             },
         );
     }
+    // Attention hotlist — @N conversations with an unseen mention of you
+    // (danger, the strongest pull), ●N with effective unread (dim). States,
+    // not events: they persist until the conversations are opened. Drain
+    // with Ctrl+N (priority-ordered: mentions → DMs → channels).
+    let mut hot: Vec<Span<'static>> = Vec::new();
+    let mention_n = app.mentioned.len();
+    let unread_n = app
+        .conversations
+        .iter()
+        .filter(|c| c.member_status == crate::domain::MemberStatus::Active)
+        .filter(|c| app.conv_is_unread(c))
+        .count();
+    if mention_n > 0 {
+        hot.push(Span::styled(
+            format!("@{mention_n} "),
+            app.theme.danger_title(),
+        ));
+    }
+    if unread_n > 0 {
+        hot.push(Span::styled(
+            format!("●{unread_n} "),
+            Style::default().fg(app.theme.dim),
+        ));
+    }
+    let hot_w = (hot.iter().map(|s| s.content.chars().count()).sum::<usize>() as u16)
+        .min(full_area.width.saturating_sub(badge_w + cond_w));
+    if !hot.is_empty() && hot_w > 0 {
+        frame.render_widget(
+            Paragraph::new(Line::from(hot)),
+            Rect {
+                x: full_area.x + badge_w + cond_w,
+                y: full_area.y,
+                width: hot_w,
+                height: full_area.height,
+            },
+        );
+    }
     // Everything else lives to the right of the badge(s).
     let area = Rect {
-        x: full_area.x + badge_w + cond_w,
+        x: full_area.x + badge_w + cond_w + hot_w,
         y: full_area.y,
-        width: full_area.width.saturating_sub(badge_w + cond_w),
+        width: full_area.width.saturating_sub(badge_w + cond_w + hot_w),
         height: full_area.height,
     };
     let feedback = match &app.action_state {

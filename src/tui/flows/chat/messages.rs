@@ -142,25 +142,38 @@ pub fn open_conversation_by_id(app: &mut App, id: String) {
 /// wrapping past the current one), the triage primitive: one key per
 /// unread conversation, from anywhere.
 pub fn open_next_unread(app: &mut App) {
-    let mut unread: Vec<(u64, String)> = app
+    // Priority hotlist, weechat-style: conversations with an unseen
+    // @mention of you first, then unread DMs, then unread team channels —
+    // most recent first within each tier. Repeated Ctrl+N drains the
+    // queue in the order the status-strip badges imply.
+    let mut unread: Vec<(u8, std::cmp::Reverse<u64>, String)> = app
         .conversations
         .iter()
         .filter(|c| c.member_status == crate::domain::MemberStatus::Active && app.conv_is_unread(c))
-        .map(|c| (c.active_at_ms, c.id.clone()))
+        .map(|c| {
+            let tier = if app.mentioned.contains(&c.id) {
+                0
+            } else if c.channel.members_type.is_team() {
+                2
+            } else {
+                1
+            };
+            (tier, std::cmp::Reverse(c.active_at_ms), c.id.clone())
+        })
         .collect();
     if unread.is_empty() {
         app.set_action(ActionState::Done("No unread conversations".into()));
         return;
     }
-    unread.sort_by_key(|(ms, _)| std::cmp::Reverse(*ms));
+    unread.sort();
     let pick = match app
         .open_conv_id
         .as_ref()
-        .and_then(|cur| unread.iter().position(|(_, id)| id == cur))
+        .and_then(|cur| unread.iter().position(|(_, _, id)| id == cur))
     {
         // The open one is itself unread → advance past it, wrapping.
-        Some(i) => unread[(i + 1) % unread.len()].1.clone(),
-        None => unread[0].1.clone(),
+        Some(i) => unread[(i + 1) % unread.len()].2.clone(),
+        None => unread[0].2.clone(),
     };
     open_conversation_by_id(app, pick);
 }

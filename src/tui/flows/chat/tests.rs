@@ -2181,6 +2181,29 @@ fn attention_motions_jump_to_divider_and_mentions() {
 }
 
 #[test]
+fn ctrl_n_drains_by_priority_mentions_then_dms_then_channels() {
+    let mut rig = build_rig();
+    // Three unread conversations: a team channel (most recent), a DM, and
+    // a DM with an unseen mention (oldest) — priority must beat recency.
+    let mut team = conv("t1", "equipo", MembersType::Team);
+    team.unread = true;
+    team.active_at_ms = 300;
+    let mut dm = conv("d1", "bob", MembersType::ImpTeamNative);
+    dm.unread = true;
+    dm.active_at_ms = 200;
+    let mut mentioned = conv("m1", "alice", MembersType::ImpTeamNative);
+    mentioned.unread = true;
+    mentioned.active_at_ms = 100;
+    preload_inbox(&mut rig.app, &rig.mock, vec![team, dm, mentioned], "t1");
+    rig.app.open_conv_id = None;
+    rig.app.mentioned.insert("m1".into());
+    open_next_unread(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // The mention wins despite being the least recent.
+    assert_eq!(rig.app.open_conv_id.as_deref(), Some("m1"));
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

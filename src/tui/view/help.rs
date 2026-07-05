@@ -340,7 +340,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             "in any picker popup: selection down / up",
         ),
         (":", "command palette (from any non-typing surface)"),
-        ("Ctrl+N", "next unread conversation (wraps)"),
+        (
+            "Ctrl+N",
+            "next unread — mentions first, then DMs, then channels",
+        ),
         ("Ctrl+O", "previous conversation (alternate-buffer toggle)"),
         ("↑/↓ j/k · PgUp/Dn", "scroll this help"),
         ("g / G · Home/End", "top / bottom of help"),

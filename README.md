@@ -113,7 +113,7 @@ stays in sync with these tables.
 | `Ctrl+G`                | Global search (inbox & Teams) |
 | `Ctrl+K`                | Quick switcher — jump to a conversation (inbox & Teams) |
 | `Ctrl+P` / `:`          | Command palette — run any action (`:` from any non-typing surface, vim-style) |
-| `Ctrl+N`                | Next unread conversation (recency order, wraps) |
+| `Ctrl+N`                | Next unread — mentions first, then DMs, then channels (wraps) |
 | `Ctrl+O`                | Previous conversation (vim's alternate-buffer toggle) |
 | `Ctrl+D` / `Ctrl+U`     | Half-page down / up in every list and viewer |
 | `Ctrl+J` / `Ctrl+K`     | Selection down / up inside every picker popup |
