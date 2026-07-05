@@ -1467,6 +1467,7 @@ fn content_icon(c: &MessageContent) -> &'static str {
         MessageContent::Edit { .. } => "✎",
         MessageContent::Delete { .. } => "✗",
         MessageContent::Reaction { .. } => "♥",
+        MessageContent::Unfurl { .. } => "↳",
         MessageContent::Attachment(_) => "📎",
         MessageContent::System(_) => "★",
         MessageContent::Metadata { .. } => "⚙",
@@ -1534,6 +1535,7 @@ fn body_lines(
         MessageContent::Leave { leaver } => placeholder(&format!("{leaver} left the channel"), t),
         MessageContent::SendPayment { text } => stellar_lines("payment", text, t),
         MessageContent::RequestPayment { text } => stellar_lines("request", text, t),
+        MessageContent::Unfurl { label } => placeholder(&format!("↳ preview · {label}"), t),
         MessageContent::Unknown { type_name } => {
             placeholder(&format!("(unsupported message type: {type_name})"), t)
         }

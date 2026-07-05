@@ -339,6 +339,11 @@ knowable for pins set by this session) · `getdeviceinfo` ·
   `read` (`result.messages[].msg` — verified: `GetV1` → `formatMessages`).
   secretbase uses it to resolve a **pinned** message that is older than the
   loaded window (the 📌 header's body snippet), on the background lane.
+- `unfurl` messages (the link-preview cards the GUI shows under a URL)
+  arrive as `content.unfurl.{messageID, unfurl.{url, unfurl.{unfurlType,
+  giphy|generic{title,siteName,…}}}}` (verified live). Their media assets
+  are **service-encrypted S3 blobs with no JSON-API download path**, so a
+  client can only render a label card (GIPHY / site title / URL).
 - ⚠️ **Slash builtins (`/giphy`, `/flip`, …) do not work through `send`**:
   the service intercepts them (`AttemptBuiltinCommand`) and the interactive
   ones need the GUI's preview UI — verified live: `send {"body":"/giphy"}`

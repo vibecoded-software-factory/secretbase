@@ -420,6 +420,10 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
             | MessageContent::Delete { .. }
             | MessageContent::Reaction { .. }
     );
+    // Unfurls decorate the message that carried the URL: append them live
+    // (they render as a card), but like controls they are not "new
+    // content" — no unread badge, no recency bump for a link preview.
+    let is_decoration = matches!(&message.content, MessageContent::Unfurl { .. });
     let sent_at = message.sent_at;
     let sent_at_ms = message.sent_at_ms;
     let msg_id = message.id;
@@ -481,19 +485,20 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
     // An @mention of you in a conversation you're not viewing gets the red
     // `@` badge in the tree (cleared when you open it). Session-local — the
     // inbox `list` carries no mention state.
-    if !from_me && !viewing && !is_control && mentions_me {
+    if !from_me && !viewing && !is_control && !is_decoration && mentions_me {
         app.mentioned.insert(conv_id.clone());
     }
 
     // 2. Incremental inbox bump (no full re-fetch).
     let known = if let Some(c) = app.conversations.iter_mut().find(|c| c.id == conv_id) {
-        if !is_control && sent_at_ms > c.active_at_ms {
+        if !is_control && !is_decoration && sent_at_ms > c.active_at_ms {
             c.active_at_ms = sent_at_ms;
             c.active_at = sent_at;
         }
-        // Mark unread unless it's our own message, we're viewing it, or it's a
-        // control event (edit/delete/reaction — not new content).
-        if !from_me && !viewing && !is_control {
+        // Mark unread unless it's our own message, we're viewing it, or it's
+        // a control event (edit/delete/reaction) or a decoration (unfurl) —
+        // neither is new content.
+        if !from_me && !viewing && !is_control && !is_decoration {
             c.unread = true;
         }
         true

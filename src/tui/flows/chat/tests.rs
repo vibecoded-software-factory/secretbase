@@ -1840,6 +1840,55 @@ fn select_move_up_at_top_without_cursor_does_nothing() {
 }
 
 #[test]
+fn unfurl_push_appends_without_unread_or_recency_bump() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("c1", "alice", MembersType::ImpTeamNative),
+            conv("c2", "bob", MembersType::ImpTeamNative),
+        ],
+        "c1",
+    );
+    // A giphy preview lands in the *other* conversation: it must not mark
+    // it unread nor bump its recency — the URL message already did that.
+    let before = rig
+        .app
+        .conversations
+        .iter()
+        .find(|c| c.id == "c2")
+        .map(|c| (c.unread, c.active_at_ms))
+        .unwrap();
+    let mut unfurl = text_msg(90, "bob", "");
+    unfurl.content = MessageContent::Unfurl {
+        label: "GIPHY".into(),
+    };
+    unfurl.sent_at_ms = 9_999_999;
+    handle_incoming_message(&mut rig.app, "c2".into(), unfurl);
+    let after = rig
+        .app
+        .conversations
+        .iter()
+        .find(|c| c.id == "c2")
+        .map(|c| (c.unread, c.active_at_ms))
+        .unwrap();
+    assert_eq!(before, after);
+    // In the *viewed* conversation it appends live as a card.
+    let mut unfurl2 = text_msg(91, "alice", "");
+    unfurl2.content = MessageContent::Unfurl {
+        label: "GIPHY".into(),
+    };
+    handle_incoming_message(&mut rig.app, "c1".into(), unfurl2);
+    assert!(
+        rig.app
+            .messages
+            .iter()
+            .any(|m| matches!(&m.content, MessageContent::Unfurl { .. }))
+    );
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

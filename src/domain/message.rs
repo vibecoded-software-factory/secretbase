@@ -72,6 +72,12 @@ pub enum MessageContent {
     /// Stellar payment request — pre-rendered `requestText`.
     RequestPayment { text: String },
 
+    /// A link-preview envelope (giphy / site cards). The media assets are
+    /// service-encrypted and unreachable over the JSON API, so only the
+    /// resolved label (site title / "GIPHY" / the URL) is carried — the
+    /// view renders it as a compact card under its target message.
+    Unfurl { label: String },
+
     /// Catch-all for message types we don't render specially. Carries
     /// the original `content.type` string so the view can show a
     /// meaningful placeholder.

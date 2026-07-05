@@ -988,6 +988,36 @@ fn parse_content(content: &Value) -> MessageContent {
                 .unwrap_or("")
                 .to_string(),
         },
+        "unfurl" => {
+            // content.unfurl.unfurl.{url, unfurl{unfurlType, giphy|generic}}
+            // (verified live). Assets are service-encrypted — label only.
+            let mid = content.pointer("/unfurl/unfurl");
+            let inner = mid.and_then(|v| v.get("unfurl"));
+            let label = match inner
+                .and_then(|v| v.get("unfurlType"))
+                .and_then(Value::as_u64)
+            {
+                Some(2) => Some("GIPHY".to_string()),
+                _ => inner
+                    .and_then(|v| v.pointer("/generic/title"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| {
+                        inner
+                            .and_then(|v| v.pointer("/generic/siteName"))
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.trim().is_empty())
+                    })
+                    .map(str::to_string),
+            }
+            .or_else(|| {
+                mid.and_then(|v| v.get("url"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "link".to_string());
+            MessageContent::Unfurl { label }
+        }
         "pin" => MessageContent::Pin {
             target_id: content
                 .pointer("/pin/messageID")
@@ -1613,6 +1643,36 @@ mod content_parse_tests {
         match &parse_content(&c) {
             MessageContent::Headline { headline } => assert_eq!(headline, "Daily standup at 10am"),
             other => panic!("expected Headline, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn content_unfurl_labels_giphy_and_generic() {
+        // Giphy card (unfurlType 2) → the fixed label.
+        let c = json!({"type": "unfurl", "unfurl": {"messageID": 7, "unfurl": {
+            "url": "https://media2.giphy.com/x.mp4",
+            "unfurl": {"unfurlType": 2, "giphy": {}}
+        }}});
+        match &parse_content(&c) {
+            MessageContent::Unfurl { label } => assert_eq!(label, "GIPHY"),
+            other => panic!("expected Unfurl, got {other:?}"),
+        }
+        // Generic site card → title, then siteName, then the URL.
+        let c = json!({"type": "unfurl", "unfurl": {"messageID": 7, "unfurl": {
+            "url": "https://example.com/a",
+            "unfurl": {"unfurlType": 0, "generic": {"title": "An Article", "siteName": "Example"}}
+        }}});
+        match &parse_content(&c) {
+            MessageContent::Unfurl { label } => assert_eq!(label, "An Article"),
+            other => panic!("expected Unfurl, got {other:?}"),
+        }
+        let c = json!({"type": "unfurl", "unfurl": {"messageID": 7, "unfurl": {
+            "url": "https://example.com/a",
+            "unfurl": {"unfurlType": 0, "generic": {"title": ""}}
+        }}});
+        match &parse_content(&c) {
+            MessageContent::Unfurl { label } => assert_eq!(label, "https://example.com/a"),
+            other => panic!("expected Unfurl, got {other:?}"),
         }
     }
 
