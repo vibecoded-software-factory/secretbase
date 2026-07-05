@@ -21,7 +21,6 @@ use crate::tui::mouse_areas::MouseAreas;
 use crate::tui::screens::{Focus, Screen};
 use crate::tui::theme::{self, Theme};
 use crate::tui::worker::{InFlight, WorkerRequest, WorkerResponse};
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Step size in rows for PgUp/PgDn navigation.
 pub const PAGE_STEP: usize = 10;
@@ -117,6 +116,7 @@ impl ConvAction {
     }
 }
 
+pub use crate::tui::outbox::{PendingSend, SendState};
 pub use crate::tui::settings_model::*;
 // Re-exported so existing `app::AlignReq` / `app::PendingBatch` paths keep
 // working after these moved into their cohesive home.
@@ -135,39 +135,6 @@ fn toml_quoted(v: &str) -> String {
         .filter(|c| !c.is_control() && *c != '"' && *c != '\\')
         .collect();
     format!("\"{clean}\"")
-}
-
-/// Delivery state of an optimistic [`PendingSend`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SendState {
-    /// In flight — waiting for the send reply.
-    Pending,
-    /// The send succeeded; awaiting the reconciling re-read that will
-    /// replace this bubble with the real message (then it is pruned).
-    Delivered,
-    /// The send failed — kept on screen so the user can resend it.
-    Failed,
-}
-
-/// An optimistically-rendered outgoing message (see [`App::outbox`]).
-/// Shown the instant the user hits Enter and tracked to delivery, so the
-/// send never feels like it waited on a round-trip — and a failure stays
-/// visible with a resend affordance instead of silently vanishing.
-#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
-pub struct PendingSend {
-    /// Conversation this send targets (matches `Conversation::id`).
-    pub conv_id: String,
-    /// Message body — chat content, wiped on drop.
-    pub body: String,
-    /// Threaded-reply target, if any.
-    #[zeroize(skip)]
-    pub reply_to: Option<u64>,
-    /// Wall-clock send time (unix millis) for the bubble's timestamp.
-    #[zeroize(skip)]
-    pub sent_at_ms: u64,
-    /// Current delivery state.
-    #[zeroize(skip)]
-    pub state: SendState,
 }
 
 /// What the open [`crate::tui::file_picker::FilePicker`] is for — set when
