@@ -92,10 +92,10 @@ pub(crate) fn try_jump_to_search_target(app: &mut App) {
         app.select.from_compose = false;
         app.select.cursor = Some(idx);
         app.set_action(ActionState::Done("Jumped to message".into()));
-    } else if app.messages_next.is_some() && !app.messages_loading_older {
-        app.messages_loading_older = true;
+    } else if app.pagination.next.is_some() && !app.pagination.loading_older {
+        app.pagination.loading_older = true;
         request_load_older_messages(app);
-    } else if !app.messages_loading_older {
+    } else if !app.pagination.loading_older {
         app.pending_search_jump = None;
         app.set_action(ActionState::Error("Message not found in history".into()));
     }
@@ -303,7 +303,7 @@ pub fn giphy_send_selected(app: &mut App) {
         sent_at_ms: now_ms,
         state: crate::tui::app::SendState::Pending,
     });
-    app.messages_scroll = 0;
+    app.pagination.scroll = 0;
     close_giphy_search(app);
     app.set_action(ActionState::Running("Sending GIF…".into()));
     let _ = app.worker_tx.send(WorkerRequest::SendMessage {

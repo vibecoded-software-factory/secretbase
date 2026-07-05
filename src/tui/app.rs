@@ -274,33 +274,12 @@ pub struct App {
     /// (oldest first, latest last — keybase's read response is
     /// newest-first, the flow reverses it).
     pub messages: Vec<Message>,
-    /// First visible row in the detail view. The renderer pins the
-    /// "latest" line to the bottom of the panel by default; this
-    /// offset lets the user scroll back to read history.
-    pub messages_scroll: usize,
-    /// When set, the next `read` reply **keeps** the current scroll offset
-    /// instead of snapping to the latest message. Set by control-op re-reads
-    /// (delete / edit / react) so acting on a message you scrolled up to
-    /// doesn't yank you back to the bottom. Consumed by the read handler.
-    pub preserve_msg_scroll: bool,
-    /// Cursor for the next *older* page of messages, supplied by the
-    /// Keybase service in the previous `read` reply. `None` once the
-    /// service signals it has reached the bottom of history.
-    pub messages_next: Option<String>,
-    /// Whether a pagination call is currently in flight — used to
-    /// debounce repeated Up-arrow presses while we wait for the next
-    /// older page to arrive.
-    pub messages_loading_older: bool,
-    /// The maximum bottom-relative scroll offset the view rendered on
-    /// the last frame. The input handler reads it to know when the
-    /// user has reached the top of loaded history (so it can trigger
-    /// a pagination fetch).
-    pub messages_max_back: usize,
-    /// Count of messages that arrived (via push) in the open conversation
-    /// while the reader was **scrolled up** away from the latest — drives the
-    /// floating "▼ N new · End" jump-to-latest pill. Reset to 0 once the reader
-    /// is back at the bottom (or on open/close).
-    pub new_since_scroll: usize,
+    /// The open conversation's message-viewport state — the scroll offset,
+    /// the older-page cursor and the derived scroll/pagination cues (max-back,
+    /// new-since-scroll, the new-messages divider anchor) — extracted into its
+    /// own cohesive type (see [`crate::tui::pagination_state`]). The
+    /// read-handler pagination flows stay in the flow layer.
+    pub pagination: crate::tui::pagination_state::PaginationState,
     /// The pinned-message subsystem's state — the open conversation's pin
     /// banner projection plus the local/persisted bookkeeping the JSON API
     /// can't give us — extracted into its own cohesive type (see
@@ -339,15 +318,10 @@ pub struct App {
     pub msg_cache_epoch: u64,
     /// **Session-local** highest message id already *seen* per conversation
     /// (keyed by conv id). Recorded when a conversation is left / switched away
-    /// from; on the next open it seeds [`Self::unread_boundary`] so the
-    /// message stream can draw a `new messages` divider above anything that
+    /// from; on the next open it seeds [`Self::pagination`]'s `unread_boundary`
+    /// so the message stream can draw a `new messages` divider above anything that
     /// arrived since. Not persisted (a fresh run starts with no baseline).
     pub conv_last_seen: HashMap<String, u64>,
-    /// For the **currently open** conversation, the message id below-or-equal to
-    /// which everything was already seen last time it was open — the anchor for
-    /// the `new messages` divider. `None` on a first-ever open (no baseline) or
-    /// when nothing new has arrived. Set on open, cleared on close.
-    pub unread_boundary: Option<u64>,
     /// Optimistic send queue: messages shown immediately and tracked
     /// through `Pending → Delivered → Failed`. Kept separate from
     /// `messages` so a re-read (which replaces `messages` wholesale)
@@ -569,13 +543,6 @@ pub struct App {
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     pub should_quit: bool,
-    /// Remaining auto-backfill budget (older pages the read handlers may
-    /// chain without user input). A `read` counts **raw server slots**, and
-    /// projection (fold edits/deletes, drop reactions) can collapse a
-    /// 50-slot page to one visible message — in envelope-heavy
-    /// conversations an open/reload would land nearly empty and the
-    /// scroll/selector had nothing to move over. Reset per fresh load.
-    pub backfill_pages: u8,
     /// Set once the worker response channel reports `Disconnected` (every
     /// worker thread gone) so the failure is surfaced a single time.
     pub worker_dead: bool,
@@ -750,16 +717,10 @@ impl App {
             members: crate::tui::members_state::MembersState::default(),
             open_conv_id: None,
             conv_last_seen: HashMap::new(),
-            unread_boundary: None,
             messages: Vec::new(),
             outbox: Vec::new(),
             file_picker: None,
-            messages_scroll: 0,
-            preserve_msg_scroll: false,
-            messages_next: None,
-            messages_loading_older: false,
-            messages_max_back: 0,
-            new_since_scroll: 0,
+            pagination: crate::tui::pagination_state::PaginationState::default(),
             pins,
             giphy_input: crate::domain::LineEditor::default(),
             giphy_results: Vec::new(),
@@ -835,7 +796,6 @@ impl App {
             settings_theme_idx,
             settings_from: Screen::Inbox,
             should_quit: false,
-            backfill_pages: 0,
             worker_dead: false,
             prev_conv_id: None,
             boot_error: None,
