@@ -39,6 +39,15 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     let delta = match ev.kind {
         MouseEventKind::ScrollUp => -1isize,
         MouseEventKind::ScrollDown => 1isize,
+        MouseEventKind::Down(_) if picker_screen(app.screen) => {
+            // Click selects the row under the pointer; clicking the already-
+            // selected row activates it — the tree/messages contract, now on
+            // every picker (the hit map comes from the shared skeleton).
+            if let Some(item) = crate::tui::view::widgets::picker_row_at(ev.column, ev.row) {
+                picker_click(app, item);
+            }
+            return;
+        }
         _ => {
             if app.screen == Screen::Inbox {
                 handle_home(app, ev);
@@ -81,6 +90,54 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
             };
         }
         _ => {}
+    }
+}
+
+/// Screens rendered on the shared picker-modal skeleton (click-to-select).
+fn picker_screen(s: Screen) -> bool {
+    matches!(
+        s,
+        Screen::QuickSwitcher
+            | Screen::CommandPalette
+            | Screen::React
+            | Screen::ConvSearch
+            | Screen::SearchGlobal
+            | Screen::ChannelBrowser
+            | Screen::Members
+            | Screen::GiphySearch
+    )
+}
+
+/// Select-then-activate for a clicked picker row.
+fn picker_click(app: &mut App, item: usize) {
+    let (sel, activate): (&mut usize, fn(&mut App)) = match app.screen {
+        Screen::QuickSwitcher => (
+            &mut app.switcher_selected,
+            chat::quick_switcher_open_selected,
+        ),
+        Screen::CommandPalette => (
+            &mut app.palette_selected,
+            crate::tui::flows::palette::palette_run_selected,
+        ),
+        Screen::React => (&mut app.react_selected, chat::request_send_reaction),
+        Screen::ConvSearch => (
+            &mut app.conv_search_selected,
+            chat::conv_search_jump_selected,
+        ),
+        Screen::SearchGlobal => (
+            &mut app.search_global_selected,
+            chat::open_selected_search_result,
+        ),
+        Screen::ChannelBrowser => (&mut app.channel_selected, chat::channel_browser_activate),
+        // Members has no Enter action — click just moves the cursor.
+        Screen::Members => (&mut app.members_selected, |_| {}),
+        Screen::GiphySearch => (&mut app.giphy_selected, chat::giphy_send_selected),
+        _ => return,
+    };
+    if *sel == item {
+        activate(app);
+    } else {
+        *sel = item;
     }
 }
 
