@@ -40,8 +40,11 @@ tree on the left, the open chat on the right — no separate full-screen
 conversation on normal terminals. Each signed-in screen owns its layout,
 sharing the responsive command log (`widgets::cmdlog_height`) and the
 status strip at the bottom.
-- **two full-height columns** — the tree pane on the left (its `─[Alt+F]-Search`
-  filter box, 3 rows, atop the tree) and the **chat on the right, spanning the
+- **two full-height columns** — the tree pane on the left (a 3-row **identity
+  chip** — your signed-in `@username` + device, Discord-style — atop the tree;
+  the chat **filter folds into the `─[Alt+C]-Chats` title** as a live `/query`,
+  the Teams `/`-filter contract, so no separate search box is reserved and
+  `/` / `Alt+F` start filtering) and the **chat on the right, spanning the
   full height**: no permanent header row is reserved above it. The conversation
   **name** lives on the Messages panel title (`─[Alt+M]-Messages — <name>`,
   `conversation::chat_title`). In-conversation search is a **`Ctrl+F` modal**
@@ -188,8 +191,9 @@ status strip at the bottom.
   for states that persist as long
   as they're true (`⚠ WORKER DEAD` error+bold; `⇅ reconnecting…` dim while
   the push stream is down), then feedback (spinner / ✓ / ✗) when an action
-  is in flight, else the per-focus footer hint, with a dim **`@username`**
-  and **`F1 help` anchored right** (the username drops first when narrow).
+  is in flight, else the per-focus footer hint, with **`F1 help · F10
+  settings` anchored right** (the signed-in `@username` now lives in the
+  identity chip atop the tree, not the footer).
   **Error toasts are sticky** — they persist until the next keypress
   (mutt/lazygit); success toasts keep the ~1.5 s fuse. The badge
   tells the user what a keystroke will do (type vs act vs navigate).
@@ -588,7 +592,8 @@ Conventions:
 
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
-its panels `─[Alt+F]-Search`, `─[Alt+C]-Chats`, `─[Alt+M]-Messages`, `─[Alt+L]-Command log`; Teams
+its panels `─[Alt+C]-Chats` (with the live `/query` woven into its title, the
+same tree-search contract as Teams — `Alt+F` / `/` start it), `─[Alt+M]-Messages`, `─[Alt+L]-Command log`; Teams
 shows plain `Teams` / `Command log` titles (nothing there is Tab-focusable —
 the list has a `/` **name filter** (tree-search contract: Enter keeps it,
 Esc clears then leaves; the border count reads `shown of total` and the

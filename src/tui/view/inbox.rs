@@ -13,8 +13,8 @@ use crate::tui::app::{App, TreeRow};
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
-    cmdlog_height, draw_cmd_log, draw_search_box, draw_status_strip, favorite_star, list_table,
-    list_title, middle_ellipsis, tree_pane_width, unread_dot, unread_style,
+    cmdlog_height, draw_cmd_log, draw_status_strip, favorite_star, list_table, list_title,
+    middle_ellipsis, tree_pane_width, unread_dot, unread_style,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -57,11 +57,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let cols = Layout::horizontal([Constraint::Length(tree_w), Constraint::Min(24)]).split(topbody);
     let (left_col, chat_area) = (cols[0], cols[1]);
 
-    // Left column: the filter box (3 rows) atop the conversation tree.
+    // Left column: the identity chip (3 rows) atop the conversation tree. The
+    // chat filter now folds into the Chats panel title (Teams `/query`
+    // contract), so no separate search box is reserved.
     let left = Layout::vertical([Constraint::Length(3), Constraint::Min(2)]).split(left_col);
-    let (search_area, tree_area) = (left[0], left[1]);
+    let (identity_area, tree_area) = (left[0], left[1]);
 
-    render_search(frame, app, search_area);
+    render_identity(frame, app, identity_area);
     render_tree(frame, app, tree_area);
     if app.open_conv_id.is_some() {
         crate::tui::view::conversation::draw_chat(frame, app, chat_area);
@@ -90,7 +92,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         );
     }
 
-    app.mouse_areas.search = search_area;
+    // The old search box is gone (filter lives in the Chats title now); a
+    // zero rect means no click ever lands on the removed panel.
+    app.mouse_areas.search = ratatui::layout::Rect::default();
     app.mouse_areas.source = tree_area;
     app.mouse_areas.list = chat_area;
     app.mouse_areas.cmd_log = cmdlog;
@@ -107,23 +111,34 @@ fn footer_hint(app: &App) -> &'static str {
     }
 }
 
-fn render_search(frame: &mut Frame, app: &App, area: Rect) {
-    // draw_search_box prepends the `─[Alt+S]-` panel tag itself.
-    // No counter here — the Chats border's `X of Y` is the single source
-    // (two counters in different units, 3 rows apart, answered the same
-    // question).
-    let title = "Search".to_string();
-    draw_search_box(
-        frame,
-        app,
-        area,
-        "Alt+F",
-        &title,
-        "type to filter chats…",
-        &app.search,
-        app.focus == Focus::Search,
-        false, // the tree filter is always available
-    );
+/// The account chip atop the tree — your signed-in identity, Discord-style, in
+/// the slot the search box used to occupy (its username moved out of the
+/// footer). Display-only.
+fn render_identity(frame: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
+    let block = titled_block("─ You", false, app);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let mut spans = vec![Span::raw(" ")];
+    if app.identity.logged_in && !app.identity.username.is_empty() {
+        // A signed-in dot + the username in accent (this is *you* — primary).
+        spans.push(Span::styled("● ", Style::default().fg(t.success)));
+        spans.push(Span::styled(
+            format!("@{}", app.identity.username),
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        ));
+        // Device type (desktop / mobile / paper) dim, only if it fits.
+        if !app.identity.device_type.is_empty() {
+            let extra = format!("  {}", app.identity.device_type);
+            let used = app.identity.username.chars().count() + 4; // "● @" + " "
+            if used + extra.chars().count() < inner.width as usize {
+                spans.push(Span::styled(extra, Style::default().fg(t.dim)));
+            }
+        }
+    } else {
+        spans.push(Span::styled("not signed in", Style::default().fg(t.dim)));
+    }
+    frame.render_widget(ratatui::widgets::Paragraph::new(Line::from(spans)), inner);
 }
 
 /// A friendly notice inside the Chats panel (empty inbox / no matches): a bold
@@ -131,7 +146,7 @@ fn render_search(frame: &mut Frame, app: &App, area: Rect) {
 /// not a glitch.
 fn draw_tree_notice(frame: &mut Frame, app: &App, area: Rect, head: &str, hints: &[&str]) {
     let t = &app.theme;
-    let focused = app.focus == Focus::Tree;
+    let focused = matches!(app.focus, Focus::Tree | Focus::Search);
     let block = titled_block("─[Alt+C]-Chats", focused, app);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -383,17 +398,23 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     // Count in the bottom-right border: rows currently visible in the tree
     // (group headers + the conversations of any expanded group) of the total
     // conversations — so it tracks what's actually shown as you fold/unfold.
-    let title = format!(
+    let mut title = format!(
         "─[Alt+C]-{}",
         list_title("Chats", model.len(), app.conversations.len())
     );
+    // The chat filter folds into the title (Teams `/query` contract) — `/` or
+    // Alt+F starts filtering, the query shows live, Esc clears and leaves.
+    let filtering = app.focus == Focus::Search;
+    if filtering || !app.search.text().trim().is_empty() {
+        title = format!("{title} /{}", app.search.text());
+    }
     let mut scroll = app.list_scroll;
     list_table(
         frame,
         &t,
         area,
         &title,
-        app.focus == Focus::Tree,
+        matches!(app.focus, Focus::Tree | Focus::Search),
         &["Chats", "#"],
         &[Constraint::Length(budget as u16), Constraint::Min(4)],
         rows,
