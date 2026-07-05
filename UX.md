@@ -955,6 +955,14 @@ to prove it's secondary.
 **Presets.** Themes are built from a `Palette` (13 named roles) via
 `Theme::from_palette`, which maps the core roles and derives the starfield +
 conversation-marker colors.
+Themes **adapt to the terminal's color capability at application time**
+(`theme::adapt` + `ColorCaps::detect` — never inside `from_palette`, so
+palette values stay exact): `NO_COLOR` collapses every hue to a grayscale
+tier (brightness still differentiates; hue never carries meaning), a
+terminal without a `COLORTERM=truecolor|24bit` hint gets every RGB
+quantized to the nearest xterm-256 index (deterministic, instead of
+whatever the terminal would approximate), and truecolor passes through.
+`foreground: Reset` survives every mode (the inherit-terminal contract).
 17 bundled presets ship (`Preset::ALL`) — the full Catppuccin family (`-mocha`/`-frappe`/
 `-macchiato`/`-latte`), `dracula`, `nord` (default — `Preset::DEFAULT`),
 `tokyonight` (+ `-storm`), `gruvbox-dark`, `rose-pine` (+ `-dawn`),

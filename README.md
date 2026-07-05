@@ -289,6 +289,8 @@ giphy_api_key = ""                 # your own Giphy API key (free at
                                     # vended and unreachable outside its GUI.
                                     # Editable in-app: Settings → Images
 
+# Themes adapt to the terminal automatically: NO_COLOR → monochrome,
+# no COLORTERM=truecolor → colors quantized to xterm-256, truecolor → exact.
 [theme]
 name         = "nord"              # bundled preset (dark): nord (default),
                                     # catppuccin-mocha / -frappe / -macchiato,

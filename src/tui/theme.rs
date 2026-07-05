@@ -577,6 +577,127 @@ fn mix(a: Color, b: Color, t: f32) -> Color {
     Color::Rgb(f(ar, br), f(ag, bg), f(ab, bb))
 }
 
+/// Terminal color capability, detected from the environment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorCaps {
+    /// `NO_COLOR` set: hue must not carry meaning — monochrome grayscale.
+    Mono,
+    /// No truecolor hint: quantize every RGB to the xterm-256 cube (what
+    /// such terminals would approximate anyway, but deterministically).
+    Indexed256,
+    /// Truecolor: pass through.
+    True,
+}
+
+impl ColorCaps {
+    /// Detects the capability: `NO_COLOR` (any non-empty value) wins, then
+    /// `COLORTERM=truecolor|24bit`, else indexed-256.
+    pub fn detect() -> ColorCaps {
+        if std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty()) {
+            return ColorCaps::Mono;
+        }
+        match std::env::var("COLORTERM") {
+            Ok(v) if v.contains("truecolor") || v.contains("24bit") => ColorCaps::True,
+            _ => ColorCaps::Indexed256,
+        }
+    }
+}
+
+/// Adapts a built theme to the terminal's color capability — applied at
+/// **application** time (the boot load and the live picker), never inside
+/// `from_palette`, so palette values stay exact for overrides and tests.
+pub fn adapt(mut t: Theme, caps: ColorCaps) -> Theme {
+    match caps {
+        ColorCaps::True => t,
+        ColorCaps::Indexed256 => {
+            map_colors(&mut t, &quantize_256);
+            t
+        }
+        ColorCaps::Mono => {
+            map_colors(&mut t, &to_gray);
+            t
+        }
+    }
+}
+
+/// Applies `f` to every color the theme carries — one list, so a new field
+/// can't silently skip degradation.
+fn map_colors(t: &mut Theme, f: &impl Fn(Color) -> Color) {
+    for c in [
+        &mut t.accent,
+        &mut t.inactive,
+        &mut t.selected_bg,
+        &mut t.success,
+        &mut t.error,
+        &mut t.dim,
+        &mut t.foreground,
+        &mut t.placeholder,
+        &mut t.muted,
+        &mut t.star_dim,
+        &mut t.star_mid,
+        &mut t.star_bright,
+        &mut t.conv_dm,
+        &mut t.conv_team,
+        &mut t.conv_unread,
+    ] {
+        *c = f(*c);
+    }
+    for c in t.user_colors.iter_mut() {
+        *c = f(*c);
+    }
+    t.user_colors.dedup();
+}
+
+/// Nearest xterm-256 index for an RGB color (6×6×6 cube vs the grayscale
+/// ramp, whichever is closer). Non-RGB colors pass through.
+fn quantize_256(c: Color) -> Color {
+    let Color::Rgb(r, g, b) = c else { return c };
+    let to_cube = |v: u8| -> (u8, u8) {
+        // Cube levels: 0, 95, 135, 175, 215, 255.
+        let levels = [0u8, 95, 135, 175, 215, 255];
+        let mut best = (0u8, u16::MAX);
+        for (i, &l) in levels.iter().enumerate() {
+            let d = l.abs_diff(v) as u16;
+            if d < best.1 {
+                best = (i as u8, d);
+            }
+        }
+        (best.0, levels[best.0 as usize])
+    };
+    let (ci_r, cr) = to_cube(r);
+    let (ci_g, cg) = to_cube(g);
+    let (ci_b, cb) = to_cube(b);
+    let cube_idx = 16 + 36 * ci_r as u16 + 6 * ci_g as u16 + ci_b as u16;
+    let cube_err = (cr.abs_diff(r) as u32).pow(2)
+        + (cg.abs_diff(g) as u32).pow(2)
+        + (cb.abs_diff(b) as u32).pow(2);
+    // Grayscale ramp: indices 232..=255, values 8, 18, …, 238.
+    let luma = (r as u16 + g as u16 + b as u16) / 3;
+    let gray_step = ((luma.saturating_sub(8)) / 10).min(23) as u8;
+    let gray_val = 8 + 10 * gray_step as u16;
+    let gray_err = (gray_val.abs_diff(r as u16) as u32).pow(2)
+        + (gray_val.abs_diff(g as u16) as u32).pow(2)
+        + (gray_val.abs_diff(b as u16) as u32).pow(2);
+    if gray_err < cube_err {
+        Color::Indexed(232 + gray_step)
+    } else {
+        Color::Indexed(cube_idx as u8)
+    }
+}
+
+/// Monochrome tier for `NO_COLOR`: brightness still differentiates
+/// (bold/dim modifiers stay untouched elsewhere), hue never does.
+fn to_gray(c: Color) -> Color {
+    let Color::Rgb(r, g, b) = c else { return c };
+    let luma = (2 * r as u16 + 3 * g as u16 + b as u16) / 6;
+    match luma {
+        200.. => Color::White,
+        120..=199 => Color::Gray,
+        50..=119 => Color::DarkGray,
+        _ => Color::Black,
+    }
+}
+
 impl Default for Theme {
     fn default() -> Self {
         // The shared default across the three TUIs is Catppuccin Mocha,
@@ -594,6 +715,12 @@ impl Default for Theme {
 ///
 /// Returns [`Theme::default`] when the file or section is missing.
 pub fn load(config_dir: &Path) -> Theme {
+    adapt(load_unadapted(config_dir), ColorCaps::detect())
+}
+
+/// The raw configured theme, before terminal-capability adaptation —
+/// separated so tests exercise exact palette values.
+fn load_unadapted(config_dir: &Path) -> Theme {
     let file = config_dir.join("config.toml");
     let Ok(text) = std::fs::read_to_string(&file) else {
         return Theme::default();
@@ -850,6 +977,50 @@ mod tests {
         let t = parse_theme_section("[theme]\nname = \"solarized-zorp\"\n");
         assert_eq!(t.accent, Theme::default().accent);
         assert_eq!(t.foreground, Color::Reset);
+    }
+
+    #[test]
+    fn adapt_quantizes_and_grays_deterministically() {
+        // Indexed256: RGB becomes an xterm-256 index; Reset passes through.
+        let t = Theme::from_palette(&Preset::CatppuccinMocha.palette());
+        let q = adapt(t.clone(), ColorCaps::Indexed256);
+        assert!(matches!(q.accent, Color::Indexed(_)));
+        // Mono: hue collapses to a gray tier; nothing chromatic survives.
+        let m = adapt(t.clone(), ColorCaps::Mono);
+        for c in [m.accent, m.error, m.success, m.dim] {
+            assert!(
+                matches!(
+                    c,
+                    Color::White | Color::Gray | Color::DarkGray | Color::Black
+                ),
+                "expected gray tier, got {c:?}"
+            );
+        }
+        // True: untouched.
+        let u = adapt(t.clone(), ColorCaps::True);
+        assert_eq!(u.accent, t.accent);
+        // foreground Reset survives every mode (inherit-terminal contract).
+        let mut reset = t;
+        reset.foreground = Color::Reset;
+        assert_eq!(
+            adapt(reset.clone(), ColorCaps::Indexed256).foreground,
+            Color::Reset
+        );
+        assert_eq!(adapt(reset, ColorCaps::Mono).foreground, Color::Reset);
+    }
+
+    #[test]
+    fn quantize_prefers_gray_ramp_for_grays_and_cube_for_hues() {
+        // A mid gray lands on the grayscale ramp (232..=255).
+        match quantize_256(Color::Rgb(128, 128, 128)) {
+            Color::Indexed(i) => assert!(i >= 232, "gray should use the ramp, got {i}"),
+            other => panic!("expected Indexed, got {other:?}"),
+        }
+        // A saturated hue lands in the 6x6x6 cube (16..=231).
+        match quantize_256(Color::Rgb(203, 166, 247)) {
+            Color::Indexed(i) => assert!((16..=231).contains(&i), "hue → cube, got {i}"),
+            other => panic!("expected Indexed, got {other:?}"),
+        }
     }
 
     #[test]
