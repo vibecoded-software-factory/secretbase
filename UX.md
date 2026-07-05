@@ -893,8 +893,10 @@ the available cols/rows, fill them with a skeleton while loading
 (`image_skeleton_lines`), and cap GIF frames to `GIF_FRAME_MAX_PX`.
 
 **Modals** share one geometry so they line up and stay on-screen:
-`center_rect(MODAL_WIDTH_PCT = 80%, MODAL_HEIGHT = 22)`. The confirm popup sizes
-`w = 66.min(area.width)`, `h = (body + 4).min(area.height)`; **Settings** keeps a
+`center_rect(MODAL_WIDTH_PCT = 80%, MODAL_HEIGHT = 22)`. The confirm popup shares the
+modal band's width and **top edge** (`center_rect(MODAL_WIDTH_PCT,
+MODAL_HEIGHT)`) with a compact height (`body + 4`, clamped to the band) —
+aligned with Settings/pickers instead of free-floating; **Settings** keeps a
 content-driven width sized **once** to the widest section (so it doesn't resize
 as you navigate), clamps height to `MODAL_HEIGHT.min(area.height - 2)`, **wraps**
 long values onto continuation lines (`settings::wrap_chars`, never a `…`), and
