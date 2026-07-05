@@ -50,7 +50,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_type(BorderType::Double)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(t.accent));
     frame.render_widget(block, popup);
     frame.render_widget(Paragraph::new(lines).scroll((scroll_y, 0)), inner);

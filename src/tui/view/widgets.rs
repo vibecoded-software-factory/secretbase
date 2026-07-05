@@ -619,7 +619,7 @@ pub fn draw_confirm_popup(
                 .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_type(BorderType::Double)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.accent));
     frame.render_widget(block, popup);
 
