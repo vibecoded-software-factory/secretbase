@@ -209,6 +209,14 @@ pub enum TreeRow {
     Conv { idx: usize },
 }
 
+/// Where `zz`/`zt`/`zb` put the selected message in the viewport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignReq {
+    Center,
+    Top,
+    Bottom,
+}
+
 /// Top-level mutable state of the TUI.
 pub struct App {
     // ── Screen / focus / filter ───────────────────────────────────────────
@@ -650,6 +658,11 @@ pub struct App {
     /// `Ctrl+W` window-nav leader is armed — the next key is read as a
     /// direction (`h/j/k/l` or an arrow) to move between panels positionally.
     pub pending_pane_nav: bool,
+    /// Armed by `z` in Select mode: the next key (`z`/`t`/`b`) aligns the
+    /// selected message in the viewport (vim's `zz`/`zt`/`zb`).
+    pub select_z_pending: bool,
+    /// One-shot alignment request consumed by the next messages render.
+    pub pending_align: Option<AlignReq>,
     /// `Ctrl+W z` — the chat column takes the whole Home (tree + command
     /// log hidden) until toggled back. tmux's prefix+z, on our pane leader.
     pub pane_zoomed: bool,
@@ -1028,6 +1041,8 @@ impl App {
             cmdlog_marks: HashSet::new(),
             cmdlog_anchor: None,
             pending_pane_nav: false,
+            select_z_pending: false,
+            pending_align: None,
             pane_zoomed: false,
             settings_cache,
             favorites,

@@ -694,6 +694,16 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // cursor navigation alone never scrolls, so it could otherwise drift
         // above the fold with no way back.
         if let Some(sel) = selected_line.filter(|_| app.selected_msg_idx.is_some()) {
+            // One-shot vim alignment (zz/zt/zb) — applied before the
+            // keep-visible clamp, which then has nothing to correct.
+            if let Some(align) = app.pending_align.take() {
+                scroll_y = match align {
+                    crate::tui::app::AlignReq::Top => sel,
+                    crate::tui::app::AlignReq::Center => sel.saturating_sub(viewport / 2),
+                    crate::tui::app::AlignReq::Bottom => (sel + 1).saturating_sub(viewport),
+                }
+                .min(max_back);
+            }
             if sel < scroll_y {
                 scroll_y = sel;
             } else if sel >= scroll_y + viewport {

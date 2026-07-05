@@ -242,7 +242,9 @@ the plain URL.
 message (the Slack/Discord reflex; `Alt+E` still works from anywhere) —
 with draft text or while scrolled up, `↑` remains a history scroll, so
 typed text is never at risk.
-`w` in Select mode lists **who reacted** (`emoji names · …` on the
+`zz`/`zt`/`zb` in Select mode align the cursor message (center/top/bottom
+— vim's viewport alignment, applied as a one-shot before the keep-visible
+clamp). `w` in Select mode lists **who reacted** (`emoji names · …` on the
 feedback strip) — the chips only show counts, and a terminal has no hover.
 **Catch-up motions**: `Alt+N` jumps to the first message after the
 `new messages` divider (both modes), and in Select mode `[` / `]` walk the
