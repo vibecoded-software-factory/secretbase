@@ -662,7 +662,10 @@ weight of the action before you press it. Every screen follows the same tiers:
   in an input it deletes a word), `Ctrl+D`/`Ctrl+U` half-page in every list
   and viewer, `Ctrl+J`/`Ctrl+K` selection moves inside every picker popup.
   **`:`** opens the command palette from any non-typing surface (the vim
-  command line; `Ctrl+P` remains the works-everywhere form). The run loop
+  command line; `Ctrl+P` remains the works-everywhere form). `Ctrl+N` opens
+  the **next unread** conversation (recency order, wrapping — the triage
+  key); `Ctrl+O` toggles back to the **previous** conversation
+  (`App::prev_conv_id`, vim's alternate buffer). The run loop
   opts into the **kitty keyboard protocol** where supported
   (`DISAMBIGUATE_ESCAPE_CODES` only), so Alt/Shift chords survive SSH;
   unsupported terminals keep classic delivery.
@@ -670,8 +673,8 @@ weight of the action before you press it. Every screen follows the same tiers:
   tag: `Alt+F` Filter, `Alt+C` Chats, `Alt+M` Messages, `Alt+L` Log. These fire
   from any focus (even mid-compose), so a text field can't trap you. Compose
   also parks its *non-text* actions on `Alt` (`Alt+V` select, `Alt+A` attach,
-  `Alt+U` unpin, `Alt+R` resend, `Alt+P` members) because bare letters there are
-  typed text.
+  `Alt+E` edit-your-last-message, `Alt+U` unpin, `Alt+R` resend, `Alt+P`
+  members) because bare letters there are typed text.
 - **`/` = focus search** · `Esc`/`h` back · `F1` help · `F10` Settings ·
   `Tab`/`Shift+Tab` cycle focus · `j/k`+`↑/↓` navigate · `PgUp/PgDn` page ·
   `g/G` top/bottom · `Enter`/`l` open.

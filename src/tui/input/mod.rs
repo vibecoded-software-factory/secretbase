@@ -80,6 +80,25 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         crate::tui::flows::chat::open_quick_switcher(app);
         return;
     }
+    // Ctrl+N — next unread conversation (the triage key); Ctrl+O — back to
+    // the previous conversation (vim's alternate buffer). Global like the
+    // switcher, so they work mid-compose. They *load* a conversation, so
+    // the busy guard below still applies (begin() refuses while in flight).
+    if key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(app.screen, Screen::Inbox | Screen::Teams)
+    {
+        match key.code {
+            KeyCode::Char('n') => {
+                crate::tui::flows::chat::open_next_unread(app);
+                return;
+            }
+            KeyCode::Char('o') => {
+                crate::tui::flows::chat::open_previous_conversation(app);
+                return;
+            }
+            _ => {}
+        }
+    }
     // Ctrl+P toggles the command palette (from a base screen) — the sibling of
     // the Ctrl+K switcher, for actions instead of conversations. Pure
     // navigation, allowed even while busy.

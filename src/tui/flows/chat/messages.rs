@@ -18,6 +18,13 @@ use super::*;
 /// Shared conversation-open path: stash the previously-open draft, switch to
 /// `id`, restore its draft, and load its messages.
 pub(crate) fn enter_conversation(app: &mut App, id: String) {
+    // The alternate-buffer register for Ctrl+O: remember what was open
+    // before this switch (a re-open of the same conversation doesn't count).
+    if let Some(cur) = app.open_conv_id.clone()
+        && cur != id
+    {
+        app.prev_conv_id = Some(cur);
+    }
     // Record how far the outgoing conversation was read before switching, so its
     // next open can place the `new messages` divider above anything since.
     record_conv_seen(app);
@@ -128,6 +135,75 @@ fn record_conv_seen(app: &mut App) {
 /// may target a conversation outside the current inbox filter).
 pub fn open_conversation_by_id(app: &mut App, id: String) {
     enter_conversation(app, id);
+}
+
+/// `Ctrl+N` — opens the **next unread** conversation (recency order,
+/// wrapping past the current one), the triage primitive: one key per
+/// unread conversation, from anywhere.
+pub fn open_next_unread(app: &mut App) {
+    let mut unread: Vec<(u64, String)> = app
+        .conversations
+        .iter()
+        .filter(|c| c.member_status == crate::domain::MemberStatus::Active && app.conv_is_unread(c))
+        .map(|c| (c.active_at_ms, c.id.clone()))
+        .collect();
+    if unread.is_empty() {
+        app.set_action(ActionState::Done("No unread conversations".into()));
+        return;
+    }
+    unread.sort_by_key(|(ms, _)| std::cmp::Reverse(*ms));
+    let pick = match app
+        .open_conv_id
+        .as_ref()
+        .and_then(|cur| unread.iter().position(|(_, id)| id == cur))
+    {
+        // The open one is itself unread → advance past it, wrapping.
+        Some(i) => unread[(i + 1) % unread.len()].1.clone(),
+        None => unread[0].1.clone(),
+    };
+    open_conversation_by_id(app, pick);
+}
+
+/// `Ctrl+O` — toggles back to the previously open conversation (vim's
+/// `Ctrl+^` alternate buffer). Works from a closed chat too (re-opens it).
+pub fn open_previous_conversation(app: &mut App) {
+    let Some(prev) = app.prev_conv_id.clone() else {
+        app.set_action(ActionState::Done("No previous conversation".into()));
+        return;
+    };
+    if app.open_conv_id.as_deref() == Some(prev.as_str()) {
+        return;
+    }
+    if !app.conversations.iter().any(|c| c.id == prev) {
+        app.set_action(ActionState::Error(
+            "Previous conversation left the inbox".into(),
+        ));
+        return;
+    }
+    open_conversation_by_id(app, prev);
+}
+
+/// `Alt+E` in the compose — jump straight to editing your **most recent own
+/// text message** (the Slack/IRC up-arrow-to-edit fast path): seats the
+/// Select cursor on it and opens the edit.
+pub fn edit_last_own_message(app: &mut App) {
+    let me = app.identity.username.clone();
+    if me.is_empty() {
+        return;
+    }
+    let Some(idx) = app.messages.iter().rposition(|m| {
+        m.sender == me
+            && matches!(
+                m.content,
+                crate::domain::MessageContent::Text(_) | crate::domain::MessageContent::Edit { .. }
+            )
+    }) else {
+        app.set_action(ActionState::Error("No own message to edit here".into()));
+        return;
+    };
+    app.compose_open = false;
+    app.selected_msg_idx = Some(idx);
+    open_edit_for_selected(app);
 }
 
 // ── Quick switcher (Ctrl+K) ──────────────────────────────────────────

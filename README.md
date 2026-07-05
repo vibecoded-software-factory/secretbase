@@ -113,6 +113,8 @@ stays in sync with these tables.
 | `Ctrl+G`                | Global search (inbox & Teams) |
 | `Ctrl+K`                | Quick switcher — jump to a conversation (inbox & Teams) |
 | `Ctrl+P` / `:`          | Command palette — run any action (`:` from any non-typing surface, vim-style) |
+| `Ctrl+N`                | Next unread conversation (recency order, wraps) |
+| `Ctrl+O`                | Previous conversation (vim's alternate-buffer toggle) |
 | `Ctrl+D` / `Ctrl+U`     | Half-page down / up in every list and viewer |
 | `Ctrl+J` / `Ctrl+K`     | Selection down / up inside every picker popup |
 | **lowercase = frequent, safe** | |
@@ -153,6 +155,7 @@ collapse a group); the header search fuzzy-filters it.
 | `Alt+U`                 | Unpin channel |
 | `Alt+R`                 | Resend failed message |
 | `Alt+A`                 | Attach a file (opens the file picker) |
+| `Alt+E`                 | Edit your most recent own message (Slack's up-to-edit) |
 | `Alt+P`                 | Members (team channels only) — add / remove |
 | `F5` / `Ctrl+R`         | Refresh |
 | `Ctrl+Y`                | Copy label |
