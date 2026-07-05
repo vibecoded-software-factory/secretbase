@@ -54,34 +54,6 @@ pub fn clock_time(sent_at_s: u64) -> String {
         .unwrap_or_default()
 }
 
-/// Inbox-row timestamp, matching the Keybase GUI's chat list: **today** →
-/// the clock (`23:39`), **this week** (1–6 calendar days back) → the
-/// weekday (`Tue`), **this year** → month + day (`Jun 3`), older →
-/// day + month + 2-digit year (`22 Dec 25`). Empty when the timestamp is
-/// unknown or in the future — the "no signal" the tree already renders.
-pub fn inbox_stamp(active_at_s: u64, now_s: u64) -> String {
-    use chrono::{Datelike, Local, TimeZone};
-    if active_at_s == 0 || now_s == 0 || active_at_s > now_s {
-        return String::new();
-    }
-    let (Some(then), Some(now)) = (
-        Local.timestamp_opt(active_at_s as i64, 0).single(),
-        Local.timestamp_opt(now_s as i64, 0).single(),
-    ) else {
-        return String::new();
-    };
-    let days_back = (now.date_naive() - then.date_naive()).num_days();
-    if days_back == 0 {
-        then.format("%H:%M").to_string()
-    } else if (1..7).contains(&days_back) {
-        then.format("%a").to_string()
-    } else if then.year() == now.year() {
-        then.format("%b %-d").to_string()
-    } else {
-        then.format("%-d %b %y").to_string()
-    }
-}
-
 /// Whether two Unix-second timestamps fall on the same **local** calendar day.
 /// Used to decide where a day divider goes in the message stream.
 pub fn same_local_day(a_s: u64, b_s: u64) -> bool {
@@ -123,31 +95,6 @@ pub fn day_divider_label(sent_at_s: u64, now_s: u64) -> String {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn local_ts(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> u64 {
-        use chrono::{Local, TimeZone};
-        Local
-            .with_ymd_and_hms(y, mo, d, h, mi, 0)
-            .single()
-            .expect("unambiguous local time")
-            .timestamp() as u64
-    }
-
-    #[test]
-    fn inbox_stamp_matches_the_gui_buckets() {
-        let now = local_ts(2026, 7, 4, 23, 50);
-        // Today → the clock.
-        assert_eq!(inbox_stamp(local_ts(2026, 7, 4, 9, 5), now), "09:05");
-        // 1–6 calendar days back → the weekday (2026-07-01 is a Wednesday).
-        assert_eq!(inbox_stamp(local_ts(2026, 7, 1, 12, 0), now), "Wed");
-        // Same year, a week or more back → "Mon D".
-        assert_eq!(inbox_stamp(local_ts(2026, 6, 3, 12, 0), now), "Jun 3");
-        // Older years → "D Mon YY".
-        assert_eq!(inbox_stamp(local_ts(2025, 12, 22, 12, 0), now), "22 Dec 25");
-        // Unknown / future → empty.
-        assert_eq!(inbox_stamp(0, now), "");
-        assert_eq!(inbox_stamp(now + 60, now), "");
-    }
 
     #[test]
     fn relative_short_buckets() {
