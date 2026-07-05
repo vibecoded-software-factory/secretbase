@@ -2061,6 +2061,42 @@ fn paste_multiline_lands_in_compose_without_sending() {
 }
 
 #[test]
+fn mention_popup_enter_accepts_and_esc_dismisses() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Chat;
+    rig.app.conv_members = vec!["alice".into(), "alberto".into()];
+    rig.app.compose.insert_str("hola @al");
+    assert!(rig.app.mention_popup_active());
+    // Enter accepts the highlighted suggestion instead of sending.
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(rig.app.compose.text().starts_with("hola @alice"));
+    assert!(rig.app.outbox.is_empty());
+    // Esc on a fresh token dismisses only the popup; the draft survives
+    // and the conversation stays open.
+    rig.app.compose.clear();
+    rig.app.compose.insert_str("sup @al");
+    assert!(rig.app.mention_popup_active());
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(!rig.app.mention_popup_active());
+    assert_eq!(rig.app.compose.text(), "sup @al");
+    assert!(rig.app.open_conv_id.is_some());
+    // …and Enter now sends, since the popup is dismissed.
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(!rig.app.outbox.is_empty());
+    // Typing a different token re-arms the popup.
+    rig.app.compose.insert_str("@alb");
+    assert!(rig.app.mention_popup_active());
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

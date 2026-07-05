@@ -44,11 +44,26 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
 
     match key.code {
         // ── lifecycle ───────────────────────────────────────────────────
+        // With the @-mention popup open, Esc dismisses *the popup* (for the
+        // current token) — it must not fall through to the conversation
+        // escape chain while a completion is on screen.
+        KeyCode::Esc if app.mention_popup_active() => app.dismiss_mention_popup(),
         KeyCode::Esc => chat::escape_conversation(app),
         // Alt+Enter — or Shift+Enter, the Discord/Slack reflex, delivered
         // distinctly on terminals with the kitty keyboard protocol —
         // inserts a newline (multi-line message); plain Enter sends.
         KeyCode::Enter if alt || shift => app.compose.insert('\n'),
+        // Enter with the mention popup open accepts the highlighted
+        // suggestion (the Discord/Slack contract) — sending mid-completion
+        // was the accident, not the intent. Esc first if you really meant
+        // to send an unfinished @token.
+        KeyCode::Enter if app.mention_popup_active() => {
+            let matches = app.mention_matches();
+            let sel = app.mention_selected.min(matches.len().saturating_sub(1));
+            if let Some(u) = matches.get(sel).cloned() {
+                chat::accept_mention(app, &u);
+            }
+        }
         KeyCode::Enter => submit_compose(app),
 
         // ── @-mention autocomplete (when its popup is open) ────────────
