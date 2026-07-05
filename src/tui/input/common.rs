@@ -95,7 +95,36 @@ pub fn is_text_input(modifiers: KeyModifiers) -> bool {
 /// cursor moves / ignored keys. Used by the search box and every popup
 /// input.
 pub fn route_line_editor(editor: &mut LineEditor, key: KeyEvent) -> bool {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
+        // ── word-wise editing (readline / vim-insert idioms) — modifier
+        // arms first so they never fall through to the plain-key ones.
+        // Living here means every input (compose, filter, popups, login)
+        // gets them for free.
+        KeyCode::Char('w') | KeyCode::Char('W') if ctrl => {
+            editor.delete_word_back();
+            true
+        }
+        KeyCode::Char('u') | KeyCode::Char('U') if ctrl => {
+            editor.kill_to_start();
+            true
+        }
+        KeyCode::Char('a') | KeyCode::Char('A') if ctrl => {
+            editor.home();
+            false
+        }
+        KeyCode::Char('e') | KeyCode::Char('E') if ctrl => {
+            editor.end();
+            false
+        }
+        KeyCode::Left if ctrl => {
+            editor.word_left();
+            false
+        }
+        KeyCode::Right if ctrl => {
+            editor.word_right();
+            false
+        }
         KeyCode::Backspace => {
             editor.backspace();
             true

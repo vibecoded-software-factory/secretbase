@@ -618,7 +618,11 @@ section for every new screen and keep it in sync with `README.md`.
 
 Every text input is a `domain::LineEditor` (UTF-8-safe byte cursor on a char
 boundary; `insert`/`backspace`/`delete`/`left`/`right`/`home`/`end`/`set`/
-`clear`). Here it derives `ZeroizeOnDrop` (a secretbase-specific divergence)
+`clear`, plus readline/vim-insert **word ops** — `Ctrl+W` delete word,
+`Ctrl+U` kill to line start (line-aware in the multi-line compose),
+`Ctrl+←/→` word jumps, `Ctrl+A`/`Ctrl+E` start/end — wired once in
+`route_line_editor` so every input gets them). `Ctrl+W` therefore only arms
+the pane-nav leader in non-typing surfaces (tree, cmdlog, Select mode). Here it derives `ZeroizeOnDrop` (a secretbase-specific divergence)
 because any input can hold sensitive chat content — see `CLAUDE.md`. Handlers feed keys through `input::common::route_line_editor`
 (returns `true` when the text changed → rebuild a filter) or, for the inbox
 filter box, `input::common::search_key`/`SearchAction`. Rendering is always

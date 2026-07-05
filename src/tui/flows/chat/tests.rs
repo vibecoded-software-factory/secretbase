@@ -3212,8 +3212,21 @@ fn ctrl_w_window_nav_moves_between_panels() {
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Chat;
 
-    // Ctrl+W arms the leader; it stays armed across consecutive directions so
-    // two keys chain: k (up) chat → filter, then j (down) filter → chats.
+    // In a typing surface (Compose), Ctrl+W is readline delete-word — the
+    // leader must NOT arm (it used to eat the following h/j/k/l).
+    rig.app.compose.set("hola mundo");
+    rig.app.compose.end();
+    press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
+    assert!(!rig.app.pending_pane_nav, "no leader while composing");
+    assert_eq!(rig.app.compose.text(), "hola ", "Ctrl+W deleted a word");
+    rig.app.compose.clear();
+
+    // In a non-typing surface (Chat in Select mode) the leader arms and
+    // stays armed across consecutive directions so two keys chain:
+    // k (up) chat → filter, then j (down) filter → chats.
+    rig.app.messages = vec![text_msg(1, "alice", "x")];
+    rig.app.rebuild_msg_meta();
+    rig.app.selected_msg_idx = Some(0);
     press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
     assert!(rig.app.pending_pane_nav);
     press(&mut rig.app, KeyCode::Char('k'), KeyModifiers::NONE); // up → filter

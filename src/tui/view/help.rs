@@ -297,6 +297,11 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
     for (k, d) in [
         ("F1", "toggle help"),
         ("F10", "settings"),
+        (
+            "Ctrl+W / Ctrl+U",
+            "in any input: delete word / to line start",
+        ),
+        ("Ctrl+←/→ · Ctrl+A/E", "in any input: word jump · start/end"),
         ("↑/↓ j/k · PgUp/Dn", "scroll this help"),
         ("g / G · Home/End", "top / bottom of help"),
         ("q / Esc", "close help"),
