@@ -247,13 +247,13 @@ pub fn confirm_delete_message(app: &mut App, key: KeyEvent) {
 pub fn react(app: &mut App, key: KeyEvent) {
     // Alt+1..9 — instant pick-and-activate of the Nth row.
     if let Some(i) = common::alt_digit(&key) {
-        if i < app.filtered_emoji_indices().len() {
+        if i < app.emoji.filtered().len() {
             app.react_selected = i;
             chat::request_send_reaction(app);
         }
         return;
     }
-    let len = app.filtered_emoji_indices().len();
+    let len = app.emoji.filtered().len();
     if common::list_nav_arrows(&key, len, app.react_selected, |i| app.react_selected = i) {
         return;
     }

@@ -67,7 +67,7 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
             app.search_global_selected = clamp_move(app.search_global_selected, delta, len);
         }
         Screen::React => {
-            let len = app.filtered_emoji_indices().len();
+            let len = app.emoji.filtered().len();
             app.react_selected = clamp_move(app.react_selected, delta, len);
         }
         Screen::QuickSwitcher => {

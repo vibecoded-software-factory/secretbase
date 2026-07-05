@@ -17,6 +17,7 @@
 pub mod action;
 pub mod app;
 pub mod debug_log;
+pub mod emoji_catalog;
 pub mod file_picker;
 pub mod flows;
 pub mod icons;
