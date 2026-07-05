@@ -465,6 +465,19 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // Recomputed each frame; `symbol_image_lines` / `image_render_path` set it
         // true when an animated GIF is on screen.
         app.gif_animating = false;
+        // Register the giphy URLs of the loaded history so the fetch queue
+        // (`ensure_visible_images`) can route their cache paths to the web
+        // fetcher. Cheap (bounded by the loaded page) and idempotent.
+        let web_urls: Vec<(String, String)> = app
+            .messages
+            .iter()
+            .filter_map(|m| {
+                giphy_url_for(app, m).map(|u| (crate::tui::flows::chat::web_image_path_for(&u), u))
+            })
+            .collect();
+        for (path, url) in web_urls {
+            app.web_image_urls.entry(path).or_insert(url);
+        }
         let symbol_imgs = symbol_image_lines(app, img_w);
         // Grouping / day-divider / unread-marker state (F3). Dividers are pushed
         // BEFORE each message's `start` is captured, so they fall outside every
@@ -528,7 +541,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             // frames) that changes between frames, so they're never cached;
             // every other content kind is a pure function of the message +
             // epoch-guarded inputs and renders once per (history, width, theme).
-            let cacheable = !matches!(m.content, MessageContent::Attachment(_));
+            let cacheable = !matches!(m.content, MessageContent::Attachment(_))
+                && giphy_url_for(app, m).is_none();
             if cacheable {
                 let pinned = app.pinned_msg_id == Some(m.id);
                 let hit = cache
@@ -1011,16 +1025,19 @@ fn symbol_image_lines(
     let items: Vec<(u64, String)> = app
         .messages
         .iter()
-        .filter_map(|m| match &m.content {
-            MessageContent::Attachment(a)
-                if crate::tui::image::is_image(&a.mime_type, &a.filename) =>
-            {
-                let path = crate::tui::flows::chat::image_path_for(&conv_id, m.id, &a.filename);
-                // Only render once Ready — a GIF still decoding shows a skeleton
-                // (and the reservation loop queues its decode).
-                matches!(img_state(app, &path), ImgState::Ready).then_some((m.id, path))
-            }
-            _ => None,
+        .filter_map(|m| {
+            let path = match &m.content {
+                MessageContent::Attachment(a)
+                    if crate::tui::image::is_image(&a.mime_type, &a.filename) =>
+                {
+                    crate::tui::flows::chat::image_path_for(&conv_id, m.id, &a.filename)
+                }
+                // Giphy media linked in a text body renders like an image.
+                _ => crate::tui::flows::chat::web_image_path_for(&giphy_url_for(app, m)?),
+            };
+            // Only render once Ready — a GIF still decoding shows a skeleton
+            // (and the reservation loop queues its decode).
+            matches!(img_state(app, &path), ImgState::Ready).then_some((m.id, path))
         })
         .collect();
     for (id, path) in items {
@@ -1197,6 +1214,61 @@ fn message_lines(
                     ImgState::Loading => lines.extend(image_skeleton_lines(
                         t,
                         &format!("loading image… {spin}"),
+                        thumb_w,
+                        IMAGE_ROWS,
+                    )),
+                    ImgState::Decoding => lines.extend(image_skeleton_lines(
+                        t,
+                        &format!("decoding GIF… {spin}"),
+                        thumb_w,
+                        IMAGE_ROWS,
+                    )),
+                    ImgState::Ready => {
+                        for _ in 0..IMAGE_ROWS {
+                            lines.push(Line::from(Span::raw("")));
+                        }
+                    }
+                }
+                img_res.push(ImgReservation {
+                    block_offset,
+                    rows: IMAGE_ROWS,
+                    msg_id: m.id,
+                    path,
+                });
+            }
+            rendered_image = true;
+        }
+    }
+    // Giphy media linked in a text message: a compact source line, then the
+    // same reserved-rows / symbols treatment as an image attachment. The
+    // fetch is queued by the reservation loop via `web_image_urls`; a failed
+    // fetch drops through to the plain URL text.
+    if !rendered_image && let Some(gif_url) = giphy_url_for(app, m) {
+        let path = crate::tui::flows::chat::web_image_path_for(&gif_url);
+        if !app.image_failed.contains(&path) {
+            lines.push(Line::from(Span::styled(
+                "    🎞 GIPHY".to_string(),
+                Style::default()
+                    .fg(t.conv_team)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            if let Some(sym) = symbol_imgs.get(&m.id) {
+                let block_offset = lines.len();
+                lines.extend(sym.iter().cloned());
+                img_res.push(ImgReservation {
+                    block_offset,
+                    rows: sym.len() as u16,
+                    msg_id: m.id,
+                    path,
+                });
+            } else {
+                let block_offset = lines.len();
+                let thumb_w = (width.saturating_sub(6)).clamp(10, 72) as u16;
+                let spin = spinner_frame_ms(app.anim_ms);
+                match img_state(app, &path) {
+                    ImgState::Loading => lines.extend(image_skeleton_lines(
+                        t,
+                        &format!("fetching GIF… {spin}"),
                         thumb_w,
                         IMAGE_ROWS,
                     )),
@@ -1445,6 +1517,19 @@ fn reaction_display(app: &App, key: &str) -> String {
         entry
             .map(|e| e.display.clone())
             .unwrap_or_else(|| key.to_string())
+    }
+}
+
+/// The giphy media URL a message renders inline, when web previews are on
+/// and the body links giphy media (`domain::giphy_gif_url`). Edits fold
+/// into `Text`, so checking `Text` covers the visible history.
+fn giphy_url_for(app: &App, m: &Message) -> Option<String> {
+    if !app.settings_cache.web_previews || app.image_proto.is_none() {
+        return None;
+    }
+    match &m.content {
+        MessageContent::Text(body) => crate::domain::giphy_gif_url(body),
+        _ => None,
     }
 }
 

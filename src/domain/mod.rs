@@ -45,5 +45,5 @@ pub use message::{
 pub use search::{LoweredConversation, fuzzy_score_lowered};
 pub use team::{ChatMember, TeamMembership, TeamRole};
 pub use timefmt::{clock_time, day_divider_label, message_time, relative_short, same_local_day};
-pub use url::extract_urls;
+pub use url::{extract_urls, giphy_gif_url};
 pub use validation::{is_valid_keybase_identity, is_valid_keybase_username};

@@ -52,6 +52,13 @@ pub struct UserSettings {
     /// renders on any font, the right choice for a headless/SSH terminal without
     /// a patched font) or `nerd` (prettier nerd-font glyphs where available).
     pub icon_style: String,
+    /// Whether to fetch **public web media** (currently: giphy GIFs linked
+    /// in messages) directly from the web for inline rendering. The GUI
+    /// shows these from Keybase's encrypted re-host, which the JSON API
+    /// can't reach — a direct fetch is the only TUI path, and it reveals
+    /// your IP to the media host (exactly like any link-preview client).
+    /// `false` renders the plain URL instead.
+    pub web_previews: bool,
     /// **Local-only** favourited conversation ids. secretbase deliberately does
     /// *not* use Keybase's `favorite` status (the CLI can't read it back, so it
     /// would drift). This is our own star, owned and persisted entirely
@@ -91,6 +98,7 @@ impl Default for UserSettings {
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
             icon_style: "unicode".to_string(),
+            web_previews: true,
             favorites: Vec::new(),
             muted: Vec::new(),
             pins: Vec::new(),

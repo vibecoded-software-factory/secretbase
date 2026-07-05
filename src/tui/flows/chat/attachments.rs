@@ -172,12 +172,34 @@ pub fn ensure_visible_images(app: &mut App) {
             continue;
         }
         app.image_pending.insert(output.clone());
-        let _ = app.worker_tx.send(WorkerRequest::PreviewImage {
-            channel: channel.clone(),
-            message_id: msg_id,
-            output,
-        });
+        // Web media (giphy) goes to the web fetcher on the background lane
+        // — a slow CDN must never queue ahead of user ops; attachments use
+        // the keybase download as before.
+        if let Some(url) = app.web_image_urls.get(&output).cloned() {
+            let _ = app
+                .bg_worker_tx
+                .send(WorkerRequest::FetchWebImage { url, output });
+        } else {
+            let _ = app.worker_tx.send(WorkerRequest::PreviewImage {
+                channel: channel.clone(),
+                message_id: msg_id,
+                output,
+            });
+        }
     }
+}
+
+/// Cache path for a fetched **web media** file — content-addressed by the
+/// URL (stable across sessions, no conversation coupling), always `.gif`
+/// (the only rendition the pipeline fetches).
+pub fn web_image_path_for(url: &str) -> String {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    url.hash(&mut h);
+    image_cache_dir()
+        .join(format!("web-{:016x}.gif", h.finish()))
+        .to_string_lossy()
+        .to_string()
 }
 
 /// Whether the single selected message is an image whose file is on disk —

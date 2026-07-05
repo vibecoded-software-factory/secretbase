@@ -9,6 +9,7 @@ pub mod clipboard_system;
 pub mod keybase_cli;
 pub mod opener_system;
 pub mod settings_toml;
+pub mod web_fetch;
 
 pub use clipboard_system::SystemClipboardAdapter;
 pub use keybase_cli::KeybaseCliAdapter;

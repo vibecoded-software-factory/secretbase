@@ -169,6 +169,7 @@ impl SettingsPort for TomlSettingsAdapter {
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
             icon_style: "unicode".to_string(),
+            web_previews: true,
             favorites: Vec::new(),
             muted: Vec::new(),
             pins: Vec::new(),
@@ -232,6 +233,9 @@ impl SettingsPort for TomlSettingsAdapter {
                 }
                 "auto_mark_read" => {
                     cfg.auto_mark_read = value == "true";
+                }
+                "web_previews" => {
+                    cfg.web_previews = value != "false";
                 }
                 "cmdlog_rows" => {
                     if let Ok(n) = value.parse::<u64>() {
@@ -369,6 +373,7 @@ impl UpdateBuffer {
         "image_symbols",
         "emoji_style",
         "icon_style",
+        "web_previews",
         "favorites",
         "muted",
         "pins",

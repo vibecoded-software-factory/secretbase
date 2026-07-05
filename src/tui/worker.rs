@@ -217,6 +217,16 @@ pub enum WorkerRequest {
         filename: String,
         title: String,
     },
+    /// Background fetch of a **public web media** file (giphy GIF) to the
+    /// image cache for inline rendering — the giphy path can't go through
+    /// keybase (the encrypted re-host isn't reachable over the JSON API).
+    /// Responds with [`WorkerResponse::PreviewImage`], so the ready/failed
+    /// bookkeeping is shared with attachment previews. Sent on the
+    /// background lane: a slow CDN must never queue ahead of user ops.
+    FetchWebImage {
+        url: String,
+        output: String,
+    },
     /// Decode an animated GIF's frames off the render thread (ImageMagick
     /// `convert`) so the UI never blocks while a large GIF is "generated".
     /// Not a keybase call — pure image work; carries the downloaded GIF's
@@ -902,6 +912,10 @@ fn run_worker(
             } => WorkerResponse::PreviewImage(
                 output.clone(),
                 run_caught(|| keybase.download_attachment(&channel, message_id, &output)),
+            ),
+            WorkerRequest::FetchWebImage { url, output } => WorkerResponse::PreviewImage(
+                output.clone(),
+                run_caught(|| crate::adapters::web_fetch::fetch_giphy_media(&url, &output)),
             ),
             WorkerRequest::UploadAttachment {
                 channel,

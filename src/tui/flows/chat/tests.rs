@@ -1910,6 +1910,31 @@ fn shift_enter_inserts_a_newline_in_compose() {
 }
 
 #[test]
+fn web_image_fetch_routes_to_web_fetcher_and_records_failure() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    // A cache path registered as web media routes to the web fetcher (the
+    // background lane), not the keybase attachment download. The refused
+    // host fails fast without spawning anything — the failure lands in the
+    // shared image bookkeeping like any failed preview.
+    let path = web_image_path_for("https://example.com/x.gif");
+    rig.app
+        .web_image_urls
+        .insert(path.clone(), "https://example.com/x.gif".to_string());
+    rig.app.image_to_fetch.push((42, path.clone()));
+    ensure_visible_images(&mut rig.app);
+    assert!(rig.app.image_pending.contains(&path));
+    pump_one(&mut rig.app); // the PreviewImage-variant response
+    assert!(rig.app.image_failed.contains(&path));
+    assert!(!rig.app.image_pending.contains(&path));
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

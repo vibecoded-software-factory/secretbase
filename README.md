@@ -266,6 +266,10 @@ emoji_style = "glyph"              # reaction display: glyph (default) | shortco
 icon_style = "unicode"             # UI icons: unicode (default, renders on any
                                     # font — right for a headless/SSH terminal)
                                     # | nerd (needs a patched Nerd Font)
+web_previews = true                # fetch giphy GIFs linked in messages directly
+                                    # from giphy for inline playback (needs `curl`;
+                                    # reveals your IP to giphy, like any link
+                                    # preview — false renders the plain URL)
 
 [theme]
 name         = "nord"              # bundled preset: nord (default),
@@ -281,7 +285,9 @@ kitty/sixel/iterm graphics or ANSI symbols); without it, image attachments fall
 back to their filename/size text. Set `image_protocol = "off"` to disable.
 **Animated GIFs** play inline when **ImageMagick** (`convert`) is installed (it
 splits the frames, which are cached on disk); otherwise a GIF shows its first
-frame.
+frame. **Giphy links** (the GUI's GIF picker posts a `media.giphy.com` URL)
+also play inline: the `.gif` rendition is fetched directly from giphy with
+`curl` — host-allowlisted and size-capped; disable with `web_previews = false`.
 
 Pick a bundled palette with `name`, then override individual keys if you want.
 Omitting `name` keeps the default (Nord with terminal-inherited text). You can
