@@ -66,7 +66,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::React => Screen::Inbox,
         // The quick switcher / command palette float over wherever opened.
         Screen::QuickSwitcher => app.switcher.from,
-        Screen::CommandPalette => app.palette_from,
+        Screen::CommandPalette => app.palette.from,
         // Help is scoped to (and renders over) the screen it was opened
         // from — use `help_from`, not an open-conversation heuristic, so
         // e.g. Teams isn't drawn as Inbox underneath.

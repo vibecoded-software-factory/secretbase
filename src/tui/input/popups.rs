@@ -357,15 +357,15 @@ pub fn command_palette(app: &mut App, key: KeyEvent) {
     // Alt+1..9 — instant pick-and-activate of the Nth row.
     if let Some(i) = common::alt_digit(&key) {
         if i < crate::tui::flows::palette::filtered_commands(app).len() {
-            app.palette_selected = i;
+            app.palette.selected = i;
             crate::tui::flows::palette::palette_run_selected(app);
         }
         return;
     }
     use crate::tui::flows::palette;
     let len = palette::filtered_commands(app).len();
-    if common::list_nav_arrows(&key, len, app.palette_selected, |i| {
-        app.palette_selected = i
+    if common::list_nav_arrows(&key, len, app.palette.selected, |i| {
+        app.palette.selected = i
     }) {
         return;
     }
@@ -373,11 +373,11 @@ pub fn command_palette(app: &mut App, key: KeyEvent) {
         KeyCode::Esc => palette::close_command_palette(app),
         KeyCode::Enter => palette::palette_run_selected(app),
         _ => {
-            let before = app.palette.text().to_string();
-            common::route_line_editor(&mut app.palette, key);
+            let before = app.palette.query.text().to_string();
+            common::route_line_editor(&mut app.palette.query, key);
             // A changed query re-filters — snap the selection back to the top.
-            if app.palette.text() != before {
-                app.palette_selected = 0;
+            if app.palette.query.text() != before {
+                app.palette.selected = 0;
             }
         }
     }

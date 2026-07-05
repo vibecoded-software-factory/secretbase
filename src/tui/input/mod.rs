@@ -85,8 +85,8 @@ pub fn handle_paste(app: &mut App, text: &str) {
             app.switcher.selected = 0;
         }
         Screen::CommandPalette => {
-            app.palette.insert_str(&flat());
-            app.palette_selected = 0;
+            app.palette.query.insert_str(&flat());
+            app.palette.selected = 0;
         }
         Screen::NewConversation => app.new_conv.insert_str(&flat()),
         Screen::UnhideConversation => app.unhide_input.insert_str(&flat()),

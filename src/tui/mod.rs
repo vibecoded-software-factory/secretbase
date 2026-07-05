@@ -31,6 +31,7 @@ pub mod members_state;
 pub mod mouse_areas;
 pub mod outbox;
 pub mod pagination_state;
+pub mod palette_state;
 pub mod pin_state;
 pub mod screens;
 pub mod select_state;

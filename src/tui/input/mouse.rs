@@ -76,7 +76,7 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
         }
         Screen::CommandPalette => {
             let len = crate::tui::flows::palette::filtered_commands(app).len();
-            app.palette_selected = clamp_move(app.palette_selected, delta, len);
+            app.palette.selected = clamp_move(app.palette.selected, delta, len);
         }
         Screen::ConvSearch => {
             let len = app.conv_search_results.len();
@@ -116,7 +116,7 @@ fn picker_click(app: &mut App, item: usize) {
             chat::quick_switcher_open_selected,
         ),
         Screen::CommandPalette => (
-            &mut app.palette_selected,
+            &mut app.palette.selected,
             crate::tui::flows::palette::palette_run_selected,
         ),
         Screen::React => (&mut app.react_selected, chat::request_send_reaction),

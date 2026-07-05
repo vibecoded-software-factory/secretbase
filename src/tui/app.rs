@@ -326,12 +326,10 @@ pub struct App {
     pub drafts: HashMap<String, String>,
 
     // ── Command palette (Ctrl+P) ─────────────────────────────────────────
-    /// Fuzzy query in the command palette.
-    pub palette: LineEditor,
-    /// Selected row in the palette (indexes `flows::palette::filtered_commands`).
-    pub palette_selected: usize,
-    /// Screen the palette was opened from, restored on cancel / after running.
-    pub palette_from: Screen,
+    /// The `Ctrl+P` command-palette overlay's state — the fuzzy query, the
+    /// selected row and the return screen — extracted into its own type (see
+    /// [`crate::tui::palette_state`]). The command list stays in `flows::palette`.
+    pub palette: crate::tui::palette_state::PaletteState,
     /// When opening a conversation from a global-search hit, the message id
     /// to scroll to + highlight once it's loaded (paginating older if the
     /// match is below the first page). Cleared once landed or exhausted.
@@ -659,9 +657,7 @@ impl App {
             emoji_ac_dismissed_token: None,
             switcher: crate::tui::switcher_state::SwitcherState::default(),
             drafts: HashMap::new(),
-            palette: LineEditor::default(),
-            palette_selected: 0,
-            palette_from: Screen::Inbox,
+            palette: crate::tui::palette_state::PaletteState::default(),
             pending_search_jump: None,
             conv_search: LineEditor::default(),
             conv_search_results: Vec::new(),
