@@ -355,12 +355,6 @@ pub fn modal_inner_width(frame: &Frame) -> usize {
         .saturating_sub(4) as usize // borders + the `▶ ` gutter
 }
 
-/// Draws the standard centered picker modal: `Clear`, rounded accent block,
-/// emphasized title, optional `⌕` query row (+spacer), a **windowed** list
-/// that keeps the whole selected item visible, the shared `▶` + `selected_bg`
-/// row treatment, and a width-fitted [`legend_line`] footer. Callers style
-/// their content spans; the widget owns geometry, cursor, shading, windowing
-/// and the footer grammar — so they can't drift apart again.
 thread_local! {
     /// Frame-local hit map for the picker modal: the list viewport rect +
     /// one `Option<item index>` per visible display line (None = header /
@@ -389,6 +383,12 @@ pub fn picker_row_at(column: u16, row: u16) -> Option<usize> {
     })
 }
 
+/// Draws the standard centered picker modal: `Clear`, rounded accent block,
+/// emphasized title, optional `⌕` query row (+spacer), a **windowed** list
+/// that keeps the whole selected item visible, the shared `▶` + `selected_bg`
+/// row treatment, and a width-fitted [`legend_line`] footer. Callers style
+/// their content spans; the widget owns geometry, cursor, shading, windowing
+/// and the footer grammar — so they can't drift apart again.
 pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
     let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
