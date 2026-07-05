@@ -52,39 +52,39 @@ pub fn open_channel_browser(app: &mut App) {
 
 /// Opens the channel browser for a named team (e.g. from the Teams screen).
 pub fn open_channel_browser_for_team(app: &mut App, team: String) {
-    app.channel_browser_team = Some(team);
-    app.channels.clear();
-    app.channel_selected = 0;
-    app.default_channels.clear();
+    app.channel_browser.team = Some(team);
+    app.channel_browser.channels.clear();
+    app.channel_browser.selected = 0;
+    app.channel_browser.defaults.clear();
     clear_channel_input(app);
     app.screen = crate::tui::screens::Screen::ChannelBrowser;
     request_load_channels(app);
 }
 
 pub fn close_channel_browser(app: &mut App) {
-    app.channel_browser_team = None;
-    app.channels.clear();
-    app.channel_selected = 0;
-    app.default_channels.clear();
+    app.channel_browser.team = None;
+    app.channel_browser.channels.clear();
+    app.channel_browser.selected = 0;
+    app.channel_browser.defaults.clear();
     clear_channel_input(app);
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
 /// Clears every inline browser mode (create / rename / delete-confirm).
 fn clear_channel_input(app: &mut App) {
-    app.channel_creating = false;
-    app.channel_renaming = None;
-    app.channel_confirm_delete = None;
-    app.channel_new_name.clear();
+    app.channel_browser.creating = false;
+    app.channel_browser.renaming = None;
+    app.channel_browser.confirm_delete = None;
+    app.channel_browser.new_name.clear();
 }
 
 /// Enters create mode in the browser (`Alt+N`): the new-channel-name input.
 pub fn open_channel_create(app: &mut App) {
-    if app.channel_browser_team.is_none() {
+    if app.channel_browser.team.is_none() {
         return;
     }
     clear_channel_input(app);
-    app.channel_creating = true;
+    app.channel_browser.creating = true;
 }
 
 /// Cancels create mode, back to the channel list.
@@ -96,13 +96,17 @@ pub fn cancel_channel_create(app: &mut App) {
 
 /// Enters rename mode on the selected channel (`r`), pre-filling its name.
 pub fn open_channel_rename(app: &mut App) {
-    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
+    let Some(c) = app
+        .channel_browser
+        .selected_idx()
+        .and_then(|i| app.channel_browser.channels.get(i))
+    else {
         return;
     };
     let old = channel_topic(c);
     clear_channel_input(app);
-    app.channel_new_name.set(old.clone());
-    app.channel_renaming = Some(old);
+    app.channel_browser.new_name.set(old.clone());
+    app.channel_browser.renaming = Some(old);
 }
 
 pub fn cancel_channel_rename(app: &mut App) {
@@ -110,13 +114,13 @@ pub fn cancel_channel_rename(app: &mut App) {
 }
 
 pub fn request_rename_channel(app: &mut App) {
-    let Some(team) = app.channel_browser_team.clone() else {
+    let Some(team) = app.channel_browser.team.clone() else {
         return;
     };
-    let Some(old) = app.channel_renaming.clone() else {
+    let Some(old) = app.channel_browser.renaming.clone() else {
         return;
     };
-    let new = app.channel_new_name.text().trim().to_lowercase();
+    let new = app.channel_browser.new_name.text().trim().to_lowercase();
     if new.is_empty() {
         app.set_action(ActionState::Error("New channel name is empty".into()));
         return;
@@ -158,13 +162,17 @@ pub fn handle_rename_channel_response(
 
 /// Opens the inline delete confirm for the selected channel (`d`).
 pub fn open_channel_delete_confirm(app: &mut App) {
-    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
+    let Some(c) = app
+        .channel_browser
+        .selected_idx()
+        .and_then(|i| app.channel_browser.channels.get(i))
+    else {
         return;
     };
     let topic = channel_topic(c);
     clear_channel_input(app);
-    app.channel_confirm_delete = Some(topic);
-    app.channel_delete_yes = false; // destructive → default highlight = cancel
+    app.channel_browser.confirm_delete = Some(topic);
+    app.channel_browser.delete_yes = false; // destructive → default highlight = cancel
 }
 
 pub fn cancel_channel_delete(app: &mut App) {
@@ -173,13 +181,13 @@ pub fn cancel_channel_delete(app: &mut App) {
 
 /// Commits the pending channel delete (`y`). Destructive + irreversible.
 pub fn confirm_channel_delete(app: &mut App) {
-    let Some(team) = app.channel_browser_team.clone() else {
+    let Some(team) = app.channel_browser.team.clone() else {
         return;
     };
-    let Some(topic) = app.channel_confirm_delete.clone() else {
+    let Some(topic) = app.channel_browser.confirm_delete.clone() else {
         return;
     };
-    app.channel_confirm_delete = None;
+    app.channel_browser.confirm_delete = None;
     app.submit(
         InFlight::DeleteChannel {
             topic: topic.clone(),
@@ -220,7 +228,7 @@ pub fn handle_delete_channel_response(
 /// so the browser can badge them. Quiet — no error toast if it fails (badges
 /// just stay empty).
 pub fn request_get_default_channels(app: &mut App) {
-    let Some(team) = app.channel_browser_team.clone() else {
+    let Some(team) = app.channel_browser.team.clone() else {
         return;
     };
     if !app.begin(InFlight::DefaultChannels { setting: false }) {
@@ -237,7 +245,11 @@ pub fn request_get_default_channels(app: &mut App) {
 /// can't clear the set to empty (`--channel`-less = get), so removing the last
 /// one is refused with an explanation.
 pub fn toggle_default_channel(app: &mut App) {
-    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
+    let Some(c) = app
+        .channel_browser
+        .selected_idx()
+        .and_then(|i| app.channel_browser.channels.get(i))
+    else {
         return;
     };
     let topic = channel_topic(c);
@@ -247,7 +259,7 @@ pub fn toggle_default_channel(app: &mut App) {
         ));
         return;
     }
-    let mut set = app.default_channels.clone();
+    let mut set = app.channel_browser.defaults.clone();
     if let Some(pos) = set.iter().position(|x| *x == topic) {
         set.remove(pos);
     } else {
@@ -259,7 +271,7 @@ pub fn toggle_default_channel(app: &mut App) {
         ));
         return;
     }
-    let Some(team) = app.channel_browser_team.clone() else {
+    let Some(team) = app.channel_browser.team.clone() else {
         return;
     };
     app.submit(
@@ -277,7 +289,7 @@ pub fn handle_default_channels_response(
     match result {
         Ok(names) => {
             let n = names.len();
-            app.default_channels = names;
+            app.channel_browser.defaults = names;
             if setting {
                 app.set_action(ActionState::Done("Default channels updated".into()));
                 app.push_cmd("keybase chat default-channels", true, "updated");
@@ -328,10 +340,14 @@ fn open_members(app: &mut App, channel: ReadChannel, label: String, return_to: S
 
 /// `m` in the channel browser: members of the selected channel.
 pub fn open_members_from_browser(app: &mut App) {
-    let Some(team) = app.channel_browser_team.clone() else {
+    let Some(team) = app.channel_browser.team.clone() else {
         return;
     };
-    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
+    let Some(c) = app
+        .channel_browser
+        .selected_idx()
+        .and_then(|i| app.channel_browser.channels.get(i))
+    else {
         return;
     };
     let topic = channel_topic(c);
@@ -558,10 +574,10 @@ pub fn handle_remove_member_response(
 
 /// Creates a new channel on the browsed team (`newconv` with a team channel).
 pub fn request_create_channel(app: &mut App) {
-    let Some(team) = app.channel_browser_team.clone() else {
+    let Some(team) = app.channel_browser.team.clone() else {
         return;
     };
-    let topic = app.channel_new_name.text().trim().to_lowercase();
+    let topic = app.channel_browser.new_name.text().trim().to_lowercase();
     if topic.is_empty() {
         app.set_action(ActionState::Error("Channel name is empty".into()));
         return;
@@ -595,8 +611,8 @@ pub fn handle_create_channel_response(
                 true,
                 format!("#{topic}"),
             );
-            app.channel_creating = false;
-            app.channel_new_name.clear();
+            app.channel_browser.creating = false;
+            app.channel_browser.new_name.clear();
             request_load_inbox_silent(app);
             if app.screen == crate::tui::screens::Screen::ChannelBrowser {
                 request_load_channels(app);
@@ -611,7 +627,7 @@ pub fn handle_create_channel_response(
 
 /// Loads every channel of `channel_browser_team` (`listconvsonname`).
 pub fn request_load_channels(app: &mut App) {
-    let Some(team) = app.channel_browser_team.clone() else {
+    let Some(team) = app.channel_browser.team.clone() else {
         return;
     };
     app.submit(
@@ -628,16 +644,17 @@ pub fn handle_load_channels_response(
     match result {
         Ok(load) => {
             let n = load.conversations.len();
-            app.channels = load.conversations;
+            app.channel_browser.channels = load.conversations;
             // Joined channels first, then alphabetical by channel name.
-            app.channels.sort_by(|a, b| {
+            app.channel_browser.channels.sort_by(|a, b| {
                 channel_joined(b)
                     .cmp(&channel_joined(a))
                     .then_with(|| channel_topic(a).cmp(&channel_topic(b)))
             });
-            app.channel_selected = app
-                .channel_selected
-                .min(app.channels.len().saturating_sub(1));
+            app.channel_browser.selected = app
+                .channel_browser
+                .selected
+                .min(app.channel_browser.channels.len().saturating_sub(1));
             app.set_action(ActionState::Done(format!("{n} channels")));
             app.push_cmd(
                 "keybase chat api listconvsonname",
@@ -658,17 +675,21 @@ pub fn handle_load_channels_response(
 }
 
 pub fn channel_browser_move(app: &mut App, delta: isize) {
-    let len = app.channels.len();
+    let len = app.channel_browser.channels.len();
     if len == 0 {
         return;
     }
-    app.channel_selected =
-        (app.channel_selected as isize + delta).clamp(0, len as isize - 1) as usize;
+    app.channel_browser.selected =
+        (app.channel_browser.selected as isize + delta).clamp(0, len as isize - 1) as usize;
 }
 
 /// `Enter` in the browser: open a channel you're in, or join one you're not.
 pub fn channel_browser_activate(app: &mut App) {
-    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
+    let Some(c) = app
+        .channel_browser
+        .selected_idx()
+        .and_then(|i| app.channel_browser.channels.get(i))
+    else {
         return;
     };
     if channel_joined(c) {
@@ -682,10 +703,11 @@ pub fn channel_browser_activate(app: &mut App) {
 
 /// Builds the `team#channel` [`ReadChannel`] for the selected browser row.
 fn selected_channel_read(app: &App) -> Option<(String, ReadChannel)> {
-    let team = app.channel_browser_team.clone()?;
+    let team = app.channel_browser.team.clone()?;
     let c = app
-        .selected_channel_idx()
-        .and_then(|i| app.channels.get(i))?;
+        .channel_browser
+        .selected_idx()
+        .and_then(|i| app.channel_browser.channels.get(i))?;
     let topic = channel_topic(c);
     Some((
         topic.clone(),
@@ -731,8 +753,9 @@ pub fn handle_join_response(app: &mut App, result: Result<(), KeybaseError>, top
 
 pub fn request_leave_selected_channel(app: &mut App) {
     let joined = app
+        .channel_browser
         .channels
-        .get(app.channel_selected)
+        .get(app.channel_browser.selected)
         .is_some_and(channel_joined);
     if !joined {
         app.set_action(ActionState::Error("Not a member of this channel".into()));

@@ -16,6 +16,7 @@
 
 pub mod action;
 pub mod app;
+pub mod channel_browser_state;
 pub mod debug_log;
 pub mod emoji_catalog;
 pub mod file_picker;

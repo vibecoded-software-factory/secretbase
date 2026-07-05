@@ -20,12 +20,12 @@ use crate::tui::view::widgets::{
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
-    let team = app.channel_browser_team.clone().unwrap_or_default();
+    let team = app.channel_browser.team.clone().unwrap_or_default();
 
-    let filtered = app.channels_filtered();
+    let filtered = app.channel_browser.filtered();
     let rows: Vec<PickerRow> = filtered
         .iter()
-        .filter_map(|&i| app.channels.get(i))
+        .filter_map(|&i| app.channel_browser.channels.get(i))
         .map(|c| {
             let topic = c.channel.topic_name.clone().unwrap_or_default();
             let joined = c.member_status == MemberStatus::Active;
@@ -45,7 +45,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 spans.push(Span::styled("   · join", Style::default().fg(t.dim)));
             }
             // Default-channel badge (new members auto-join); `#general` always.
-            if topic == "general" || app.default_channels.contains(&topic) {
+            if topic == "general" || app.channel_browser.defaults.contains(&topic) {
                 spans.push(Span::styled("  ★ default", Style::default().fg(t.accent)));
             }
             PickerRow::Item(vec![Line::from(spans)])
@@ -53,27 +53,27 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .collect();
 
     // Bottom row: create / rename input, delete confirm, else the legend.
-    let footer = if app.channel_creating {
+    let footer = if app.channel_browser.creating {
         Some(inline_input_line(
             "new channel #",
-            &app.channel_new_name,
+            &app.channel_browser.new_name,
             "create",
             t,
         ))
-    } else if app.channel_renaming.is_some() {
+    } else if app.channel_browser.renaming.is_some() {
         Some(inline_input_line(
             "rename to #",
-            &app.channel_new_name,
+            &app.channel_browser.new_name,
             "rename",
             t,
         ))
     } else {
-        app.channel_confirm_delete.as_ref().map(|topic| {
+        app.channel_browser.confirm_delete.as_ref().map(|topic| {
             inline_confirm_line(
                 &format!("Delete #{topic}?"),
                 "irreversible",
                 "delete",
-                app.channel_delete_yes,
+                app.channel_browser.delete_yes,
                 t,
             )
         })
@@ -86,14 +86,17 @@ pub fn draw(frame: &mut Frame, app: &App) {
             title: format!(
                 "Channels — {team} · {} of {}",
                 filtered.len(),
-                app.channels.len()
+                app.channel_browser.channels.len()
             ),
-            query: if app.channel_filtering || !app.channel_filter.is_empty() {
-                Some((&app.channel_filter, "filter channels…"))
+            query: if app.channel_browser.filtering || !app.channel_browser.filter.is_empty() {
+                Some((&app.channel_browser.filter, "filter channels…"))
             } else {
                 None
             },
-            selected: app.channel_selected.min(filtered.len().saturating_sub(1)),
+            selected: app
+                .channel_browser
+                .selected
+                .min(filtered.len().saturating_sub(1)),
             rows,
             empty: crate::tui::view::widgets::empty_state_lines(
                 "No channels loaded",

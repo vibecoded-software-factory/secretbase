@@ -36,23 +36,23 @@ pub fn unhide_conversation(app: &mut App, key: KeyEvent) {
 
 pub fn channel_browser(app: &mut App, key: KeyEvent) {
     // Create mode: the new-channel-name input owns the keys.
-    if app.channel_creating {
+    if app.channel_browser.creating {
         match key.code {
             KeyCode::Esc => chat::cancel_channel_create(app),
             KeyCode::Enter => chat::request_create_channel(app),
             _ => {
-                common::route_line_editor(&mut app.channel_new_name, key);
+                common::route_line_editor(&mut app.channel_browser.new_name, key);
             }
         }
         return;
     }
     // Rename mode: the new-name input owns the keys.
-    if app.channel_renaming.is_some() {
+    if app.channel_browser.renaming.is_some() {
         match key.code {
             KeyCode::Esc => chat::cancel_channel_rename(app),
             KeyCode::Enter => chat::request_rename_channel(app),
             _ => {
-                common::route_line_editor(&mut app.channel_new_name, key);
+                common::route_line_editor(&mut app.channel_browser.new_name, key);
             }
         }
         return;
@@ -60,26 +60,28 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
     // Inline delete confirm (destructive): the same navigable y/n mechanics
     // as every confirm overlay (←/→/Tab move, Enter activates, default =
     // cancel), via the shared driver.
-    if app.channel_confirm_delete.is_some() {
+    if app.channel_browser.confirm_delete.is_some() {
         common::run_confirm(
             app,
             key,
-            |a| &mut a.channel_delete_yes,
+            |a| &mut a.channel_browser.delete_yes,
             chat::confirm_channel_delete,
             chat::cancel_channel_delete,
         );
         return;
     }
     // `/` filter input owns typing while active (tree-search contract).
-    if app.channel_filtering {
-        match common::search_key(&mut app.channel_filter, key) {
+    if app.channel_browser.filtering {
+        match common::search_key(&mut app.channel_browser.filter, key) {
             common::SearchAction::ClearAndExit | common::SearchAction::Exit => {
-                app.channel_filtering = false;
+                app.channel_browser.filtering = false;
             }
-            common::SearchAction::Rebuild => app.channel_selected = 0,
+            common::SearchAction::Rebuild => app.channel_browser.selected = 0,
             common::SearchAction::ToList(k) => {
-                let len = app.channels_filtered().len();
-                common::list_nav(&k, len, app.channel_selected, |i| app.channel_selected = i);
+                let len = app.channel_browser.filtered().len();
+                common::list_nav(&k, len, app.channel_browser.selected, |i| {
+                    app.channel_browser.selected = i
+                });
             }
             common::SearchAction::Idle => {}
         }
@@ -89,18 +91,18 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
     // drifted (no Ctrl+D/U half-page, a private page step of 10).
     if common::list_nav(
         &key,
-        app.channels_filtered().len(),
-        app.channel_selected,
-        |i| app.channel_selected = i,
+        app.channel_browser.filtered().len(),
+        app.channel_browser.selected,
+        |i| app.channel_browser.selected = i,
     ) {
         return;
     }
     match key.code {
-        KeyCode::Char('/') => app.channel_filtering = true,
+        KeyCode::Char('/') => app.channel_browser.filtering = true,
         // Esc clears an applied filter before closing the browser.
-        KeyCode::Esc if !app.channel_filter.is_empty() => {
-            app.channel_filter.clear();
-            app.channel_selected = 0;
+        KeyCode::Esc if !app.channel_browser.filter.is_empty() => {
+            app.channel_browser.filter.clear();
+            app.channel_browser.selected = 0;
         }
         KeyCode::Esc => chat::close_channel_browser(app),
         // Enter / → / l: open a channel you're in, join one you're not.

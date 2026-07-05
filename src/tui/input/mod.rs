@@ -90,8 +90,10 @@ pub fn handle_paste(app: &mut App, text: &str) {
         }
         Screen::NewConversation => app.new_conv.insert_str(&flat()),
         Screen::UnhideConversation => app.unhide_input.insert_str(&flat()),
-        Screen::ChannelBrowser if app.channel_creating || app.channel_renaming.is_some() => {
-            app.channel_new_name.insert_str(&flat());
+        Screen::ChannelBrowser
+            if app.channel_browser.creating || app.channel_browser.renaming.is_some() =>
+        {
+            app.channel_browser.new_name.insert_str(&flat());
         }
         Screen::Members if app.members.adding => app.members.add_input.insert_str(&flat()),
         Screen::Settings if app.settings_editing.is_some() => {

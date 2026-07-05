@@ -258,36 +258,13 @@ pub struct App {
     pub teams: crate::tui::teams_state::TeamsState,
 
     // ── Channel browser (`c` on a team) ───────────────────────────────
-    /// Team whose channels the browser is showing (`None` while closed).
-    pub channel_browser_team: Option<String>,
-    /// Channels of `channel_browser_team` from `listconvsonname` — **all** of
-    /// them, joined or not (`member_status == Active` means you're a member).
-    pub channels: Vec<Conversation>,
-    /// Selected row in the channel browser.
-    pub channel_selected: usize,
-    /// Whether the browser is in **create mode** (`Alt+N`) — the input for a
-    /// new channel name is shown; `Enter` creates it (`newconv` on a team
-    /// channel), `Esc` cancels back to the list.
-    pub channel_creating: bool,
-    /// New-channel name typed in create/rename mode (shared input).
-    pub channel_new_name: LineEditor,
-    /// `/` filter over the channel browser (topic substring).
-    pub channel_filter: LineEditor,
-    /// Whether the channel-browser filter input owns typing.
-    pub channel_filtering: bool,
-    /// `Some(old)` while the browser is **renaming** a channel (`r`): the old
-    /// channel name; the new name is typed into [`Self::channel_new_name`].
-    pub channel_renaming: Option<String>,
-    /// `Some(topic)` while an inline **delete** confirm (`d`) is showing —
-    /// destructive + irreversible, so `y` confirms / `n`/`Esc` cancels.
-    pub channel_confirm_delete: Option<String>,
-    /// Highlighted button of the inline channel-delete confirm (`false` =
-    /// cancel — the destructive default, same as every confirm overlay).
-    pub channel_delete_yes: bool,
-    /// The team's **default channels** (new members auto-join these), fetched
-    /// alongside the browser list; `#general` is always default and omitted.
-    /// `t` toggles the selected channel's membership in this set.
-    pub default_channels: Vec<String>,
+    /// The channel browser modal's state — the team being browsed, its
+    /// channels and cursor, the inline create / rename / delete / filter
+    /// modes, and the team's default-channel set — extracted into its own
+    /// cohesive type (see [`crate::tui::channel_browser_state`]). The
+    /// `listconvsonname` / `join` / `leave` / `newconv` / rename / delete /
+    /// default-channels calls live in the flow layer (they need the worker).
+    pub channel_browser: crate::tui::channel_browser_state::ChannelBrowserState,
 
     // ── Members view (Screen::Members) ──────────────────────────────────
     /// The Members modal's state — its target channel + label, the member
@@ -846,17 +823,7 @@ impl App {
             list_scroll: 0,
             inbox_error: None,
             teams: crate::tui::teams_state::TeamsState::default(),
-            channel_browser_team: None,
-            channels: Vec::new(),
-            channel_selected: 0,
-            channel_creating: false,
-            channel_new_name: LineEditor::default(),
-            channel_filter: LineEditor::default(),
-            channel_filtering: false,
-            channel_renaming: None,
-            channel_confirm_delete: None,
-            channel_delete_yes: false,
-            default_channels: Vec::new(),
+            channel_browser: crate::tui::channel_browser_state::ChannelBrowserState::default(),
             members: crate::tui::members_state::MembersState::default(),
             open_conv_id: None,
             conv_last_seen: HashMap::new(),
@@ -1084,29 +1051,6 @@ impl App {
                 SwitcherRow::Header(_) => None,
             })
             .collect()
-    }
-
-    /// Indices into [`Self::channels`] matching the `/` filter — what the
-    /// channel browser renders and `channel_selected` indexes.
-    pub fn channels_filtered(&self) -> Vec<usize> {
-        let q = self.channel_filter.text().trim().to_lowercase();
-        (0..self.channels.len())
-            .filter(|&i| {
-                q.is_empty()
-                    || self.channels[i]
-                        .channel
-                        .topic_name
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_lowercase()
-                        .contains(&q)
-            })
-            .collect()
-    }
-
-    /// The channel the browser cursor is on, through the filter projection.
-    pub fn selected_channel_idx(&self) -> Option<usize> {
-        self.channels_filtered().get(self.channel_selected).copied()
     }
 
     /// Opens the Settings overlay over the current screen, focus on the
@@ -1496,7 +1440,7 @@ impl App {
             | Screen::QuickSwitcher => UiMode::Search,
             // Modal browsers: Search while an inline text mode is open, else Normal.
             Screen::ChannelBrowser => {
-                if self.channel_creating || self.channel_renaming.is_some() {
+                if self.channel_browser.creating || self.channel_browser.renaming.is_some() {
                     UiMode::Search
                 } else {
                     UiMode::Normal
