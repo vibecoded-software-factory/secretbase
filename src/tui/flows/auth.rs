@@ -191,7 +191,7 @@ pub fn handle_logout_response(app: &mut App, result: Result<(), KeybaseError>) {
             app.conversations.clear();
             app.conversations_lowered.clear();
             app.filtered_cache.clear();
-            app.teams.clear();
+            app.teams.list.clear();
             app.screen = Screen::Login;
             prepare_login_screen(app);
             app.set_action(ActionState::Done("Logged out".into()));

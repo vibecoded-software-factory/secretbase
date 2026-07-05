@@ -3107,15 +3107,15 @@ fn do_load_teams_populates_and_clamps_selection() {
             role: crate::domain::TeamRole::Owner,
         },
     ];
-    rig.app.teams_selected = 99;
+    rig.app.teams.selected = 99;
     request_load_teams(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.teams.len(), 2);
-    assert_eq!(rig.app.teams_selected, 1, "must clamp to last loaded row");
+    assert_eq!(rig.app.teams.list.len(), 2);
+    assert_eq!(rig.app.teams.selected, 1, "must clamp to last loaded row");
     open_teams(&mut rig.app); // sanity — toggles screen and queues a fresh load
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.app.screen, Screen::Teams);
-    assert_eq!(rig.app.teams_selected, 0);
+    assert_eq!(rig.app.teams.selected, 0);
 }
 
 #[test]
@@ -3140,10 +3140,10 @@ fn load_teams_collapses_duplicate_rows() {
     ];
     request_load_teams(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.teams.len(), 2, "one row per team");
+    assert_eq!(rig.app.teams.list.len(), 2, "one row per team");
     // Sorted by name.
-    assert_eq!(rig.app.teams[0].name, "acme");
-    assert_eq!(rig.app.teams[1].name, "globex");
+    assert_eq!(rig.app.teams.list[0].name, "acme");
+    assert_eq!(rig.app.teams.list[1].name, "globex");
 }
 
 #[test]
@@ -3160,7 +3160,7 @@ fn load_teams_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
     rig.mock.st().teams_skipped = vec!["team #4: unknown role".to_string()];
     request_load_teams(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.teams.len(), 1);
+    assert_eq!(rig.app.teams.list.len(), 1);
     match &rig.app.action_state {
         ActionState::Done(s) => assert!(s.contains("1 skipped"), "got: {s}"),
         other => panic!("expected Done, got {other:?}"),
