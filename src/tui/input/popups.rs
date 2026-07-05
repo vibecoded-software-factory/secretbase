@@ -70,14 +70,15 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         );
         return;
     }
+    // Universal movement through the shared router — hand-rolled arms had
+    // drifted (no Ctrl+D/U half-page, a private page step of 10).
+    if common::list_nav(&key, app.channels.len(), app.channel_selected, |i| {
+        app.channel_selected = i
+    }) {
+        return;
+    }
     match key.code {
         KeyCode::Esc => chat::close_channel_browser(app),
-        KeyCode::Up | KeyCode::Char('k') => chat::channel_browser_move(app, -1),
-        KeyCode::Down | KeyCode::Char('j') => chat::channel_browser_move(app, 1),
-        KeyCode::PageUp => chat::channel_browser_move(app, -10),
-        KeyCode::PageDown => chat::channel_browser_move(app, 10),
-        KeyCode::Home | KeyCode::Char('g') => chat::channel_browser_move(app, isize::MIN),
-        KeyCode::End | KeyCode::Char('G') => chat::channel_browser_move(app, isize::MAX),
         // Enter / → / l: open a channel you're in, join one you're not.
         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => chat::channel_browser_activate(app),
         // ── common actions (bare) ─────────────────────────────────────────
@@ -118,14 +119,15 @@ pub fn members(app: &mut App, key: KeyEvent) {
         );
         return;
     }
+    // Universal movement through the shared router — same drift fix as the
+    // channel browser (Ctrl+D/U, unified page step).
+    if common::list_nav(&key, app.members.len(), app.members_selected, |i| {
+        app.members_selected = i
+    }) {
+        return;
+    }
     match key.code {
         KeyCode::Esc => chat::close_members(app),
-        KeyCode::Up | KeyCode::Char('k') => chat::members_move(app, -1),
-        KeyCode::Down | KeyCode::Char('j') => chat::members_move(app, 1),
-        KeyCode::PageUp => chat::members_move(app, -10),
-        KeyCode::PageDown => chat::members_move(app, 10),
-        KeyCode::Home | KeyCode::Char('g') => chat::members_move(app, isize::MIN),
-        KeyCode::End | KeyCode::Char('G') => chat::members_move(app, isize::MAX),
         // Add member(s) — bare (safe/common).
         KeyCode::Char('a') => chat::open_member_add(app),
         // Remove the selected member — bare `x`, gated by the inline confirm.

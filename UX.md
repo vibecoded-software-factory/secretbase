@@ -194,8 +194,11 @@ status strip at the bottom.
   (mutt/lazygit); success toasts keep the ~1.5 s fuse. The badge
   tells the user what a keystroke will do (type vs act vs navigate).
 - **List navigation is centralized.** Every list handler routes universal
-  movement through `input::common::list_nav` (`↑↓`/`j k`, `PgUp/PgDn`, `g/G`,
-  `Home/End`) — or `list_nav_arrows` (only `↑↓`/`PgUp/PgDn`) for a list behind a
+  movement through `input::common::list_nav` (`↑↓`/`j k`, `PgUp/PgDn`,
+  `Ctrl+D/U` half-page, `g/G`, `Home/End`) — **including the channel browser
+  and Members**, whose hand-rolled arms had drifted (no half-page, a private
+  page step) — or `list_nav_arrows` (only `↑↓`/`PgUp/PgDn`, plus `Ctrl+J/K`
+  row-step; `Ctrl+U` stays kill-to-start in the query) for a list behind a
   text input, where the letter aliases would be typed. This guarantees identical
   coverage so screens can't drift. The **mouse wheel** scrolls whatever list is
   active on every screen (`input::mouse` dispatches by `Screen`).
