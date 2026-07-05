@@ -191,7 +191,10 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         draw_tree_notice(frame, app, area, &head, &[hint]);
         return;
     }
-    let budget = (area.width as usize).saturating_sub(7).max(6);
+    // Reserve room for the age column (`format_duration` can emit up to
+    // 4 chars — "364d") + spacing; short-changing it clips the unit ("31d"
+    // rendered as "31", which reads as a bare number).
+    let budget = (area.width as usize).saturating_sub(10).max(6);
 
     let rows: Vec<Row<'static>> = model
         .iter()
@@ -311,7 +314,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         &title,
         app.focus == Focus::Tree,
         &["Chats", "#"],
-        &[Constraint::Length(budget as u16), Constraint::Min(2)],
+        &[Constraint::Length(budget as u16), Constraint::Min(4)],
         rows,
         app.tree_selected,
         &mut scroll,

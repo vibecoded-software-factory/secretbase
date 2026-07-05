@@ -991,7 +991,9 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
             ))
         }
         ActionState::Done(msg) => Some((msg.clone(), Style::default().fg(app.theme.success))),
-        ActionState::Error(msg) => Some((msg.clone(), Style::default().fg(app.theme.error))),
+        // The ✗ prefix separates a sticky error from the mode badge it sits
+        // next to — "-- NORMAL -- EOF" read as one cryptic token without it.
+        ActionState::Error(msg) => Some((format!("✗ {msg}"), Style::default().fg(app.theme.error))),
     };
 
     if let Some((text, style)) = feedback {
