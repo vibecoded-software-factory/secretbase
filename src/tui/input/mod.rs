@@ -105,7 +105,7 @@ pub fn handle_paste(app: &mut App, text: &str) {
                 app.rebuild_filter();
             }
             // The compose is the one multi-line input: newlines survive.
-            Focus::Chat if app.open_conv_id.is_some() && app.selected_msg_idx.is_none() => {
+            Focus::Chat if app.open_conv_id.is_some() && app.select.cursor.is_none() => {
                 app.compose.insert_str(&clean);
             }
             _ => {}

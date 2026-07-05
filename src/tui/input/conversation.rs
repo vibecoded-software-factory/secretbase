@@ -31,7 +31,7 @@ pub(crate) fn maybe_queue_older(app: &mut App) {
 }
 
 pub fn handle(app: &mut App, key: KeyEvent) {
-    if app.selected_msg_idx.is_some() {
+    if app.select.cursor.is_some() {
         return handle_select(app, key);
     }
     handle_compose(app, key);
@@ -215,9 +215,9 @@ fn handle_select(app: &mut App, key: KeyEvent) {
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     // `z` prefix (vim viewport alignment): zz center · zt top · zb bottom.
     // Any other continuation cancels harmlessly.
-    if app.select_z_pending {
-        app.select_z_pending = false;
-        app.pending_align = match key.code {
+    if app.select.z_pending {
+        app.select.z_pending = false;
+        app.select.align = match key.code {
             KeyCode::Char('z') => Some(crate::tui::app::AlignReq::Center),
             KeyCode::Char('t') => Some(crate::tui::app::AlignReq::Top),
             KeyCode::Char('b') => Some(crate::tui::app::AlignReq::Bottom),
@@ -235,9 +235,9 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         // nothing selected it closes the conversation (normal → out), never
         // silently dropping marks *and* the conversation in one press.
         KeyCode::Esc => {
-            if !app.msg_marks.is_empty() || app.select_anchor.is_some() {
-                app.msg_marks.clear();
-                app.select_anchor = None;
+            if !app.select.marks.is_empty() || app.select.anchor.is_some() {
+                app.select.marks.clear();
+                app.select.anchor = None;
             } else {
                 chat::close_conversation(app);
             }
@@ -264,7 +264,7 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         // Who reacted — the chips only show counts.
         KeyCode::Char('w') => chat::show_reactors(app),
         // Viewport alignment prefix (zz / zt / zb).
-        KeyCode::Char('z') => app.select_z_pending = true,
+        KeyCode::Char('z') => app.select.z_pending = true,
         KeyCode::Up if shift => chat::select_extend(app, -1),
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),
@@ -273,8 +273,8 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Char('u') | KeyCode::Char('U')
             if key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
-            if let Some(i) = app.selected_msg_idx {
-                app.selected_msg_idx = Some(i.saturating_sub(crate::tui::app::PAGE_STEP));
+            if let Some(i) = app.select.cursor {
+                app.select.cursor = Some(i.saturating_sub(crate::tui::app::PAGE_STEP));
                 chat::select_resync_anchor_marks(app);
             }
         }
@@ -282,8 +282,8 @@ fn handle_select(app: &mut App, key: KeyEvent) {
             if key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
             let max = app.messages.len().saturating_sub(1);
-            if let Some(i) = app.selected_msg_idx {
-                app.selected_msg_idx = Some((i + crate::tui::app::PAGE_STEP).min(max));
+            if let Some(i) = app.select.cursor {
+                app.select.cursor = Some((i + crate::tui::app::PAGE_STEP).min(max));
                 chat::select_resync_anchor_marks(app);
             }
         }
@@ -293,24 +293,24 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Char('{') => chat::select_jump_run(app, -1),
         KeyCode::Char('}') => chat::select_jump_run(app, 1),
         KeyCode::PageUp => {
-            if let Some(i) = app.selected_msg_idx {
-                app.selected_msg_idx = Some(i.saturating_sub(crate::tui::app::PAGE_STEP));
+            if let Some(i) = app.select.cursor {
+                app.select.cursor = Some(i.saturating_sub(crate::tui::app::PAGE_STEP));
                 chat::select_resync_anchor_marks(app);
             }
         }
         KeyCode::PageDown => {
             let max = app.messages.len().saturating_sub(1);
-            if let Some(i) = app.selected_msg_idx {
-                app.selected_msg_idx = Some((i + crate::tui::app::PAGE_STEP).min(max));
+            if let Some(i) = app.select.cursor {
+                app.select.cursor = Some((i + crate::tui::app::PAGE_STEP).min(max));
                 chat::select_resync_anchor_marks(app);
             }
         }
         KeyCode::Home | KeyCode::Char('g') => {
-            app.selected_msg_idx = Some(0);
+            app.select.cursor = Some(0);
             chat::select_resync_anchor_marks(app);
         }
         KeyCode::End | KeyCode::Char('G') => {
-            app.selected_msg_idx = Some(app.messages.len().saturating_sub(1));
+            app.select.cursor = Some(app.messages.len().saturating_sub(1));
             chat::select_resync_anchor_marks(app);
         }
         // Multi-select + copy (reduced action set).

@@ -1023,13 +1023,13 @@ fn delete_selected_calls_adapter_with_correct_id() {
     );
     rig.app.identity.username = "me".into();
     rig.app.messages = vec![text_msg(7, "me", "doomed")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     request_delete_selected_message(&mut rig.app);
     pump_one(&mut rig.app);
     assert_eq!(rig.mock.st().deletes, vec![7]);
     // Stays in Select mode after deleting (you can delete more).
-    assert_eq!(rig.app.selected_msg_idx, Some(0));
-    assert!(rig.app.pending_batch.is_none());
+    assert_eq!(rig.app.select.cursor, Some(0));
+    assert!(rig.app.select.batch.is_none());
 }
 
 #[test]
@@ -1048,7 +1048,7 @@ fn input_x_in_select_opens_delete_confirm() {
     rig.app.messages = vec![text_msg(7, "me", "doomed")];
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Chat;
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     press(&mut rig.app, KeyCode::Char('x'), KeyModifiers::NONE);
     assert_eq!(rig.app.screen, Screen::ConfirmDeleteMessage);
     // A bare `d` must NOT delete anymore (it's inert in Select).
@@ -1075,8 +1075,8 @@ fn delete_acts_on_the_whole_marked_selection_sequentially() {
     rig.app.rebuild_msg_meta();
     // Mark all three (by id); the batch must delete every one, not just the
     // cursor.
-    rig.app.selected_msg_idx = Some(2);
-    rig.app.msg_marks = [10u64, 11, 12].into_iter().collect();
+    rig.app.select.cursor = Some(2);
+    rig.app.select.marks = [10u64, 11, 12].into_iter().collect();
     request_delete_selected_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let mut deleted = rig.mock.st().deletes.clone();
@@ -1087,8 +1087,8 @@ fn delete_acts_on_the_whole_marked_selection_sequentially() {
         "all marked deleted, not just cursor"
     );
     // Shading cleared, still in Select mode.
-    assert!(rig.app.msg_marks.is_empty());
-    assert!(rig.app.pending_batch.is_none());
+    assert!(rig.app.select.marks.is_empty());
+    assert!(rig.app.select.batch.is_none());
 }
 
 #[test]
@@ -1103,8 +1103,8 @@ fn delete_skips_other_peoples_messages() {
     rig.app.identity.username = "me".into();
     rig.app.messages = vec![text_msg(20, "me", "mine"), text_msg(21, "alice", "theirs")];
     rig.app.rebuild_msg_meta();
-    rig.app.selected_msg_idx = Some(0);
-    rig.app.msg_marks = [20u64, 21].into_iter().collect();
+    rig.app.select.cursor = Some(0);
+    rig.app.select.marks = [20u64, 21].into_iter().collect();
     request_delete_selected_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // Only the own message is deleted; alice's is left alone.
@@ -1127,8 +1127,8 @@ fn marks_survive_a_reprojecting_reload_by_id() {
         text_msg(3, "me", "keep-b"),
     ];
     rig.app.rebuild_msg_meta();
-    rig.app.selected_msg_idx = Some(2); // cursor on id 3
-    rig.app.msg_marks = [2u64, 3].into_iter().collect();
+    rig.app.select.cursor = Some(2); // cursor on id 3
+    rig.app.select.marks = [2u64, 3].into_iter().collect();
     // A remote delete removed message 1 — the re-read returns a list where
     // every index shifted down by one (mock stores newest-first; the read
     // handler reverses).
@@ -1138,9 +1138,9 @@ fn marks_survive_a_reprojecting_reload_by_id() {
     pump_until_idle(&mut rig.app);
     // Marks still denote the same messages (ids, not the shifted indices)…
     let want: std::collections::HashSet<u64> = [2u64, 3].into_iter().collect();
-    assert_eq!(rig.app.msg_marks, want);
+    assert_eq!(rig.app.select.marks, want);
     // …and the cursor re-found its message (id 3) at its new index.
-    assert_eq!(rig.app.selected_msg_idx, Some(1));
+    assert_eq!(rig.app.select.cursor, Some(1));
 
     // A mark whose message vanished is pruned on the next reload.
     rig.mock.st().messages = vec![text_msg(2, "me", "keep-a")];
@@ -1148,7 +1148,7 @@ fn marks_survive_a_reprojecting_reload_by_id() {
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let want: std::collections::HashSet<u64> = [2u64].into_iter().collect();
-    assert_eq!(rig.app.msg_marks, want);
+    assert_eq!(rig.app.select.marks, want);
 }
 
 // ── do_send_reaction → request_send_reaction ─────────────────────────
@@ -1163,7 +1163,7 @@ fn react_with_empty_query_sends_the_highlighted_emoji() {
         "c1",
     );
     rig.app.messages = vec![text_msg(5, "me", "x")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     rig.app.react.clear();
     rig.app.react_selected = 0;
     // The picker always has a highlighted emoji (top of the seeded standard
@@ -1196,14 +1196,14 @@ fn react_failure_surfaces_error_and_stays_in_select() {
     );
     rig.app.messages = vec![text_msg(5, "me", "x")];
     rig.mock.st().messages = vec![text_msg(5, "me", "x")]; // reload returns it
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     rig.app.react.set(":fire:");
     rig.app.screen = Screen::React;
     rig.mock.st().fail_next = Some(KeybaseError::api_message("reaction not allowed"));
     request_send_reaction(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.selected_msg_idx, Some(0));
-    assert!(rig.app.pending_batch.is_none());
+    assert_eq!(rig.app.select.cursor, Some(0));
+    assert!(rig.app.select.batch.is_none());
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
 
@@ -1217,7 +1217,7 @@ fn react_sends_with_correct_msg_id_and_body() {
         "c1",
     );
     rig.app.messages = vec![text_msg(5, "me", "x")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     rig.app.react.set(":+1:");
     request_send_reaction(&mut rig.app);
     pump_one(&mut rig.app);
@@ -1651,7 +1651,7 @@ fn pin_uses_selected_message_id() {
         "c1",
     );
     rig.app.messages = vec![text_msg(99, "me", "important")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     request_pin_selected_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.mock.st().pins, vec![99]);
@@ -1772,7 +1772,8 @@ fn search_hits_are_retained_and_cycled_with_n() {
     assert_eq!(rig.app.conv_search_selected, 1);
     assert_eq!(
         rig.app
-            .selected_msg_idx
+            .select
+            .cursor
             .and_then(|i| rig.app.messages.get(i))
             .map(|m| m.id),
         Some(3)
@@ -1800,8 +1801,8 @@ fn select_cursor_at_top_paginates_and_stays_on_its_message() {
     rig.app.messages = vec![text_msg(100, "alice", "top"), text_msg(101, "alice", "hi")];
     rig.app.rebuild_msg_meta();
     rig.app.messages_next = Some("cursor".into());
-    rig.app.selected_msg_idx = Some(0);
-    rig.app.select_anchor = Some(1);
+    rig.app.select.cursor = Some(0);
+    rig.app.select.anchor = Some(1);
     // The older page the server will return — newest-first, as `read` does.
     rig.mock.st().messages = (90..=99)
         .rev()
@@ -1816,17 +1817,17 @@ fn select_cursor_at_top_paginates_and_stays_on_its_message() {
     // still point at the same messages.
     assert_eq!(rig.app.messages.len(), 12);
     assert_eq!(
-        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
         Some(100)
     );
     assert_eq!(
-        rig.app.select_anchor.map(|i| rig.app.messages[i].id),
+        rig.app.select.anchor.map(|i| rig.app.messages[i].id),
         Some(101)
     );
     // A further `k` now walks into the newly-loaded page.
     select_move_up(&mut rig.app);
     assert_eq!(
-        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
         Some(99)
     );
 }
@@ -1843,11 +1844,11 @@ fn select_move_up_at_top_without_cursor_does_nothing() {
     rig.app.messages = vec![text_msg(100, "alice", "top")];
     rig.app.rebuild_msg_meta();
     rig.app.messages_next = None; // beginning of history reached
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     select_move_up(&mut rig.app);
     // No cursor movement, no request — the true beginning is just the edge.
     assert!(!rig.app.messages_loading_older);
-    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    assert_eq!(rig.app.select.cursor, Some(0));
 }
 
 #[test]
@@ -1997,15 +1998,15 @@ fn select_activate_jumps_to_reply_parent_or_exits() {
     ];
     rig.app.rebuild_msg_meta();
     // Enter on the reply jumps the cursor to the quoted message.
-    rig.app.selected_msg_idx = Some(2);
+    rig.app.select.cursor = Some(2);
     select_activate(&mut rig.app);
     assert_eq!(
-        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
         Some(10)
     );
     // Enter on a non-reply keeps the historical exit-to-compose.
     select_activate(&mut rig.app);
-    assert_eq!(rig.app.selected_msg_idx, None);
+    assert_eq!(rig.app.select.cursor, None);
 }
 
 #[test]
@@ -2171,23 +2172,23 @@ fn attention_motions_jump_to_divider_and_mentions() {
     rig.app.unread_boundary = Some(10);
     jump_to_new_messages(&mut rig.app);
     assert_eq!(
-        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
         Some(11)
     );
     // `]` finds the next @mention; at the end it stays put, honestly.
     select_jump_mention(&mut rig.app, 1);
     assert_eq!(
-        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
         Some(12)
     );
     select_jump_mention(&mut rig.app, 1);
     assert_eq!(
-        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
         Some(12)
     );
     select_jump_mention(&mut rig.app, -1);
     assert_eq!(
-        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
         Some(12)
     );
 }
@@ -2328,7 +2329,7 @@ fn show_reactors_lists_names_per_emoji() {
     ];
     rig.app.messages = vec![m];
     rig.app.rebuild_msg_meta();
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     show_reactors(&mut rig.app);
     match &rig.app.action_state {
         ActionState::Done(s) => {
@@ -2518,7 +2519,7 @@ fn emoji_picker_insert_mode_edits_the_draft_and_posts_nothing() {
     assert!(rig.app.compose.text().len() > "hola ".len());
     assert!(rig.app.in_flight.is_none());
     // A later real react is unaffected by the insert flag.
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     open_react_for_selected(&mut rig.app);
     assert!(!rig.app.react_to_compose);
 }
@@ -2702,24 +2703,24 @@ fn visual_anchor_extends_with_plain_motions() {
         text_msg(3, "bob", "c"),
     ];
     rig.app.rebuild_msg_meta();
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     // v anchors and marks the cursor row…
     select_toggle_anchor(&mut rig.app);
     let one: std::collections::HashSet<u64> = [1u64].into_iter().collect();
-    assert_eq!(rig.app.msg_marks, one);
+    assert_eq!(rig.app.select.marks, one);
     // …plain j (move down) extends the range, no Shift chord needed.
     select_move_down(&mut rig.app);
     select_move_down(&mut rig.app);
     let all: std::collections::HashSet<u64> = [1u64, 2, 3].into_iter().collect();
-    assert_eq!(rig.app.msg_marks, all);
+    assert_eq!(rig.app.select.marks, all);
     // Moving back shrinks it (range is anchor..cursor, not sticky).
     select_move_up(&mut rig.app);
     let two: std::collections::HashSet<u64> = [1u64, 2].into_iter().collect();
-    assert_eq!(rig.app.msg_marks, two);
+    assert_eq!(rig.app.select.marks, two);
     // v again exits visual: anchor + marks clear.
     select_toggle_anchor(&mut rig.app);
-    assert!(rig.app.msg_marks.is_empty());
-    assert!(rig.app.select_anchor.is_none());
+    assert!(rig.app.select.marks.is_empty());
+    assert!(rig.app.select.anchor.is_none());
 }
 
 #[test]
@@ -2739,19 +2740,19 @@ fn brace_motions_jump_by_speaker_run() {
         text_msg(5, "carol", "c1"),
     ];
     rig.app.rebuild_msg_meta();
-    rig.app.selected_msg_idx = Some(4); // carol
+    rig.app.select.cursor = Some(4); // carol
     select_jump_run(&mut rig.app, -1); // head of bob's run
-    assert_eq!(rig.app.selected_msg_idx, Some(2));
+    assert_eq!(rig.app.select.cursor, Some(2));
     select_jump_run(&mut rig.app, -1); // head of alice's run
-    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    assert_eq!(rig.app.select.cursor, Some(0));
     select_jump_run(&mut rig.app, -1); // clamped at the top
-    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    assert_eq!(rig.app.select.cursor, Some(0));
     select_jump_run(&mut rig.app, 1); // next run: bob
-    assert_eq!(rig.app.selected_msg_idx, Some(2));
+    assert_eq!(rig.app.select.cursor, Some(2));
     select_jump_run(&mut rig.app, 1); // carol
-    assert_eq!(rig.app.selected_msg_idx, Some(4));
+    assert_eq!(rig.app.select.cursor, Some(4));
     select_jump_run(&mut rig.app, 1); // clamped at the end
-    assert_eq!(rig.app.selected_msg_idx, Some(4));
+    assert_eq!(rig.app.select.cursor, Some(4));
 }
 
 #[test]
@@ -2770,7 +2771,7 @@ fn esc_chain_never_destroys_the_draft() {
     rig.app.focus = crate::tui::screens::Focus::Chat;
     rig.app.compose.set("precious draft");
     escape_conversation(&mut rig.app);
-    assert!(rig.app.selected_msg_idx.is_some(), "insert → Select");
+    assert!(rig.app.select.cursor.is_some(), "insert → Select");
     assert_eq!(rig.app.compose.text(), "precious draft", "draft untouched");
     // Esc in Select (no marks) closes; close_conversation stashes the draft.
     press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
@@ -2799,7 +2800,7 @@ fn esc_cancels_reply_without_closing_or_clearing() {
     assert_eq!(rig.app.reply_to_id, None, "reply target cancelled");
     assert!(rig.app.open_conv_id.is_some(), "conversation stays open");
     assert_eq!(rig.app.compose.text(), "half-typed reply", "text kept");
-    assert!(rig.app.selected_msg_idx.is_none(), "still composing");
+    assert!(rig.app.select.cursor.is_none(), "still composing");
 }
 
 #[test]
@@ -2814,11 +2815,11 @@ fn esc_in_select_clears_marks_before_closing() {
     rig.app.messages = vec![text_msg(1, "alice", "a"), text_msg(2, "alice", "b")];
     rig.app.rebuild_msg_meta();
     rig.app.focus = crate::tui::screens::Focus::Chat;
-    rig.app.selected_msg_idx = Some(1);
-    rig.app.msg_marks = [1u64, 2].into_iter().collect();
+    rig.app.select.cursor = Some(1);
+    rig.app.select.marks = [1u64, 2].into_iter().collect();
     press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
     assert!(
-        rig.app.msg_marks.is_empty(),
+        rig.app.select.marks.is_empty(),
         "first Esc clears the selection"
     );
     assert!(
@@ -2924,7 +2925,7 @@ fn enter_select_anchors_to_last_message() {
         text_msg(3, "me", "c"),
     ];
     enter_select_mode(&mut rig.app);
-    assert_eq!(rig.app.selected_msg_idx, Some(2));
+    assert_eq!(rig.app.select.cursor, Some(2));
     assert!(!rig.app.compose_open);
 }
 
@@ -2933,7 +2934,7 @@ fn enter_select_errors_on_empty_history() {
     let mut rig = build_rig();
     rig.app.messages.clear();
     enter_select_mode(&mut rig.app);
-    assert!(rig.app.selected_msg_idx.is_none());
+    assert!(rig.app.select.cursor.is_none());
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
 
@@ -2941,18 +2942,18 @@ fn enter_select_errors_on_empty_history() {
 fn select_move_up_clamps_at_zero() {
     let mut rig = build_rig();
     rig.app.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     select_move_up(&mut rig.app);
-    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    assert_eq!(rig.app.select.cursor, Some(0));
 }
 
 #[test]
 fn select_move_down_clamps_at_last() {
     let mut rig = build_rig();
     rig.app.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
-    rig.app.selected_msg_idx = Some(1);
+    rig.app.select.cursor = Some(1);
     select_move_down(&mut rig.app);
-    assert_eq!(rig.app.selected_msg_idx, Some(1));
+    assert_eq!(rig.app.select.cursor, Some(1));
 }
 
 #[test]
@@ -2961,7 +2962,7 @@ fn leave_select_restores_compose_focus() {
     rig.app.messages = vec![text_msg(1, "me", "x")];
     enter_select_mode(&mut rig.app);
     leave_select_mode(&mut rig.app);
-    assert!(rig.app.selected_msg_idx.is_none());
+    assert!(rig.app.select.cursor.is_none());
     assert!(rig.app.compose_open);
 }
 
@@ -2972,7 +2973,7 @@ fn open_edit_refuses_non_own_message() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
     rig.app.messages = vec![text_msg(1, "bob", "yours")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     open_edit_for_selected(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
     assert!(rig.app.edit_target_id.is_none());
@@ -2983,12 +2984,12 @@ fn open_edit_loads_body_into_compose_buffer() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
     rig.app.messages = vec![text_msg(1, "alice", "hola mundo")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     open_edit_for_selected(&mut rig.app);
     assert_eq!(rig.app.edit_target_id, Some(1));
     assert_eq!(rig.app.compose.text(), "hola mundo");
     assert!(rig.app.compose_open);
-    assert!(rig.app.selected_msg_idx.is_none());
+    assert!(rig.app.select.cursor.is_none());
 }
 
 #[test]
@@ -2996,7 +2997,7 @@ fn open_delete_refuses_non_own_message() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
     rig.app.messages = vec![text_msg(1, "bob", "yours")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     open_delete_for_selected(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
     assert_ne!(rig.app.screen, Screen::ConfirmDeleteMessage);
@@ -3194,12 +3195,12 @@ fn start_reply_sets_reply_to_id_and_clears_buffer() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
     rig.app.messages = vec![text_msg(42, "bob", "original")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     rig.app.compose.set("old draft");
     start_reply_for_selected(&mut rig.app);
     assert_eq!(rig.app.reply_to_id, Some(42));
     assert!(rig.app.compose.is_empty());
-    assert!(rig.app.selected_msg_idx.is_none());
+    assert!(rig.app.select.cursor.is_none());
     assert!(rig.app.compose_open);
 }
 
@@ -3207,7 +3208,7 @@ fn start_reply_sets_reply_to_id_and_clears_buffer() {
 fn start_reply_cancels_pending_edit() {
     let mut rig = build_rig();
     rig.app.messages = vec![text_msg(10, "alice", "x")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     rig.app.edit_target_id = Some(99);
     start_reply_for_selected(&mut rig.app);
     assert!(rig.app.edit_target_id.is_none(), "edit must be cancelled");
@@ -3274,7 +3275,7 @@ fn attachment_msg(id: u64, sender: &str, filename: &str, size: u64) -> Message {
 fn open_download_requires_attachment_message() {
     let mut rig = build_rig();
     rig.app.messages = vec![text_msg(1, "alice", "not an attachment")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     open_download_for_selected(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
     assert!(rig.app.file_picker.is_none());
@@ -3285,7 +3286,7 @@ fn open_download_opens_dir_picker_with_a_download_action() {
     use crate::tui::app::PickerAction;
     let mut rig = build_rig();
     rig.app.messages = vec![attachment_msg(99, "bob", "secret.txt", 1024)];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     open_download_for_selected(&mut rig.app);
     assert!(rig.app.file_picker.is_some(), "directory picker opened");
     match &rig.app.picker_action {
@@ -3365,7 +3366,7 @@ fn search_jump_selects_matched_message_when_in_loaded_page() {
         text_msg(40, "alice", "older"),
     ];
     handle_load_messages_response(&mut rig.app, Ok((page, None)));
-    let idx = rig.app.selected_msg_idx.expect("a message is selected");
+    let idx = rig.app.select.cursor.expect("a message is selected");
     assert_eq!(rig.app.messages[idx].id, 42);
     assert_eq!(rig.app.pending_search_jump, None);
     assert!(!rig.app.compose_open);
@@ -3384,7 +3385,7 @@ fn search_jump_gives_up_when_message_absent_and_no_more_history() {
     rig.app.pending_search_jump = Some(999);
     handle_load_messages_response(&mut rig.app, Ok((vec![text_msg(1, "alice", "hi")], None)));
     assert_eq!(rig.app.pending_search_jump, None);
-    assert_eq!(rig.app.selected_msg_idx, None);
+    assert_eq!(rig.app.select.cursor, None);
 }
 
 #[test]
@@ -3417,7 +3418,7 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
     assert_eq!(rig.app.conv_search_results.len(), 1);
     // Enter on the hit jumps to + selects the message and closes the modal.
     conv_search_jump_selected(&mut rig.app);
-    let idx = rig.app.selected_msg_idx.expect("a message is selected");
+    let idx = rig.app.select.cursor.expect("a message is selected");
     assert_eq!(rig.app.messages[idx].id, 7);
     assert_ne!(rig.app.screen, Screen::ConvSearch);
     // Hits are retained after the jump (vim keeps the pattern) so n/N can
@@ -4351,7 +4352,7 @@ fn ctrl_w_window_nav_moves_between_panels() {
     // k (up) chat → filter, then j (down) filter → chats.
     rig.app.messages = vec![text_msg(1, "alice", "x")];
     rig.app.rebuild_msg_meta();
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
     assert!(rig.app.pending_pane_nav);
     press(&mut rig.app, KeyCode::Char('k'), KeyModifiers::NONE); // up → filter
@@ -4403,7 +4404,7 @@ fn open_url_opens_first_link_or_reports_none() {
     let mut rig = build_rig();
 
     rig.app.messages = vec![text("docs at https://keybase.io/x and more")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     do_open_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
     assert_eq!(rig.app.cmdlog.entries.last().unwrap().cmd, "open url");
@@ -4416,7 +4417,7 @@ fn open_url_opens_first_link_or_reports_none() {
     );
 
     rig.app.messages = vec![text("no link here")];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     do_open_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
     do_copy_url(&mut rig.app);
@@ -4441,11 +4442,11 @@ fn chat_multiselect_copies_messages() {
     ];
     rig.app.rebuild_msg_meta();
     enter_select_mode(&mut rig.app); // cursor on the last message, marks cleared
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     msg_toggle_mark(&mut rig.app);
-    rig.app.selected_msg_idx = Some(2);
+    rig.app.select.cursor = Some(2);
     msg_toggle_mark(&mut rig.app);
-    assert_eq!(rig.app.msg_marks.len(), 2);
+    assert_eq!(rig.app.select.marks.len(), 2);
 
     // Full copy (author + time + body) and content-only copy both work and
     // keep the selection.
@@ -4453,7 +4454,7 @@ fn chat_multiselect_copies_messages() {
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
     do_copy_messages(&mut rig.app, false);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
-    assert_eq!(rig.app.msg_marks.len(), 2);
+    assert_eq!(rig.app.select.marks.len(), 2);
 }
 
 #[test]
@@ -4911,7 +4912,7 @@ fn open_download_uses_safe_basename_for_malicious_filename() {
         "../../.ssh/authorized_keys",
         16,
     )];
-    rig.app.selected_msg_idx = Some(0);
+    rig.app.select.cursor = Some(0);
     open_download_for_selected(&mut rig.app);
     // The download filename is sanitised to a bare basename, so joining it
     // onto the chosen directory can't escape with a `..` traversal.

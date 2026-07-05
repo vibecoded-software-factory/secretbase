@@ -207,7 +207,7 @@ fn palette_commands(app: &App) -> Vec<Command> {
         ));
         // Offer "Select messages" only when not already selecting — the Message
         // group below covers the per-message actions in that mode.
-        if app.selected_msg_idx.is_none() {
+        if app.select.cursor.is_none() {
             v.push(cmd(
                 SelectMode,
                 "Select messages",
@@ -234,7 +234,7 @@ fn palette_commands(app: &App) -> Vec<Command> {
         ));
     }
     // ── Message (only in Select mode, acting on the cursor message) ──
-    if app.selected_msg_idx.is_some() {
+    if app.select.cursor.is_some() {
         v.push(cmd(
             EditMessage,
             "Edit message",
@@ -621,7 +621,7 @@ mod tests {
         assert!(!a.contains(&PaletteAction::EditMessage));
 
         // Enter select mode → the Message group appears, SelectMode drops out.
-        app.selected_msg_idx = Some(0);
+        app.select.cursor = Some(0);
         let a = actions(&app);
         for want in [
             PaletteAction::EditMessage,

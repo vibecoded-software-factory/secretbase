@@ -98,7 +98,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 )
             } else {
                 let one = app
-                    .selected_msg_idx
+                    .select
+                    .cursor
                     .and_then(|i| app.messages.get(i))
                     .map(|m| format!("msg #{} by {}", m.id, m.sender))
                     .unwrap_or_else(|| "(none)".to_string());
