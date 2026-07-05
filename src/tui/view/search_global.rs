@@ -17,7 +17,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
 
     let rows: Vec<PickerRow> = app
-        .search_global_results
+        .global_search
+        .results
         .iter()
         .map(|h| {
             let body_summary: String = h.body_summary.lines().next().unwrap_or("").to_string();
@@ -40,7 +41,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         })
         .collect();
 
-    let empty = if app.search_global_input.text().trim().is_empty() {
+    let empty = if app.global_search.query.text().trim().is_empty() {
         crate::tui::view::widgets::empty_state_lines(
             "Search every conversation",
             &["type a query, then Enter", "Enter on a hit jumps to it"],
@@ -57,11 +58,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
         frame,
         t,
         PickerModal {
-            title: format!("Global search · {} hits", app.search_global_results.len()),
-            query: Some((&app.search_global_input, "search every conversation…")),
+            title: format!("Global search · {} hits", app.global_search.results.len()),
+            query: Some((&app.global_search.query, "search every conversation…")),
             selected: app
-                .search_global_selected
-                .min(app.search_global_results.len().saturating_sub(1)),
+                .global_search
+                .selected
+                .min(app.global_search.results.len().saturating_sub(1)),
             rows,
             empty,
             legend: &[

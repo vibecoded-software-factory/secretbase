@@ -191,8 +191,8 @@ pub fn members(app: &mut App, key: KeyEvent) {
 pub fn search_global(app: &mut App, key: KeyEvent) {
     // Alt+1..9 — instant pick-and-activate of the Nth row.
     if let Some(i) = common::alt_digit(&key) {
-        if i < app.search_global_results.len() {
-            app.search_global_selected = i;
+        if i < app.global_search.results.len() {
+            app.global_search.selected = i;
             chat::open_selected_search_result(app);
         }
         return;
@@ -200,7 +200,7 @@ pub fn search_global(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => chat::close_search_global(app),
         KeyCode::Enter => {
-            if !app.search_global_results.is_empty() {
+            if !app.global_search.results.is_empty() {
                 chat::open_selected_search_result(app);
             } else {
                 chat::request_search_inbox_remote(app);
@@ -209,12 +209,12 @@ pub fn search_global(app: &mut App, key: KeyEvent) {
         KeyCode::F(5) => chat::request_search_inbox_remote(app),
         _ if common::list_nav_arrows(
             &key,
-            app.search_global_results.len(),
-            app.search_global_selected,
-            |i| app.search_global_selected = i,
+            app.global_search.results.len(),
+            app.global_search.selected,
+            |i| app.global_search.selected = i,
         ) => {}
         _ => {
-            common::route_line_editor(&mut app.search_global_input, key);
+            common::route_line_editor(&mut app.global_search.query, key);
         }
     }
 }
@@ -283,8 +283,8 @@ pub fn react(app: &mut App, key: KeyEvent) {
 pub fn giphy_search(app: &mut App, key: KeyEvent) {
     // Alt+1..9 — instant pick-and-activate of the Nth row.
     if let Some(i) = common::alt_digit(&key) {
-        if i < app.giphy_results.len() {
-            app.giphy_selected = i;
+        if i < app.giphy.results.len() {
+            app.giphy.selected = i;
             chat::giphy_send_selected(app);
         }
         return;
@@ -292,22 +292,22 @@ pub fn giphy_search(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => chat::close_giphy_search(app),
         KeyCode::Enter => {
-            if app.giphy_results.is_empty() {
+            if app.giphy.results.is_empty() {
                 chat::request_giphy_search(app);
             } else {
                 chat::giphy_send_selected(app);
             }
         }
         KeyCode::F(5) => chat::request_giphy_search(app),
-        _ if common::list_nav_arrows(&key, app.giphy_results.len(), app.giphy_selected, |i| {
-            app.giphy_selected = i
+        _ if common::list_nav_arrows(&key, app.giphy.results.len(), app.giphy.selected, |i| {
+            app.giphy.selected = i
         }) => {}
         _ => {
-            let before = app.giphy_input.text().to_string();
-            common::route_line_editor(&mut app.giphy_input, key);
-            if app.giphy_input.text() != before {
-                app.giphy_results.clear();
-                app.giphy_selected = 0;
+            let before = app.giphy.query.text().to_string();
+            common::route_line_editor(&mut app.giphy.query, key);
+            if app.giphy.query.text() != before {
+                app.giphy.results.clear();
+                app.giphy.selected = 0;
             }
         }
     }
@@ -316,8 +316,8 @@ pub fn giphy_search(app: &mut App, key: KeyEvent) {
 pub fn conv_search(app: &mut App, key: KeyEvent) {
     // Alt+1..9 — instant pick-and-activate of the Nth row.
     if let Some(i) = common::alt_digit(&key) {
-        if i < app.conv_search_results.len() {
-            app.conv_search_selected = i;
+        if i < app.conv_search.results.len() {
+            app.conv_search.selected = i;
             chat::conv_search_jump_selected(app);
         }
         return;
@@ -325,7 +325,7 @@ pub fn conv_search(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => chat::close_conv_search(app),
         KeyCode::Enter => {
-            if app.conv_search_results.is_empty() {
+            if app.conv_search.results.is_empty() {
                 chat::request_conv_search(app);
             } else {
                 chat::conv_search_jump_selected(app);
@@ -334,18 +334,18 @@ pub fn conv_search(app: &mut App, key: KeyEvent) {
         KeyCode::F(5) => chat::request_conv_search(app),
         _ if common::list_nav_arrows(
             &key,
-            app.conv_search_results.len(),
-            app.conv_search_selected,
-            |i| app.conv_search_selected = i,
+            app.conv_search.results.len(),
+            app.conv_search.selected,
+            |i| app.conv_search.selected = i,
         ) => {}
         _ => {
-            let before = app.conv_search.text().to_string();
-            common::route_line_editor(&mut app.conv_search, key);
+            let before = app.conv_search.query.text().to_string();
+            common::route_line_editor(&mut app.conv_search.query, key);
             // Editing the query invalidates the old results so the next Enter
             // re-runs the search instead of jumping to a stale hit.
-            if app.conv_search.text() != before {
-                app.conv_search_results.clear();
-                app.conv_search_selected = 0;
+            if app.conv_search.query.text() != before {
+                app.conv_search.results.clear();
+                app.conv_search.selected = 0;
             }
         }
     }

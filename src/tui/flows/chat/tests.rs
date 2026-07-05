@@ -1562,11 +1562,11 @@ fn new_conversation_accepts_proof_identity() {
 #[test]
 fn search_remote_rejects_empty_query() {
     let mut rig = build_rig();
-    rig.app.search_global_input.clear();
+    rig.app.global_search.query.clear();
     request_search_inbox_remote(&mut rig.app);
     assert!(rig.app.in_flight.is_none());
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
-    assert!(rig.app.search_global_results.is_empty());
+    assert!(rig.app.global_search.results.is_empty());
 }
 
 #[test]
@@ -1590,11 +1590,11 @@ fn search_remote_populates_results() {
             sent_at: 0,
         },
     ];
-    rig.app.search_global_input.set("hola");
+    rig.app.global_search.query.set("hola");
     request_search_inbox_remote(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.search_global_results.len(), 2);
-    assert_eq!(rig.app.search_global_selected, 0);
+    assert_eq!(rig.app.global_search.results.len(), 2);
+    assert_eq!(rig.app.global_search.selected, 0);
 }
 
 // ── open_selected_search_result ───────────────────────────────────────
@@ -1605,7 +1605,7 @@ fn open_search_result_jumps_to_conversation() {
     rig.mock.st().conversations = vec![conv("c1", "alice", MembersType::ImpTeamNative)];
     request_load_inbox(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    rig.app.search_global_results = vec![InboxHit {
+    rig.app.global_search.results = vec![InboxHit {
         conv_id: "c1".into(),
         conv_name: "alice".into(),
         message_id: 1,
@@ -1613,7 +1613,7 @@ fn open_search_result_jumps_to_conversation() {
         body_summary: "x".into(),
         sent_at: 0,
     }];
-    rig.app.search_global_selected = 0;
+    rig.app.global_search.selected = 0;
     open_selected_search_result(&mut rig.app);
     // The unified Home opens the chat in-place (stays on the inbox screen).
     assert_eq!(rig.app.screen, Screen::Inbox);
@@ -1625,7 +1625,7 @@ fn open_search_result_jumps_to_conversation() {
 #[test]
 fn open_search_result_errors_when_conv_not_in_cache() {
     let mut rig = build_rig();
-    rig.app.search_global_results = vec![InboxHit {
+    rig.app.global_search.results = vec![InboxHit {
         conv_id: "nope".into(),
         conv_name: "?".into(),
         message_id: 0,
@@ -1748,7 +1748,7 @@ fn search_hits_are_retained_and_cycled_with_n() {
         text_msg(3, "alice", "target two"),
     ];
     rig.app.rebuild_msg_meta();
-    rig.app.conv_search_results = vec![
+    rig.app.conv_search.results = vec![
         InboxHit {
             conv_id: "c1".into(),
             conv_name: String::new(),
@@ -1766,10 +1766,10 @@ fn search_hits_are_retained_and_cycled_with_n() {
             sent_at: 0,
         },
     ];
-    rig.app.conv_search_selected = 0;
+    rig.app.conv_search.selected = 0;
     // n advances (and wraps), landing the Select cursor on each hit.
     conv_search_cycle(&mut rig.app, 1);
-    assert_eq!(rig.app.conv_search_selected, 1);
+    assert_eq!(rig.app.conv_search.selected, 1);
     assert_eq!(
         rig.app
             .select
@@ -1779,12 +1779,12 @@ fn search_hits_are_retained_and_cycled_with_n() {
         Some(3)
     );
     conv_search_cycle(&mut rig.app, 1); // wraps to the first hit
-    assert_eq!(rig.app.conv_search_selected, 0);
+    assert_eq!(rig.app.conv_search.selected, 0);
     // Closing the modal retains everything; only a conversation switch clears.
     close_conv_search(&mut rig.app);
-    assert_eq!(rig.app.conv_search_results.len(), 2);
+    assert_eq!(rig.app.conv_search.results.len(), 2);
     // With no hits at all, n is a harmless toast.
-    rig.app.conv_search_results.clear();
+    rig.app.conv_search.results.clear();
     conv_search_cycle(&mut rig.app, 1);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
@@ -2034,7 +2034,7 @@ fn giphy_search_gates_on_key_and_send_preserves_draft() {
             url: "https://media0.giphy.com/media/abc/giphy.gif".into(),
         }]),
     );
-    assert_eq!(rig.app.giphy_results.len(), 1);
+    assert_eq!(rig.app.giphy.results.len(), 1);
     // Enter sends the media URL — through the normal outbox, without
     // touching the user's draft.
     rig.app.compose.insert_str("mi borrador");
@@ -3413,10 +3413,10 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
         sent_at: 0,
     }];
     open_conv_search(&mut rig.app);
-    rig.app.conv_search.set("needle");
+    rig.app.conv_search.query.set("needle");
     request_conv_search(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.conv_search_results.len(), 1);
+    assert_eq!(rig.app.conv_search.results.len(), 1);
     // Enter on the hit jumps to + selects the message and closes the modal.
     conv_search_jump_selected(&mut rig.app);
     let idx = rig.app.select.cursor.expect("a message is selected");
@@ -3424,7 +3424,7 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
     assert_ne!(rig.app.screen, Screen::ConvSearch);
     // Hits are retained after the jump (vim keeps the pattern) so n/N can
     // cycle them from Select mode.
-    assert_eq!(rig.app.conv_search_results.len(), 1);
+    assert_eq!(rig.app.conv_search.results.len(), 1);
 }
 
 #[test]
@@ -3435,9 +3435,9 @@ fn conv_search_rejects_empty_query() {
     pump_until_idle(&mut rig.app);
     open_conversation_by_id(&mut rig.app, "c1".into());
     pump_until_idle(&mut rig.app);
-    rig.app.conv_search.clear();
+    rig.app.conv_search.query.clear();
     request_conv_search(&mut rig.app);
-    assert!(rig.app.conv_search_results.is_empty());
+    assert!(rig.app.conv_search.results.is_empty());
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
 }
 
