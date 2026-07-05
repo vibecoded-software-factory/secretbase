@@ -70,16 +70,16 @@ pub fn handle_paste(app: &mut App, text: &str) {
             app.rebuild_emoji_filter();
         }
         Screen::GiphySearch => {
-            app.giphy_input.insert_str(&flat());
-            app.giphy_results.clear();
-            app.giphy_selected = 0;
+            app.giphy.query.insert_str(&flat());
+            app.giphy.results.clear();
+            app.giphy.selected = 0;
         }
         Screen::ConvSearch => {
-            app.conv_search.insert_str(&flat());
-            app.conv_search_results.clear();
-            app.conv_search_selected = 0;
+            app.conv_search.query.insert_str(&flat());
+            app.conv_search.results.clear();
+            app.conv_search.selected = 0;
         }
-        Screen::SearchGlobal => app.search_global_input.insert_str(&flat()),
+        Screen::SearchGlobal => app.global_search.query.insert_str(&flat()),
         Screen::QuickSwitcher => {
             app.switcher.query.insert_str(&flat());
             app.switcher.selected = 0;

@@ -227,11 +227,8 @@ pub struct App {
     /// [`crate::tui::pin_state`]). The persisting `set_local_pin` /
     /// `set_pin_dismissed` and the background pin-body fetch stay outside it.
     pub pins: crate::tui::pin_state::PinState,
-    /// GIF-search popup state: the query editor, the fetched hits and the
-    /// picker cursor. Reset when the popup closes.
-    pub giphy_input: crate::domain::LineEditor,
-    pub giphy_results: Vec<crate::domain::GiphyHit>,
-    pub giphy_selected: usize,
+    /// Giphy GIF-search modal state (`Alt+G`) — see [`crate::tui::search_overlays`].
+    pub giphy: crate::tui::search_overlays::GiphyState,
     /// When true, the emoji picker (`Screen::React`) inserts the chosen
     /// emoji into the **compose draft** instead of reacting to a message —
     /// the compose bar's emoji button / `Alt+I`.
@@ -336,12 +333,9 @@ pub struct App {
     pub pending_search_jump: Option<u64>,
 
     // ── In-conversation search (Ctrl+F → keybase chat api searchregexp) ──
-    /// Query for the `Ctrl+F` in-conversation search modal (`Screen::ConvSearch`).
-    pub conv_search: LineEditor,
-    /// Matches from `searchregexp`, scoped to the open conversation.
-    pub conv_search_results: Vec<InboxHit>,
-    /// Selected row in `conv_search_results`.
-    pub conv_search_selected: usize,
+    /// `Ctrl+F` in-conversation search modal state — see
+    /// [`crate::tui::search_overlays`].
+    pub conv_search: crate::tui::search_overlays::ConvSearchState,
 
     // ── New-conversation popup ──────────────────────────────────────────
     /// Comma-separated usernames typed by the user in the Alt+N popup.
@@ -369,12 +363,9 @@ pub struct App {
     pub pending_editor_compose: bool,
 
     // ── Server-side search popup ────────────────────────────────────────
-    /// Query box in the Ctrl+G popup.
-    pub search_global_input: LineEditor,
-    /// Hits returned by `searchinbox` for the last query.
-    pub search_global_results: Vec<InboxHit>,
-    /// Selected row inside [`Self::search_global_results`].
-    pub search_global_selected: usize,
+    /// `Ctrl+G` server-side inbox search modal state — see
+    /// [`crate::tui::search_overlays`].
+    pub global_search: crate::tui::search_overlays::GlobalSearchState,
 
     /// What the open `file_picker` will do with the chosen path (upload a
     /// file, or download an attachment into the chosen directory).
@@ -634,9 +625,7 @@ impl App {
             file_picker: None,
             pagination: crate::tui::pagination_state::PaginationState::default(),
             pins,
-            giphy_input: crate::domain::LineEditor::default(),
-            giphy_results: Vec::new(),
-            giphy_selected: 0,
+            giphy: crate::tui::search_overlays::GiphyState::default(),
             react_to_compose: false,
             msg_cache_epoch: 0,
             compose_open: false,
@@ -659,17 +648,13 @@ impl App {
             drafts: HashMap::new(),
             palette: crate::tui::palette_state::PaletteState::default(),
             pending_search_jump: None,
-            conv_search: LineEditor::default(),
-            conv_search_results: Vec::new(),
-            conv_search_selected: 0,
+            conv_search: crate::tui::search_overlays::ConvSearchState::default(),
             new_conv: LineEditor::default(),
             unhide_input: LineEditor::default(),
             login: crate::tui::login_state::LoginState::default(),
             pending_native_login: None,
             pending_editor_compose: false,
-            search_global_input: LineEditor::default(),
-            search_global_results: Vec::new(),
-            search_global_selected: 0,
+            global_search: crate::tui::search_overlays::GlobalSearchState::default(),
             picker_action: PickerAction::Upload,
             search: LineEditor::default(),
             help_from: Screen::Inbox,

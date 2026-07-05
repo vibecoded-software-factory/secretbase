@@ -34,6 +34,7 @@ pub mod pagination_state;
 pub mod palette_state;
 pub mod pin_state;
 pub mod screens;
+pub mod search_overlays;
 pub mod select_state;
 pub mod settings_model;
 pub mod settings_ui_state;

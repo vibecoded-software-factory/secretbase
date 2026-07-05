@@ -63,8 +63,8 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
         Screen::ChannelBrowser => chat::channel_browser_move(app, delta),
         Screen::Members => chat::members_move(app, delta),
         Screen::SearchGlobal => {
-            let len = app.search_global_results.len();
-            app.search_global_selected = clamp_move(app.search_global_selected, delta, len);
+            let len = app.global_search.results.len();
+            app.global_search.selected = clamp_move(app.global_search.selected, delta, len);
         }
         Screen::React => {
             let len = app.emoji.filtered().len();
@@ -79,8 +79,8 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
             app.palette.selected = clamp_move(app.palette.selected, delta, len);
         }
         Screen::ConvSearch => {
-            let len = app.conv_search_results.len();
-            app.conv_search_selected = clamp_move(app.conv_search_selected, delta, len);
+            let len = app.conv_search.results.len();
+            app.conv_search.selected = clamp_move(app.conv_search.selected, delta, len);
         }
         Screen::Help => {
             app.help_scroll = if delta < 0 {
@@ -121,11 +121,11 @@ fn picker_click(app: &mut App, item: usize) {
         ),
         Screen::React => (&mut app.react_selected, chat::request_send_reaction),
         Screen::ConvSearch => (
-            &mut app.conv_search_selected,
+            &mut app.conv_search.selected,
             chat::conv_search_jump_selected,
         ),
         Screen::SearchGlobal => (
-            &mut app.search_global_selected,
+            &mut app.global_search.selected,
             chat::open_selected_search_result,
         ),
         Screen::ChannelBrowser => (
@@ -134,7 +134,7 @@ fn picker_click(app: &mut App, item: usize) {
         ),
         // Members has no Enter action — click just moves the cursor.
         Screen::Members => (&mut app.members.selected, |_| {}),
-        Screen::GiphySearch => (&mut app.giphy_selected, chat::giphy_send_selected),
+        Screen::GiphySearch => (&mut app.giphy.selected, chat::giphy_send_selected),
         _ => return,
     };
     if *sel == item {

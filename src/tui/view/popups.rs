@@ -20,7 +20,8 @@ use crate::tui::view::widgets::{PickerModal, PickerRow, draw_picker_modal};
 pub fn giphy_search_input(frame: &mut Frame, app: &App) {
     let t = &app.theme;
     let rows: Vec<PickerRow> = app
-        .giphy_results
+        .giphy
+        .results
         .iter()
         .map(|h| {
             // The media path tail (`/media/<id>/giphy.gif`) is the only
@@ -32,7 +33,7 @@ pub fn giphy_search_input(frame: &mut Frame, app: &App) {
             ])])
         })
         .collect();
-    let empty = if app.giphy_input.text().trim().is_empty() {
+    let empty = if app.giphy.query.text().trim().is_empty() {
         crate::tui::view::widgets::empty_state_lines(
             "Search giphy",
             &["type a query, then Enter", "Enter on a hit sends the GIF"],
@@ -49,11 +50,12 @@ pub fn giphy_search_input(frame: &mut Frame, app: &App) {
         frame,
         t,
         PickerModal {
-            title: format!("GIF search · {} hits", app.giphy_results.len()),
-            query: Some((&app.giphy_input, "search giphy…")),
+            title: format!("GIF search · {} hits", app.giphy.results.len()),
+            query: Some((&app.giphy.query, "search giphy…")),
             selected: app
-                .giphy_selected
-                .min(app.giphy_results.len().saturating_sub(1)),
+                .giphy
+                .selected
+                .min(app.giphy.results.len().saturating_sub(1)),
             rows,
             empty,
             legend: &[

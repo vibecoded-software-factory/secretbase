@@ -27,7 +27,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let max_w = modal_inner_width(frame).saturating_sub(4).max(8);
 
     let rows: Vec<PickerRow> = app
-        .conv_search_results
+        .conv_search
+        .results
         .iter()
         .map(|hit| {
             let snippet = trim_end_ellipsis(hit.body_summary.lines().next().unwrap_or(""), max_w);
@@ -51,7 +52,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         })
         .collect();
 
-    let empty = if app.conv_search.text().trim().is_empty() {
+    let empty = if app.conv_search.query.text().trim().is_empty() {
         crate::tui::view::widgets::empty_state_lines(
             "Search this conversation (full history)",
             &["type a query, then Enter", "n / N cycle hits after a jump"],
@@ -70,12 +71,13 @@ pub fn draw(frame: &mut Frame, app: &App) {
         PickerModal {
             title: format!(
                 "Search conversation · {} hits",
-                app.conv_search_results.len()
+                app.conv_search.results.len()
             ),
-            query: Some((&app.conv_search, "search this chat…")),
+            query: Some((&app.conv_search.query, "search this chat…")),
             selected: app
-                .conv_search_selected
-                .min(app.conv_search_results.len().saturating_sub(1)),
+                .conv_search
+                .selected
+                .min(app.conv_search.results.len().saturating_sub(1)),
             rows,
             empty,
             legend: &[

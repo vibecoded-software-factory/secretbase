@@ -45,9 +45,9 @@ pub(crate) fn enter_conversation(app: &mut App, id: String) {
     app.reply_to_id = None;
     app.select.cursor = None;
     app.pending_search_jump = None;
-    app.conv_search.clear();
-    app.conv_search_results.clear();
-    app.conv_search_selected = 0;
+    app.conv_search.query.clear();
+    app.conv_search.results.clear();
+    app.conv_search.selected = 0;
     restore_draft(app, &id);
     // Reveal the conversation in the tree (expand its group + move the cursor),
     // so opening from the quick switcher / global search keeps the tree in sync.

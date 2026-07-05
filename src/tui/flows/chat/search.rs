@@ -13,21 +13,21 @@ use super::*;
 // ── Server-side search popup ────────────────────────────────────────
 
 pub fn open_search_global(app: &mut App) {
-    app.search_global_input.clear();
-    app.search_global_results.clear();
-    app.search_global_selected = 0;
+    app.global_search.query.clear();
+    app.global_search.results.clear();
+    app.global_search.selected = 0;
     app.screen = crate::tui::screens::Screen::SearchGlobal;
 }
 
 pub fn close_search_global(app: &mut App) {
-    app.search_global_input.clear();
-    app.search_global_results.clear();
-    app.search_global_selected = 0;
+    app.global_search.query.clear();
+    app.global_search.results.clear();
+    app.global_search.selected = 0;
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
 pub fn request_search_inbox_remote(app: &mut App) {
-    let q = app.search_global_input.text().trim().to_string();
+    let q = app.global_search.query.text().trim().to_string();
     if q.is_empty() {
         app.set_action(ActionState::Error("Query is empty".into()));
         return;
@@ -46,8 +46,8 @@ pub fn handle_search_inbox_response(app: &mut App, result: Result<Vec<InboxHit>,
     match result {
         Ok(hits) => {
             let n = hits.len();
-            app.search_global_results = hits;
-            app.search_global_selected = 0;
+            app.global_search.results = hits;
+            app.global_search.selected = 0;
             app.set_action(ActionState::Done(format!("{n} matches")));
             app.push_cmd("keybase chat api searchinbox", true, format!("{n} hits"));
         }
@@ -59,7 +59,7 @@ pub fn handle_search_inbox_response(app: &mut App, result: Result<Vec<InboxHit>,
 }
 
 pub fn open_selected_search_result(app: &mut App) {
-    let Some(hit_ref) = app.search_global_results.get(app.search_global_selected) else {
+    let Some(hit_ref) = app.global_search.results.get(app.global_search.selected) else {
         return;
     };
     let conv_id = hit_ref.conv_id.clone();
@@ -132,7 +132,7 @@ pub fn close_conv_search(app: &mut App) {
 
 /// Runs `searchregexp` over the open conversation for the current query.
 pub fn request_conv_search(app: &mut App) {
-    let q = app.conv_search.text().trim().to_string();
+    let q = app.conv_search.query.text().trim().to_string();
     if q.is_empty() {
         app.set_action(ActionState::Error("Search is empty".into()));
         return;
@@ -155,8 +155,8 @@ pub fn handle_conv_search_response(app: &mut App, result: Result<Vec<InboxHit>, 
     match result {
         Ok(hits) => {
             let n = hits.len();
-            app.conv_search_results = hits;
-            app.conv_search_selected = 0;
+            app.conv_search.results = hits;
+            app.conv_search.selected = 0;
             app.set_action(ActionState::Done(format!("{n} matches")));
             app.push_cmd("keybase chat api searchregexp", true, format!("{n} hits"));
         }
@@ -174,16 +174,16 @@ pub fn handle_conv_search_response(app: &mut App, result: Result<Vec<InboxHit>, 
 /// wrapping (vim's post-`/` motion). Points at `Ctrl+F` when there is
 /// nothing to cycle.
 pub fn conv_search_cycle(app: &mut App, delta: isize) {
-    let len = app.conv_search_results.len();
+    let len = app.conv_search.results.len();
     if len == 0 {
         app.set_action(ActionState::Error(
             "No search hits — Ctrl+F (or / in Select) to search".into(),
         ));
         return;
     }
-    let cur = app.conv_search_selected as isize;
-    app.conv_search_selected = (cur + delta).rem_euclid(len as isize) as usize;
-    let Some(hit) = app.conv_search_results.get(app.conv_search_selected) else {
+    let cur = app.conv_search.selected as isize;
+    app.conv_search.selected = (cur + delta).rem_euclid(len as isize) as usize;
+    let Some(hit) = app.conv_search.results.get(app.conv_search.selected) else {
         return;
     };
     let target = hit.message_id;
@@ -195,13 +195,13 @@ pub fn conv_search_cycle(app: &mut App, delta: isize) {
     if app.pending_search_jump.is_none() {
         app.set_action(ActionState::Done(format!(
             "Hit {} of {len}",
-            app.conv_search_selected + 1
+            app.conv_search.selected + 1
         )));
     }
 }
 
 pub fn conv_search_jump_selected(app: &mut App) {
-    let Some(hit) = app.conv_search_results.get(app.conv_search_selected) else {
+    let Some(hit) = app.conv_search.results.get(app.conv_search.selected) else {
         return;
     };
     let target = hit.message_id;
@@ -228,22 +228,22 @@ pub fn open_giphy_search(app: &mut App) {
         ));
         return;
     }
-    app.giphy_input.clear();
-    app.giphy_results.clear();
-    app.giphy_selected = 0;
+    app.giphy.query.clear();
+    app.giphy.results.clear();
+    app.giphy.selected = 0;
     app.screen = crate::tui::screens::Screen::GiphySearch;
 }
 
 pub fn close_giphy_search(app: &mut App) {
-    app.giphy_input.clear();
-    app.giphy_results.clear();
-    app.giphy_selected = 0;
+    app.giphy.query.clear();
+    app.giphy.results.clear();
+    app.giphy.selected = 0;
     app.screen = crate::tui::screens::Screen::Inbox;
 }
 
 /// Runs the search for the typed query (Enter with no results yet, or F5).
 pub fn request_giphy_search(app: &mut App) {
-    let query = app.giphy_input.text().trim().to_string();
+    let query = app.giphy.query.text().trim().to_string();
     if query.is_empty() {
         app.set_action(ActionState::Error("Type something to search".into()));
         return;
@@ -265,8 +265,8 @@ pub fn handle_giphy_search_response(
             app.set_action(ActionState::Done(format!("{} GIFs", hits.len())));
             // The key never reaches the log — only the outcome.
             app.push_cmd("giphy search", true, format!("{} hits", hits.len()));
-            app.giphy_selected = 0;
-            app.giphy_results = hits;
+            app.giphy.selected = 0;
+            app.giphy.results = hits;
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));
@@ -280,7 +280,7 @@ pub fn handle_giphy_search_response(
 /// the same optimistic outbox as a normal send, but **never touches the
 /// compose draft** (typed text is sacred).
 pub fn giphy_send_selected(app: &mut App) {
-    let Some(hit) = app.giphy_results.get(app.giphy_selected).cloned() else {
+    let Some(hit) = app.giphy.results.get(app.giphy.selected).cloned() else {
         return;
     };
     let Some((conv_id, channel)) = super::open_channel(app) else {
