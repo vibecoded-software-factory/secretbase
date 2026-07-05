@@ -191,33 +191,14 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         draw_tree_notice(frame, app, area, &head, &[hint]);
         return;
     }
-    // GUI-style stamps ("23:39" / "Tue" / "Jun 3" / "22 Dec 25") vary in
-    // width — measure the widest one actually shown and give the name
-    // column the rest, so a tree full of fresh chats doesn't waste 9 cols
-    // on a column of clocks.
-    let stamps: Vec<String> = model
-        .iter()
-        .map(|r| match r {
-            TreeRow::Conv { idx } => app
-                .conversations
-                .get(*idx)
-                .map(|c| crate::domain::timefmt::inbox_stamp(c.active_at, now_s))
-                .unwrap_or_default(),
-            _ => String::new(),
-        })
-        .collect();
-    let stamp_w = stamps
-        .iter()
-        .map(|s| s.chars().count())
-        .max()
-        .unwrap_or(0)
-        .max(3);
-    let budget = (area.width as usize).saturating_sub(stamp_w + 6).max(6);
+    // Reserve room for the age column (`format_duration` can emit up to
+    // 4 chars — "364d") + spacing; short-changing it clips the unit ("31d"
+    // rendered as "31", which reads as a bare number).
+    let budget = (area.width as usize).saturating_sub(10).max(6);
 
     let rows: Vec<Row<'static>> = model
         .iter()
-        .enumerate()
-        .map(|(i, r)| match r {
+        .map(|r| match r {
             TreeRow::Group {
                 label,
                 is_team,
@@ -301,10 +282,15 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                     spans.push(Span::styled("@ ", t.danger_title()));
                 }
                 spans.push(Span::styled(label, style));
-                // GUI-style stamp in the `#` column (empty on group rows):
-                // when this conversation last moved, at a glance
-                // (`timefmt::inbox_stamp`, precomputed above).
-                let age = stamps.get(i).cloned().unwrap_or_default();
+                // Compact relative age in the `#` column (empty on group
+                // rows): how stale is this conversation, at a glance.
+                let age = if conv.active_at > 0 && now_s >= conv.active_at {
+                    crate::domain::format_duration(std::time::Duration::from_secs(
+                        now_s - conv.active_at,
+                    ))
+                } else {
+                    String::new()
+                };
                 Row::new(vec![
                     ratatui::widgets::Cell::from(Line::from(spans)),
                     ratatui::widgets::Cell::from(Span::styled(age, Style::default().fg(t.dim))),
