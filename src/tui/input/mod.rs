@@ -96,8 +96,8 @@ pub fn handle_paste(app: &mut App, text: &str) {
             app.channel_browser.new_name.insert_str(&flat());
         }
         Screen::Members if app.members.adding => app.members.add_input.insert_str(&flat()),
-        Screen::Settings if app.settings_editing.is_some() => {
-            app.settings_input.insert_str(&flat());
+        Screen::Settings if app.settings_ui.editing.is_some() => {
+            app.settings_ui.input.insert_str(&flat());
         }
         Screen::Inbox | Screen::Teams => match app.focus {
             Focus::Search => {

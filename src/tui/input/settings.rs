@@ -14,20 +14,20 @@ use crate::tui::theme;
 
 pub fn handle(app: &mut App, key: KeyEvent) {
     // A secret's input popup owns the keys while open.
-    if app.settings_editing.is_some() {
+    if app.settings_ui.editing.is_some() {
         match key.code {
             KeyCode::Esc => {
-                app.settings_editing = None;
-                app.settings_input = crate::domain::LineEditor::default();
+                app.settings_ui.editing = None;
+                app.settings_ui.input = crate::domain::LineEditor::default();
             }
             KeyCode::Enter => app.settings_secret_save(),
             _ => {
-                crate::tui::input::common::route_line_editor(&mut app.settings_input, key);
+                crate::tui::input::common::route_line_editor(&mut app.settings_ui.input, key);
             }
         }
         return;
     }
-    match app.settings_focus {
+    match app.settings_ui.focus {
         SettingsFocus::Sidebar => handle_sidebar(app, key),
         SettingsFocus::Panel => handle_panel(app, key),
     }
@@ -37,15 +37,15 @@ fn handle_sidebar(app: &mut App, key: KeyEvent) {
     let len = SettingsSection::ALL.len();
     match key.code {
         KeyCode::Esc | KeyCode::F(10) => app.close_settings(),
-        KeyCode::Char('j') | KeyCode::Down if app.settings_section + 1 < len => {
-            app.settings_section += 1;
+        KeyCode::Char('j') | KeyCode::Down if app.settings_ui.section + 1 < len => {
+            app.settings_ui.section += 1;
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            app.settings_section = app.settings_section.saturating_sub(1);
+            app.settings_ui.section = app.settings_ui.section.saturating_sub(1);
         }
         KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => {
-            app.settings_item = 0;
-            app.settings_focus = SettingsFocus::Panel;
+            app.settings_ui.item = 0;
+            app.settings_ui.focus = SettingsFocus::Panel;
         }
         _ => {}
     }
@@ -61,13 +61,13 @@ fn handle_panel(app: &mut App, key: KeyEvent) {
         KeyCode::F(10) => app.close_settings(),
         // Esc steps back to the section sidebar (a second Esc there closes).
         KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => {
-            app.settings_focus = SettingsFocus::Sidebar;
+            app.settings_ui.focus = SettingsFocus::Sidebar;
         }
-        KeyCode::Char('j') | KeyCode::Down if n > 0 && app.settings_item + 1 < n => {
-            app.settings_item += 1;
+        KeyCode::Char('j') | KeyCode::Down if n > 0 && app.settings_ui.item + 1 < n => {
+            app.settings_ui.item += 1;
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            app.settings_item = app.settings_item.saturating_sub(1);
+            app.settings_ui.item = app.settings_ui.item.saturating_sub(1);
         }
         KeyCode::Left | KeyCode::Char('h') => adjust(app, rows, -1),
         KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter | KeyCode::Char(' ') => {
@@ -78,7 +78,7 @@ fn handle_panel(app: &mut App, key: KeyEvent) {
 }
 
 fn adjust(app: &mut App, rows: &[SettingId], delta: isize) {
-    if let Some(&id) = rows.get(app.settings_item) {
+    if let Some(&id) = rows.get(app.settings_ui.item) {
         app.settings_adjust(id, delta);
         // The join/leave filter is applied at projection time — reload the
         // open conversation so the toggle is visible immediately.
@@ -94,17 +94,17 @@ fn handle_theme_panel(app: &mut App, key: KeyEvent) {
         KeyCode::F(10) => app.close_settings(),
         // Esc steps back to the section sidebar (a second Esc there closes).
         KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => {
-            app.settings_focus = SettingsFocus::Sidebar;
+            app.settings_ui.focus = SettingsFocus::Sidebar;
         }
         KeyCode::Char('j') | KeyCode::Down | KeyCode::Char('l') | KeyCode::Right
-            if app.settings_theme_idx + 1 < len =>
+            if app.settings_ui.theme_idx + 1 < len =>
         {
-            app.apply_theme_idx(app.settings_theme_idx + 1);
+            app.apply_theme_idx(app.settings_ui.theme_idx + 1);
         }
         KeyCode::Char('k') | KeyCode::Up | KeyCode::Char('h') | KeyCode::Left => {
-            app.apply_theme_idx(app.settings_theme_idx.saturating_sub(1));
+            app.apply_theme_idx(app.settings_ui.theme_idx.saturating_sub(1));
         }
-        KeyCode::Enter => app.apply_theme_idx(app.settings_theme_idx),
+        KeyCode::Enter => app.apply_theme_idx(app.settings_ui.theme_idx),
         _ => {}
     }
 }

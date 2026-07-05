@@ -72,7 +72,7 @@ pub fn draw_popup(frame: &mut Frame, app: &App) {
     draw_sidebar(frame, app, cols[0]);
     draw_panel(frame, app, cols[1]);
 
-    let hint = match app.settings_focus {
+    let hint = match app.settings_ui.focus {
         SettingsFocus::Sidebar => HINT_SIDEBAR,
         SettingsFocus::Panel => HINT_PANEL,
     };
@@ -183,7 +183,7 @@ fn focus_block(app: &App, title: &str, focused: bool) -> Block<'static> {
 
 fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let focused = app.settings_focus == SettingsFocus::Sidebar;
+    let focused = app.settings_ui.focus == SettingsFocus::Sidebar;
     let block = focus_block(app, "Sections", focused);
     let body = block.inner(area);
     frame.render_widget(block, area);
@@ -192,7 +192,7 @@ fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let selected = i == app.settings_section;
+            let selected = i == app.settings_ui.section;
             let marker = if selected { "▶ " } else { "  " };
             let style = if selected && focused {
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
@@ -237,14 +237,14 @@ fn panel_split(body: Rect) -> (Rect, Rect) {
 /// bottom.
 fn draw_rows_panel(frame: &mut Frame, app: &App, area: Rect, section: SettingsSection) {
     let t = &app.theme;
-    let focused = app.settings_focus == SettingsFocus::Panel;
+    let focused = app.settings_ui.focus == SettingsFocus::Panel;
     let block = focus_block(app, section.label(), focused);
     let body = block.inner(area);
     frame.render_widget(block, area);
     let (content_area, hint_area) = panel_split(body);
 
     let rows = section.rows();
-    let item = app.settings_item.min(rows.len().saturating_sub(1));
+    let item = app.settings_ui.item.min(rows.len().saturating_sub(1));
     // Compact, per-section label column (sized to this section's longest label).
     let label_w = rows
         .iter()
@@ -305,7 +305,7 @@ fn draw_rows_panel(frame: &mut Frame, app: &App, area: Rect, section: SettingsSe
 
 fn draw_theme_panel(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let focused = app.settings_focus == SettingsFocus::Panel;
+    let focused = app.settings_ui.focus == SettingsFocus::Panel;
     let block = focus_block(app, "Theme", focused);
     let body = block.inner(area);
     frame.render_widget(block, area);
@@ -316,7 +316,7 @@ fn draw_theme_panel(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(t.dim),
     ))];
     for (i, p) in theme::Preset::ALL.iter().enumerate() {
-        let selected = i == app.settings_theme_idx;
+        let selected = i == app.settings_ui.theme_idx;
         let marker = if selected { "▶ " } else { "  " };
         let style = if selected {
             Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
@@ -341,13 +341,13 @@ fn draw_theme_panel(frame: &mut Frame, app: &App, area: Rect) {
 
     // A secret setting being edited floats the standard input popup on top
     // (the one small-single-input component every popup input uses).
-    if let Some(id) = app.settings_editing {
+    if let Some(id) = app.settings_ui.editing {
         crate::tui::view::widgets::draw_input_popup(
             frame,
             t,
             id.label(),
             "key: ",
-            &app.settings_input,
+            &app.settings_ui.input,
             &[("Enter", "save"), ("Esc", "cancel")],
         );
     }
