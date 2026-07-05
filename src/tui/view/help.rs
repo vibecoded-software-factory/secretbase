@@ -136,6 +136,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Space", "mark / unmark (multi-select)"),
             ("x / +", "delete / react — ALL marked (or the cursor)"),
             ("[ / ]", "previous / next message that @mentions you"),
+            ("w", "who reacted (the chips only show counts)"),
             (
                 "+ then Enter",
                 "fast react: empty query sends your most-used",

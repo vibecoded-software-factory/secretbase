@@ -249,6 +249,8 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         // Mention motions: the messages you owe a response to.
         KeyCode::Char('[') => chat::select_jump_mention(app, -1),
         KeyCode::Char(']') => chat::select_jump_mention(app, 1),
+        // Who reacted — the chips only show counts.
+        KeyCode::Char('w') => chat::show_reactors(app),
         KeyCode::Up if shift => chat::select_extend(app, -1),
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),

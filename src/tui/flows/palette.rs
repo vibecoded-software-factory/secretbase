@@ -38,6 +38,7 @@ pub enum PaletteAction {
     HidePinBanner,
     InsertEmoji,
     GoToReply,
+    WhoReacted,
     SearchGif,
     JumpNewMessages,
     EditorCompose,
@@ -278,6 +279,13 @@ fn palette_commands(app: &App) -> Vec<Command> {
             "Message",
         ));
         v.push(cmd(
+            WhoReacted,
+            "Who reacted",
+            "w",
+            "reaction senders list",
+            "Message",
+        ));
+        v.push(cmd(
             SearchGif,
             "Search GIFs (giphy)",
             "Alt+G",
@@ -460,6 +468,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         HidePinBanner => chat::dismiss_pin_banner(app),
         InsertEmoji => chat::open_emoji_for_compose(app),
         GoToReply => chat::select_activate(app),
+        WhoReacted => chat::show_reactors(app),
         SearchGif => chat::open_giphy_search(app),
         JumpNewMessages => chat::jump_to_new_messages(app),
         EditorCompose => app.pending_editor_compose = true,

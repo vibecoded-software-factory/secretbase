@@ -933,6 +933,26 @@ pub fn select_jump_mention(app: &mut App, dir: isize) {
     }
 }
 
+/// `w` in Select mode: **who reacted** — lists each reaction with its
+/// senders on the feedback strip (the chips only show counts; the GUI
+/// shows names on hover, which a terminal doesn't have).
+pub fn show_reactors(app: &mut App) {
+    let Some(m) = app.selected_msg_idx.and_then(|i| app.messages.get(i)) else {
+        return;
+    };
+    if m.reactions.is_empty() {
+        app.set_action(ActionState::Done("No reactions on this message".into()));
+        return;
+    }
+    let listing = m
+        .reactions
+        .iter()
+        .map(|r| format!("{} {}", r.emoji, r.usernames.join(", ")))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    app.set_action(ActionState::Done(listing));
+}
+
 pub fn select_move_up(app: &mut App) {
     match app.selected_msg_idx {
         // At the top of the loaded window — pull an older page instead of

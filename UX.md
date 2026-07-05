@@ -237,6 +237,8 @@ the plain URL.
 message (the Slack/Discord reflex; `Alt+E` still works from anywhere) —
 with draft text or while scrolled up, `↑` remains a history scroll, so
 typed text is never at risk.
+`w` in Select mode lists **who reacted** (`emoji names · …` on the
+feedback strip) — the chips only show counts, and a terminal has no hover.
 **Catch-up motions**: `Alt+N` jumps to the first message after the
 `new messages` divider (both modes), and in Select mode `[` / `]` walk the
 messages that **@mention you** — the ones you owe a response to.
