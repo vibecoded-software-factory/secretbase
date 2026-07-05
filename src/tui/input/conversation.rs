@@ -85,6 +85,13 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
             let n = app.mention_matches().len();
             app.mention_selected = (app.mention_selected + 1).min(n.saturating_sub(1));
         }
+        // The Slack/Discord reflex: Up on an empty compose at the bottom of
+        // history edits your last own message. With draft text (or while
+        // scrolled up) Up keeps being a history scroll — nothing typed is
+        // ever at risk.
+        KeyCode::Up if app.compose.is_empty() && app.messages_scroll == 0 => {
+            chat::edit_last_own_message(app);
+        }
         KeyCode::Up => {
             app.messages_scroll = app.messages_scroll.saturating_add(1);
             maybe_queue_older(app);

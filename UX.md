@@ -227,6 +227,10 @@ fetch reveals the client IP to giphy (the GUI avoids this via the encrypted
 re-host, which the API can't reach); the **`web_previews` setting**
 (Settings → Images, default on) turns the whole path off, falling back to
 the plain URL.
+`↑` on an **empty compose at the bottom of history** edits your last own
+message (the Slack/Discord reflex; `Alt+E` still works from anywhere) —
+with draft text or while scrolled up, `↑` remains a history scroll, so
+typed text is never at risk.
 **Catch-up motions**: `Alt+N` jumps to the first message after the
 `new messages` divider (both modes), and in Select mode `[` / `]` walk the
 messages that **@mention you** — the ones you owe a response to.
