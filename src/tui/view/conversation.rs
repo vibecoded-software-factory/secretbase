@@ -580,6 +580,9 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             } else if sel >= scroll_y + viewport {
                 scroll_y = sel + 1 - viewport;
             }
+            // Persist the follow — otherwise `messages_scroll` and the view
+            // drift apart in Select mode and leaving it jumps the viewport.
+            app.messages_scroll = max_back.saturating_sub(scroll_y);
         }
 
         // Inline images. Symbols are already rendered in-buffer (pushed as lines by
