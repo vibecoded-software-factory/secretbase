@@ -138,6 +138,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("[ / ]", "previous / next message that @mentions you"),
             ("w", "who reacted (the chips only show counts)"),
             (
+                "zz / zt / zb",
+                "align the cursor message: center / top / bottom",
+            ),
+            (
                 "+ then Enter",
                 "fast react: empty query sends your most-used",
             ),

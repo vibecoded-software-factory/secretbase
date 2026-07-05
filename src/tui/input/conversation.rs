@@ -213,6 +213,18 @@ pub(crate) fn open_attach_picker(app: &mut App) {
 fn handle_select(app: &mut App, key: KeyEvent) {
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
+    // `z` prefix (vim viewport alignment): zz center · zt top · zb bottom.
+    // Any other continuation cancels harmlessly.
+    if app.select_z_pending {
+        app.select_z_pending = false;
+        app.pending_align = match key.code {
+            KeyCode::Char('z') => Some(crate::tui::app::AlignReq::Center),
+            KeyCode::Char('t') => Some(crate::tui::app::AlignReq::Top),
+            KeyCode::Char('b') => Some(crate::tui::app::AlignReq::Bottom),
+            _ => None,
+        };
+        return;
+    }
     match key.code {
         // vim exits: `i` / `a` return to insert — the compose.
         KeyCode::Char('i') | KeyCode::Char('a') => chat::leave_select_mode(app),
@@ -251,6 +263,8 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Char(']') => chat::select_jump_mention(app, 1),
         // Who reacted — the chips only show counts.
         KeyCode::Char('w') => chat::show_reactors(app),
+        // Viewport alignment prefix (zz / zt / zb).
+        KeyCode::Char('z') => app.select_z_pending = true,
         KeyCode::Up if shift => chat::select_extend(app, -1),
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),
