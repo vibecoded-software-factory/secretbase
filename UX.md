@@ -211,8 +211,10 @@ that silently desyncs `messages_scroll` from the view. The cursor path (and
 `k` at the top row) **paginates at the edge**: older pages load and the
 cursor/anchor indices shift with the prepend so they stay on the same
 messages.
-The compose box is **multi-line**: `Alt+Enter` inserts a newline (`Enter`
-sends), the box grows with the line count (capped, then it scrolls to keep
+The compose box is **multi-line**: `Alt+Enter` inserts a newline — as does
+`Shift+Enter`, the Discord/Slack reflex, on terminals that speak the kitty
+keyboard protocol (legacy terminals can't distinguish it from Enter, so
+`Alt+Enter` is the always-works binding) — (`Enter` sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
 cursor. Its bottom border carries the **compose chips** — `Alt+I emoji ·
 Alt+A attach`, right-aligned in the legend grammar (key accent + dim label)
