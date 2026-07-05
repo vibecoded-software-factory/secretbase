@@ -11,7 +11,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    ChatEvent, Conversation, IdentityInfo, InboxHit, LineEditor, LoweredConversation, MemberStatus,
+    ChatEvent, Conversation, IdentityInfo, LineEditor, LoweredConversation, MemberStatus,
     fuzzy_score_lowered,
 };
 use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
