@@ -608,6 +608,10 @@ pub struct App {
     /// The conversation open before the current one — `Ctrl+O` toggles back
     /// to it (vim's `Ctrl+^` alternate buffer). Session-local.
     pub prev_conv_id: Option<String>,
+    /// Whether the `api-listen` push stream is currently down (its
+    /// supervisor is reconnecting with backoff) — surfaced as a dim `⇅`
+    /// badge on the status strip. Cleared by the next event that arrives.
+    pub listener_down: bool,
     /// Persistent boot-failure notice for the Login screen (e.g. "keybase
     /// binary not found") — the toast expires in seconds, but a form that
     /// can never succeed needs the real cause on screen. Cleared when a
@@ -912,6 +916,7 @@ impl App {
             worker_dead: false,
             prev_conv_id: None,
             boot_error: None,
+            listener_down: false,
             last_activity: Instant::now(),
             last_inbox_load: Instant::now(),
             mouse_areas: MouseAreas::default(),

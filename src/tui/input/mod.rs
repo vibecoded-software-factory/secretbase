@@ -60,6 +60,12 @@ fn file_picker_key(app: &mut App, key: KeyEvent) {
 /// Top-level keyboard dispatch. Global shortcuts win; everything else
 /// goes to the per-screen handler.
 fn handle_key(app: &mut App, key: KeyEvent) {
+    // Errors are sticky on the strip until the user acts — the act is now.
+    // (Running/Done keep their own lifecycles; worker-death re-raises via
+    // `begin`, and its ⚠ badge is independent of the toast.)
+    if matches!(app.action_state, crate::tui::action::ActionState::Error(_)) {
+        app.set_action(crate::tui::action::ActionState::Idle);
+    }
     // Global shortcuts handled before screen-specific routing.
     if matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL) {
         app.should_quit = true;
