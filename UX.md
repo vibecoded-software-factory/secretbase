@@ -197,6 +197,11 @@ messages · compose · status) because the message stream is a *viewer*, not
 a grid. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row) and scroll the wheel to page history
 (`mouse_areas` carries the messages viewport rect + a per-message row map).
+Link previews (`unfurl` messages) render as a compact dim card
+(`↳ preview · GIPHY` / the site title) grouped under the URL message that
+triggered them — the media itself is service-encrypted and unreachable over
+the JSON API. As pushes they are **decorations**: appended live but never
+marking unread or bumping recency (the URL message already did).
 **In Select mode the wheel moves the cursor** (3 rows per notch), exactly
 like it does on the tree and the command log — the render follows the
 highlighted message, so a raw viewport scroll there would be a dead control
