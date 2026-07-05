@@ -1035,6 +1035,10 @@ chat side is `Min(20/24)` and flexes, spanning the **full height** (no reserved
 header row) — the chat's adaptive header section appears only when there's a
 pin or topic, otherwise the message history takes the rows.
 
+**Terminal-window title** (`OSC`, via crossterm `SetTitle`): `secretbase —
+<conversation> @mentions (unread)` — a free status surface in tmux/SSH
+window lists, re-emitted only on change and cleared on exit.
+
 **Scroll position cues:** every overflowing scrollable region draws a dim
 vertical scrollbar on its right border (`widgets::draw_scrollbar` — one
 implementation: `list_table` surfaces, the picker modal's list, the message
