@@ -157,8 +157,13 @@ status strip at the bottom.
 - **status** — `widgets::draw_status_strip`: an **nvim-style `-- MODE --`
   badge** on the far left (always visible, coloured per mode — `NORMAL` accent,
   `COMPOSE` success, `SELECT` warm, `SEARCH` cyan — from `App::ui_mode()` /
-  `app::UiMode`), then feedback (spinner / ✓ / ✗) when an action is in flight,
-  else the per-focus footer hint, with **`F1 help` anchored right**. The badge
+  `app::UiMode`), then **condition badges** for states that persist as long
+  as they're true (`⚠ WORKER DEAD` error+bold; `⇅ reconnecting…` dim while
+  the push stream is down), then feedback (spinner / ✓ / ✗) when an action
+  is in flight, else the per-focus footer hint, with a dim **`@username`**
+  and **`F1 help` anchored right** (the username drops first when narrow).
+  **Error toasts are sticky** — they persist until the next keypress
+  (mutt/lazygit); success toasts keep the ~1.5 s fuse. The badge
   tells the user what a keystroke will do (type vs act vs navigate).
 - **List navigation is centralized.** Every list handler routes universal
   movement through `input::common::list_nav` (`↑↓`/`j k`, `PgUp/PgDn`, `g/G`,

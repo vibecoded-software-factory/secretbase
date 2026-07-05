@@ -30,14 +30,17 @@ pub fn apply_chat_event(app: &mut App, event: crate::domain::ChatEvent) {
     use crate::domain::ChatEvent;
     match event {
         ChatEvent::Message { conv_id, message } => {
+            app.listener_down = false; // events flowing again
             chat::handle_incoming_message(app, conv_id, message);
         }
         ChatEvent::NewConversation => {
+            app.listener_down = false;
             // The listener's conv summary is thinner than an inbox row,
             // so pull the new conversation in with a silent resync.
             chat::request_load_inbox_silent(app);
         }
         ChatEvent::StreamClosed => {
+            app.listener_down = true;
             // The supervisor is already respawning the stream with backoff;
             // log the interruption so the gap in real-time updates is
             // explainable, and resync to pick up anything missed meanwhile.

@@ -435,13 +435,17 @@ fn maybe_auto_refresh(app: &mut App) {
 fn tick_state(app: &mut App, done_ticks: &mut u8) {
     match &app.action_state {
         ActionState::Running(_) => app.tick_action(),
-        ActionState::Done(_) | ActionState::Error(_) => {
+        ActionState::Done(_) => {
             *done_ticks += 1;
             if *done_ticks >= FEEDBACK_TICKS {
                 app.set_action(ActionState::Idle);
                 *done_ticks = 0;
             }
         }
+        // Errors are **sticky** (mutt/lazygit): a failure is a condition the
+        // user must read, not a 1.5 s event. The next keypress clears it
+        // (input::handle_key), success toasts keep the short fuse.
+        ActionState::Error(_) => {}
         ActionState::Idle => {}
     }
 }

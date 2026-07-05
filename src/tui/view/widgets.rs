@@ -940,11 +940,41 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
         ))),
         full_area,
     );
-    // Everything else lives to the right of the badge.
+    // Condition badges — states that are *true*, not events: they live next
+    // to the mode badge and persist for as long as the condition does.
+    let mut cond = String::new();
+    if app.worker_dead {
+        cond.push_str("⚠ WORKER DEAD ");
+    }
+    if app.listener_down {
+        cond.push_str("⇅ reconnecting… ");
+    }
+    let cond_w = (cond.chars().count() as u16).min(full_area.width.saturating_sub(badge_w));
+    if !cond.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                cond,
+                if app.worker_dead {
+                    Style::default()
+                        .fg(app.theme.error)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(app.theme.dim)
+                },
+            ))),
+            Rect {
+                x: full_area.x + badge_w,
+                y: full_area.y,
+                width: cond_w,
+                height: full_area.height,
+            },
+        );
+    }
+    // Everything else lives to the right of the badge(s).
     let area = Rect {
-        x: full_area.x + badge_w,
+        x: full_area.x + badge_w + cond_w,
         y: full_area.y,
-        width: full_area.width.saturating_sub(badge_w),
+        width: full_area.width.saturating_sub(badge_w + cond_w),
         height: full_area.height,
     };
     let feedback = match &app.action_state {
@@ -969,8 +999,21 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
         return;
     }
 
+    // Right side: a dim `@username` (who am I — work vs personal account)
+    // ahead of the help anchor; dropped first when width is tight.
     const HELP_ANCHOR: &str = "F1 help · F10 settings";
-    let anchor_block = HELP_ANCHOR.chars().count() + 2;
+    let user = if app.identity.logged_in && !app.identity.username.is_empty() {
+        format!("@{} · ", app.identity.username)
+    } else {
+        String::new()
+    };
+    let anchor_block = HELP_ANCHOR.chars().count() + user.chars().count() + 2;
+    let show_user = anchor_block <= area.width as usize;
+    let anchor_block = if show_user {
+        anchor_block
+    } else {
+        HELP_ANCHOR.chars().count() + 2
+    };
     let avail = (area.width as usize).saturating_sub(anchor_block);
     // Show only the hint segments that fully fit — the rest lives in F1 (don't
     // cut a keybinding in half).
@@ -982,18 +1025,17 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
         ))),
         area,
     );
-    frame.render_widget(
-        Paragraph::new(
-            Line::from(Span::styled(
-                HELP_ANCHOR,
-                Style::default()
-                    .fg(app.theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ))
-            .right_aligned(),
-        ),
-        area,
-    );
+    let mut right = Vec::new();
+    if show_user && !user.is_empty() {
+        right.push(Span::styled(user, Style::default().fg(app.theme.dim)));
+    }
+    right.push(Span::styled(
+        HELP_ANCHOR,
+        Style::default()
+            .fg(app.theme.accent)
+            .add_modifier(Modifier::BOLD),
+    ));
+    frame.render_widget(Paragraph::new(Line::from(right).right_aligned()), area);
 }
 
 /// A minimal bottom hint bar — `footer_hint` fit to the width (whole `·`
