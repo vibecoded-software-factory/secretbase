@@ -467,6 +467,13 @@ These are NOT api-mode (run as one-shot `keybase chat <sub>` spawns):
 
 ### `keybase chat api-listen` — push stream
 
+⚠️ **Typing indicators are unreachable**: `ChatTypingUpdate` in
+`chat_api_listen_display.go` is a hard no-op (returns without printing) and
+the command exposes no flag to subscribe — a TUI on the CLI surface cannot
+show "X is typing…" (verified 2026-07; the GUI gets these over the service
+RPC only). Same for read receipts (`ChatIdentifyUpdate`/advisories are
+no-ops too).
+
 `keybase chat api-listen` prints chat notifications as one JSON object per
 line, for as long as it runs (no stdin protocol — it only emits). secretbase
 spawns it once at launch and drives the real-time inbox + open-conversation
