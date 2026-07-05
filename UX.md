@@ -181,7 +181,11 @@ status strip at the bottom.
 - **status** — `widgets::draw_status_strip`: an **nvim-style `-- MODE --`
   badge** on the far left (always visible, coloured per mode — `NORMAL` accent,
   `COMPOSE` success, `SELECT` warm, `SEARCH` cyan — from `App::ui_mode()` /
-  `app::UiMode`), then **condition badges** for states that persist as long
+  `app::UiMode`), then the **attention hotlist** — `@N` conversations with
+  an unseen mention of you (danger) and `●N` with effective unread (dim),
+  drained by `Ctrl+N` in the same priority order (mentions → DMs → team
+  channels, most recent first within each tier) — then **condition badges**
+  for states that persist as long
   as they're true (`⚠ WORKER DEAD` error+bold; `⇅ reconnecting…` dim while
   the push stream is down), then feedback (spinner / ✓ / ✗) when an action
   is in flight, else the per-focus footer hint, with a dim **`@username`**
