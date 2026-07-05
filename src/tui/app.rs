@@ -118,6 +118,9 @@ impl ConvAction {
 }
 
 pub use crate::tui::settings_model::*;
+// Re-exported so existing `app::AlignReq` / `app::PendingBatch` paths keep
+// working after these moved into their cohesive home.
+pub use crate::tui::select_state::{AlignReq, PendingBatch, SelectState};
 
 /// Quotes `v` as a TOML string value for the settings writer. The reader
 /// (`settings_toml`'s `unquote`) does **not** process escape sequences, so
@@ -203,14 +206,6 @@ pub enum TreeRow {
     },
     /// A conversation leaf — index into [`App::conversations`].
     Conv { idx: usize },
-}
-
-/// Where `zz`/`zt`/`zb` put the selected message in the viewport.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AlignReq {
-    Center,
-    Top,
-    Bottom,
 }
 
 /// Top-level mutable state of the TUI.
@@ -384,26 +379,12 @@ pub struct App {
     /// when the user is in Compose mode (default). When `Some`, the
     /// conversation screen is in [`ConvMode::Select`] and single-key
     /// shortcuts (`e`/`d`/`:`/`p`) trigger message actions.
-    pub selected_msg_idx: Option<usize>,
-    /// Whether the current Select-mode action (react/delete popup) was
-    /// triggered from Compose via an `Alt+` shortcut. When `true`, the
-    /// popup's cancel path returns the user to Compose instead of
-    /// leaving them stuck in Select mode.
-    pub select_from_compose: bool,
-    /// Messages marked in Select mode for a multi-select action, by
-    /// **message id** — an id survives the re-read that reprojects the list
-    /// (a remote edit/delete shifts every index), so a batch action can
-    /// never land on the wrong message. Empty = the action falls back to
-    /// the cursor message.
-    pub msg_marks: HashSet<u64>,
-    /// A **sequential** batch of per-message ops (delete / react) over the
-    /// multi-selection, in progress. The worker is serial, so the batch fires
-    /// one request at a time — each response advances to the next — instead of
-    /// firing N concurrent requests the busy-guard would drop. `None` when idle.
-    pub pending_batch: Option<PendingBatch>,
-    /// Anchor for `Shift+↑/↓` range shading in Select mode — the fixed end of
-    /// the contiguous selection while the cursor moves.
-    pub select_anchor: Option<usize>,
+    /// The conversation's Select-mode state — the multi-select cursor,
+    /// marked ids, visual anchor, `zz`/`zt`/`zb` align request, and the
+    /// sequential delete/react batch — extracted into its own cohesive type
+    /// (see [`crate::tui::select_state`]). The batch orchestration stays in
+    /// the flow layer (the serial worker advances it).
+    pub select: crate::tui::select_state::SelectState,
     /// Candidate usernames for `@`-mention autocomplete in the open
     /// conversation (participants + people who've spoken). Rebuilt on
     /// open / message-load (`rebuild_conv_members`).
@@ -553,11 +534,6 @@ pub struct App {
     /// Last OSC terminal title we set — avoids re-emitting the escape on
     /// every frame. Session-local.
     pub last_term_title: String,
-    /// Armed by `z` in Select mode: the next key (`z`/`t`/`b`) aligns the
-    /// selected message in the viewport (vim's `zz`/`zt`/`zb`).
-    pub select_z_pending: bool,
-    /// One-shot alignment request consumed by the next messages render.
-    pub pending_align: Option<AlignReq>,
     /// `Ctrl+W z` — the chat column takes the whole Home (tree + command
     /// log hidden) until toggled back. tmux's prefix+z, on our pane leader.
     pub pane_zoomed: bool,
@@ -693,24 +669,6 @@ pub enum UiMode {
     Search,
 }
 
-/// A sequential batch of per-message operations over a multi-selection —
-/// see [`App::pending_batch`]. Each carries the ids **remaining** to process
-/// plus `done`/`total` for the progress toast.
-#[derive(Clone, Debug)]
-pub enum PendingBatch {
-    Delete {
-        remaining: Vec<u64>,
-        done: usize,
-        total: usize,
-    },
-    React {
-        body: String,
-        remaining: Vec<u64>,
-        done: usize,
-        total: usize,
-    },
-}
-
 impl UiMode {
     pub fn label(self) -> &'static str {
         match self {
@@ -816,11 +774,7 @@ impl App {
             compose: LineEditor::default(),
             edit_target_id: None,
             reply_to_id: None,
-            selected_msg_idx: None,
-            select_from_compose: false,
-            msg_marks: HashSet::new(),
-            pending_batch: None,
-            select_anchor: None,
+            select: crate::tui::select_state::SelectState::default(),
             conv_members: Vec::new(),
             mention_selected: 0,
             react: LineEditor::default(),
@@ -869,8 +823,6 @@ impl App {
             cmdlog: crate::tui::cmdlog_state::CmdLogState::default(),
             pending_pane_nav: false,
             last_term_title: String::new(),
-            select_z_pending: false,
-            pending_align: None,
             pane_zoomed: false,
             settings_cache,
             favorites,
@@ -1410,7 +1362,7 @@ impl App {
                 }
             }
             Screen::Inbox => {
-                if self.selected_msg_idx.is_some() {
+                if self.select.cursor.is_some() {
                     UiMode::Select
                 } else {
                     match self.focus {
@@ -1469,7 +1421,7 @@ impl App {
         self.worker_dead = true;
         self.in_flight = None;
         self.bg_inflight = false;
-        self.pending_batch = None;
+        self.select.batch = None;
         self.set_action(ActionState::Error(
             "worker thread died — keybase calls disabled; restart secretbase".into(),
         ));
@@ -1495,7 +1447,7 @@ impl App {
             .saturating_add(30);
         if started.elapsed() > std::time::Duration::from_secs(budget) {
             self.in_flight = None;
-            self.pending_batch = None;
+            self.select.batch = None;
             self.set_action(ActionState::Error(
                 "request got no response in time — released".into(),
             ));
@@ -1637,7 +1589,7 @@ impl App {
         self.focus == Focus::Chat
             && self.screen == Screen::Inbox
             && self.open_conv_id.is_some()
-            && self.selected_msg_idx.is_none()
+            && self.select.cursor.is_none()
             && self.edit_target_id.is_none()
             && !self.mention_popup_dismissed()
     }

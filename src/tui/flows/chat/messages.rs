@@ -43,7 +43,7 @@ pub(crate) fn enter_conversation(app: &mut App, id: String) {
     app.compose_open = true;
     app.edit_target_id = None;
     app.reply_to_id = None;
-    app.selected_msg_idx = None;
+    app.select.cursor = None;
     app.pending_search_jump = None;
     app.conv_search.clear();
     app.conv_search_results.clear();
@@ -217,7 +217,7 @@ pub fn edit_last_own_message(app: &mut App) {
         return;
     };
     app.compose_open = false;
-    app.selected_msg_idx = Some(idx);
+    app.select.cursor = Some(idx);
     open_edit_for_selected(app);
 }
 
@@ -343,7 +343,8 @@ pub fn handle_load_messages_response(
             // Which message the Select-mode cursor sat on, by id — captured
             // before the list is replaced so it can be re-found afterwards.
             let prev_cursor_id = app
-                .selected_msg_idx
+                .select
+                .cursor
                 .and_then(|i| app.messages.get(i))
                 .map(|m| m.id);
             msgs.reverse();
@@ -363,9 +364,9 @@ pub fn handle_load_messages_response(
             // The cursor re-seeks its message by id; only when that message
             // no longer exists does it fall back to clamping the old index
             // (or clearing, if the conversation is now empty).
-            app.msg_marks.retain(|id| app.msg_index.contains_key(id));
-            if let Some(i) = app.selected_msg_idx {
-                app.selected_msg_idx = if app.messages.is_empty() {
+            app.select.marks.retain(|id| app.msg_index.contains_key(id));
+            if let Some(i) = app.select.cursor {
+                app.select.cursor = if app.messages.is_empty() {
                     None
                 } else {
                     Some(
@@ -590,11 +591,11 @@ pub fn handle_load_older_messages_response(
             // The Select-mode cursor and the `v` anchor are **indices** (the
             // marks are ids) — prepending n rows shifts every index, so both
             // must shift with them to stay on the same messages.
-            if let Some(i) = app.selected_msg_idx {
-                app.selected_msg_idx = Some(i + n);
+            if let Some(i) = app.select.cursor {
+                app.select.cursor = Some(i + n);
             }
-            if let Some(a) = app.select_anchor {
-                app.select_anchor = Some(a + n);
+            if let Some(a) = app.select.anchor {
+                app.select.anchor = Some(a + n);
             }
             app.rebuild_msg_meta_after_prepend();
             app.set_action(ActionState::Done(format!("Loaded {n} older messages")));
@@ -645,47 +646,48 @@ pub fn enter_select_mode(app: &mut App) {
         return;
     }
     app.compose_open = false;
-    app.select_from_compose = false;
-    app.selected_msg_idx = Some(app.messages.len() - 1);
-    app.msg_marks.clear();
-    app.select_anchor = None;
+    app.select.from_compose = false;
+    app.select.cursor = Some(app.messages.len() - 1);
+    app.select.marks.clear();
+    app.select.anchor = None;
 }
 
 pub fn leave_select_mode(app: &mut App) {
-    app.selected_msg_idx = None;
-    app.select_from_compose = false;
+    app.select.cursor = None;
+    app.select.from_compose = false;
     app.compose_open = true;
-    app.msg_marks.clear();
-    app.select_anchor = None;
+    app.select.marks.clear();
+    app.select.anchor = None;
 }
 
 /// Toggles the mark on the cursor message (manual one-by-one multi-select).
 pub fn msg_toggle_mark(app: &mut App) {
     let Some(id) = app
-        .selected_msg_idx
+        .select
+        .cursor
         .and_then(|i| app.messages.get(i))
         .map(|m| m.id)
     else {
         return;
     };
-    app.select_anchor = None;
-    if !app.msg_marks.remove(&id) {
-        app.msg_marks.insert(id);
+    app.select.anchor = None;
+    if !app.select.marks.remove(&id) {
+        app.select.marks.insert(id);
     }
 }
 
 /// Extends a contiguous shaded selection by `delta` (Shift+↑/↓), editor-style:
 /// the anchor stays put while the cursor moves and the whole range is marked.
 pub fn select_extend(app: &mut App, delta: isize) {
-    let Some(cur) = app.selected_msg_idx else {
+    let Some(cur) = app.select.cursor else {
         return;
     };
     let max = app.messages.len().saturating_sub(1);
-    let anchor = *app.select_anchor.get_or_insert(cur);
+    let anchor = *app.select.anchor.get_or_insert(cur);
     let new = (cur as isize + delta).clamp(0, max as isize) as usize;
-    app.selected_msg_idx = Some(new);
+    app.select.cursor = Some(new);
     let (lo, hi) = (anchor.min(new), anchor.max(new));
-    app.msg_marks = (lo..=hi)
+    app.select.marks = (lo..=hi)
         .filter_map(|i| app.messages.get(i))
         .map(|m| m.id)
         .collect();
@@ -696,11 +698,12 @@ pub fn select_extend(app: &mut App, delta: isize) {
 /// otherwise just the bodies, one per line. Each message is separated by a
 /// blank line in full mode, a single newline in content mode.
 pub fn do_copy_messages(app: &mut App, full: bool) {
-    let mut idxs: Vec<usize> = if app.msg_marks.is_empty() {
-        app.selected_msg_idx.into_iter().collect()
+    let mut idxs: Vec<usize> = if app.select.marks.is_empty() {
+        app.select.cursor.into_iter().collect()
     } else {
         let mut v: Vec<usize> = app
-            .msg_marks
+            .select
+            .marks
             .iter()
             .filter_map(|id| app.msg_index.get(id).copied())
             .collect();
@@ -773,7 +776,7 @@ fn message_copy_body(m: &crate::domain::Message) -> Option<String> {
 /// selection). Shared by the open-link and copy-link actions.
 fn selected_message_urls(app: &App) -> Vec<String> {
     use crate::domain::MessageContent;
-    let Some(idx) = app.selected_msg_idx else {
+    let Some(idx) = app.select.cursor else {
         return Vec::new();
     };
     let body = match app.messages.get(idx).map(|m| &m.content) {
@@ -874,7 +877,8 @@ pub fn do_copy_url(app: &mut App) {
 /// Compose (Enter's historical exit, kept for non-reply messages).
 pub fn select_activate(app: &mut App) {
     let target = app
-        .selected_msg_idx
+        .select
+        .cursor
         .and_then(|i| app.messages.get(i))
         .and_then(|m| m.reply_to);
     match target {
@@ -902,7 +906,7 @@ pub fn jump_to_new_messages(app: &mut App) {
         return;
     };
     app.compose_open = false;
-    app.selected_msg_idx = Some(idx);
+    app.select.cursor = Some(idx);
     select_resync_anchor_marks(app);
     app.set_action(ActionState::Done("Jumped to new messages".into()));
 }
@@ -915,7 +919,7 @@ pub fn select_jump_mention(app: &mut App, dir: isize) {
         return;
     }
     let mentions_me = |m: &Message| m.mentions.iter().any(|u| u.eq_ignore_ascii_case(&me));
-    let cur = app.selected_msg_idx.unwrap_or(0);
+    let cur = app.select.cursor.unwrap_or(0);
     let found = if dir < 0 {
         app.messages[..cur].iter().rposition(&mentions_me)
     } else {
@@ -926,7 +930,7 @@ pub fn select_jump_mention(app: &mut App, dir: isize) {
     };
     match found {
         Some(i) => {
-            app.selected_msg_idx = Some(i);
+            app.select.cursor = Some(i);
             select_resync_anchor_marks(app);
         }
         None => app.set_action(ActionState::Done("No more mentions of you".into())),
@@ -937,7 +941,7 @@ pub fn select_jump_mention(app: &mut App, dir: isize) {
 /// senders on the feedback strip (the chips only show counts; the GUI
 /// shows names on hover, which a terminal doesn't have).
 pub fn show_reactors(app: &mut App) {
-    let Some(m) = app.selected_msg_idx.and_then(|i| app.messages.get(i)) else {
+    let Some(m) = app.select.cursor.and_then(|i| app.messages.get(i)) else {
         return;
     };
     if m.reactions.is_empty() {
@@ -954,7 +958,7 @@ pub fn show_reactors(app: &mut App) {
 }
 
 pub fn select_move_up(app: &mut App) {
-    match app.selected_msg_idx {
+    match app.select.cursor {
         // At the top of the loaded window — pull an older page instead of
         // going dead: Select mode was the one surface that couldn't reach
         // older history. The prepend handler shifts the cursor index so it
@@ -966,7 +970,7 @@ pub fn select_move_up(app: &mut App) {
         }
         Some(0) => {}
         Some(i) => {
-            app.selected_msg_idx = Some(i - 1);
+            app.select.cursor = Some(i - 1);
             select_resync_anchor_marks(app);
         }
         None => {}
@@ -975,10 +979,10 @@ pub fn select_move_up(app: &mut App) {
 
 pub fn select_move_down(app: &mut App) {
     let max = app.messages.len().saturating_sub(1);
-    if let Some(i) = app.selected_msg_idx
+    if let Some(i) = app.select.cursor
         && i < max
     {
-        app.selected_msg_idx = Some(i + 1);
+        app.select.cursor = Some(i + 1);
         select_resync_anchor_marks(app);
     }
 }
@@ -988,11 +992,11 @@ pub fn select_move_down(app: &mut App) {
 /// mode) — plain `j`/`k`, paging, `g`/`G`, `{`/`}`. Without an anchor this
 /// is a no-op, so Space-marked scatter selections are untouched by motion.
 pub(crate) fn select_resync_anchor_marks(app: &mut App) {
-    let (Some(anchor), Some(cur)) = (app.select_anchor, app.selected_msg_idx) else {
+    let (Some(anchor), Some(cur)) = (app.select.anchor, app.select.cursor) else {
         return;
     };
     let (lo, hi) = (anchor.min(cur), anchor.max(cur));
-    app.msg_marks = (lo..=hi)
+    app.select.marks = (lo..=hi)
         .filter_map(|i| app.messages.get(i))
         .map(|m| m.id)
         .collect();
@@ -1003,10 +1007,10 @@ pub(crate) fn select_resync_anchor_marks(app: &mut App) {
 /// (vim's `v` exit). The Alt+Shift range chords remain as aliases that
 /// implicitly anchor.
 pub fn select_toggle_anchor(app: &mut App) {
-    if app.select_anchor.take().is_some() {
-        app.msg_marks.clear();
-    } else if app.selected_msg_idx.is_some() {
-        app.select_anchor = app.selected_msg_idx;
+    if app.select.anchor.take().is_some() {
+        app.select.marks.clear();
+    } else if app.select.cursor.is_some() {
+        app.select.anchor = app.select.cursor;
         select_resync_anchor_marks(app);
     }
 }
@@ -1015,7 +1019,7 @@ pub fn select_toggle_anchor(app: &mut App) {
 /// (consecutive messages from one sender), vim's paragraph motion mapped
 /// onto the chat stream. Extends the range while anchored.
 pub fn select_jump_run(app: &mut App, dir: isize) {
-    let Some(cur) = app.selected_msg_idx else {
+    let Some(cur) = app.select.cursor else {
         return;
     };
     let n = app.messages.len();
@@ -1046,14 +1050,14 @@ pub fn select_jump_run(app: &mut App, dir: isize) {
         }
         (i + 1).min(n - 1)
     };
-    app.selected_msg_idx = Some(new);
+    app.select.cursor = Some(new);
     select_resync_anchor_marks(app);
 }
 
 // ── Edit ─────────────────────────────────────────────────────────────
 
 pub fn open_edit_for_selected(app: &mut App) {
-    let Some(idx) = app.selected_msg_idx else {
+    let Some(idx) = app.select.cursor else {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
@@ -1081,9 +1085,9 @@ pub fn open_edit_for_selected(app: &mut App) {
     app.compose_clear();
     app.compose.set(body);
     app.compose_open = true;
-    app.selected_msg_idx = None;
-    app.msg_marks.clear(); // editing is single-message; drop any shading
-    app.select_anchor = None;
+    app.select.cursor = None;
+    app.select.marks.clear(); // editing is single-message; drop any shading
+    app.select.anchor = None;
 }
 
 pub fn request_save_edit(app: &mut App) {
@@ -1135,7 +1139,7 @@ pub fn cancel_edit(app: &mut App) {
 // ── Threaded replies ─────────────────────────────────────────────────
 
 pub fn start_reply_for_selected(app: &mut App) {
-    let Some(idx) = app.selected_msg_idx else {
+    let Some(idx) = app.select.cursor else {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
@@ -1146,14 +1150,14 @@ pub fn start_reply_for_selected(app: &mut App) {
     app.reply_to_id = Some(msg.id);
     app.compose.clear();
     app.compose_open = true;
-    app.selected_msg_idx = None;
-    app.msg_marks.clear(); // replying is single-message; drop any shading
-    app.select_anchor = None;
+    app.select.cursor = None;
+    app.select.marks.clear(); // replying is single-message; drop any shading
+    app.select.anchor = None;
 }
 
 // ── Delete ───────────────────────────────────────────────────────────
 
-// ── Multi-select batch actions (delete / react over `msg_marks`) ─────
+// ── Multi-select batch actions (delete / react over `select.marks`) ─────
 
 /// The message ids the current Select-mode action targets: every **marked**
 /// message (by id — stable across the reload), or the cursor message when
@@ -1161,9 +1165,10 @@ pub fn start_reply_for_selected(app: &mut App) {
 fn selection_target_ids(app: &App, own_only: bool) -> Vec<u64> {
     let me = &app.identity.username;
     let keep = |m: &&crate::domain::Message| !own_only || &m.sender == me;
-    let mut ids: Vec<u64> = if !app.msg_marks.is_empty() {
+    let mut ids: Vec<u64> = if !app.select.marks.is_empty() {
         let mut v: Vec<u64> = app
-            .msg_marks
+            .select
+            .marks
             .iter()
             .filter_map(|id| app.msg_index.get(id).and_then(|&i| app.messages.get(i)))
             .filter(keep)
@@ -1173,7 +1178,8 @@ fn selection_target_ids(app: &App, own_only: bool) -> Vec<u64> {
         v.dedup();
         v
     } else {
-        app.selected_msg_idx
+        app.select
+            .cursor
             .and_then(|i| app.messages.get(i))
             .filter(keep)
             .map(|m| m.id)
@@ -1195,9 +1201,9 @@ pub fn delete_selection_count(app: &App) -> usize {
 /// the cursor); on failure it does **not** reload, so the error toast the
 /// caller set stays visible instead of being overwritten by the read's toast.
 fn finish_selection_batch(app: &mut App, reload: bool) {
-    app.pending_batch = None;
-    app.msg_marks.clear();
-    app.select_anchor = None;
+    app.select.batch = None;
+    app.select.marks.clear();
+    app.select.anchor = None;
     if reload {
         app.preserve_msg_scroll = true; // stay put; stay in Select mode
         request_reload_messages(app);
@@ -1219,11 +1225,11 @@ pub fn open_delete_for_selected(app: &mut App) {
 pub fn close_delete_confirm(app: &mut App) {
     // If the delete was launched from Compose via Alt+D, returning must
     // land back in Compose — not in Select mode (which would happen if
-    // selected_msg_idx stayed set).
-    if app.select_from_compose {
-        app.selected_msg_idx = None;
+    // select.cursor stayed set).
+    if app.select.from_compose {
+        app.select.cursor = None;
         app.compose_open = true;
-        app.select_from_compose = false;
+        app.select.from_compose = false;
     }
     app.screen = crate::tui::screens::Screen::Inbox;
 }
@@ -1239,7 +1245,7 @@ pub fn request_delete_selected_message(app: &mut App) {
         return;
     }
     let first = ids.remove(0);
-    app.pending_batch = Some(PendingBatch::Delete {
+    app.select.batch = Some(PendingBatch::Delete {
         remaining: ids,
         done: 0,
         total,
@@ -1249,7 +1255,7 @@ pub fn request_delete_selected_message(app: &mut App) {
 
 fn fire_next_delete(app: &mut App, id: u64, done: usize, total: usize) {
     let Some((_, channel)) = open_channel(app) else {
-        app.pending_batch = None;
+        app.select.batch = None;
         return;
     };
     let label = if total > 1 {
@@ -1276,7 +1282,7 @@ pub fn handle_delete_response(app: &mut App, result: Result<(), KeybaseError>, m
                 format!("msg #{message_id}"),
             );
             // Advance the batch: the next id, or finish.
-            let (next, done, total) = match &mut app.pending_batch {
+            let (next, done, total) = match &mut app.select.batch {
                 Some(PendingBatch::Delete {
                     remaining,
                     done,
@@ -1308,7 +1314,7 @@ pub fn handle_delete_response(app: &mut App, result: Result<(), KeybaseError>, m
 // ── React ────────────────────────────────────────────────────────────
 
 pub fn open_react_for_selected(app: &mut App) {
-    if app.selected_msg_idx.is_none() {
+    if app.select.cursor.is_none() {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     }
@@ -1401,10 +1407,10 @@ pub fn close_react(app: &mut App) {
     app.react.clear();
     // Same as delete: cancelling a react launched from Compose returns
     // to Compose, not Select mode.
-    if app.select_from_compose {
-        app.selected_msg_idx = None;
+    if app.select.from_compose {
+        app.select.cursor = None;
         app.compose_open = true;
-        app.select_from_compose = false;
+        app.select.from_compose = false;
     }
     app.screen = crate::tui::screens::Screen::Inbox;
 }
@@ -1457,7 +1463,7 @@ pub fn request_send_reaction(app: &mut App) {
         app.emoji.bump_use(&alias);
     }
     let first = ids.remove(0);
-    app.pending_batch = Some(PendingBatch::React {
+    app.select.batch = Some(PendingBatch::React {
         body: body.clone(),
         remaining: ids,
         done: 0,
@@ -1468,7 +1474,7 @@ pub fn request_send_reaction(app: &mut App) {
 
 fn fire_next_react(app: &mut App, id: u64, body: String, done: usize, total: usize) {
     let Some((_, channel)) = open_channel(app) else {
-        app.pending_batch = None;
+        app.select.batch = None;
         return;
     };
     let label = if total > 1 {
@@ -1491,7 +1497,7 @@ pub fn handle_react_response(app: &mut App, result: Result<(), KeybaseError>, bo
     match result {
         Ok(()) => {
             app.push_cmd("keybase chat api reaction", true, body.clone());
-            let (next, done, total) = match &mut app.pending_batch {
+            let (next, done, total) = match &mut app.select.batch {
                 Some(PendingBatch::React {
                     remaining,
                     done,
@@ -1524,7 +1530,7 @@ pub fn handle_react_response(app: &mut App, result: Result<(), KeybaseError>, bo
 // ── Pin / unpin ──────────────────────────────────────────────────────
 
 pub fn request_pin_selected_message(app: &mut App) {
-    let Some(idx) = app.selected_msg_idx else {
+    let Some(idx) = app.select.cursor else {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
@@ -1557,8 +1563,8 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
             }
             // Stay in Select mode (coherent with delete/react) and reload so
             // `rebuild_msg_meta` refreshes the 📌 indicator from the new history.
-            app.msg_marks.clear();
-            app.select_anchor = None;
+            app.select.marks.clear();
+            app.select.anchor = None;
             app.preserve_msg_scroll = true;
             request_reload_messages(app);
         }

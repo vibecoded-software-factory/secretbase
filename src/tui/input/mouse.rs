@@ -185,10 +185,10 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
                     // Click selects; clicking the already-selected message
                     // *activates* it (a reply jumps to its quoted parent) —
                     // the same select-then-activate the tree click uses.
-                    if app.selected_msg_idx == Some(idx) {
+                    if app.select.cursor == Some(idx) {
                         chat::select_activate(app);
                     } else {
-                        app.selected_msg_idx = Some(idx);
+                        app.select.cursor = Some(idx);
                     }
                 }
                 return;
@@ -251,7 +251,7 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
 /// the tree and the command log, and the cursor path paginates at the top
 /// edge. In Compose mode it stays a viewport scroll.
 fn wheel_messages(app: &mut App, dir: isize) {
-    if app.selected_msg_idx.is_some() {
+    if app.select.cursor.is_some() {
         for _ in 0..3 {
             if dir < 0 {
                 chat::select_move_up(app);

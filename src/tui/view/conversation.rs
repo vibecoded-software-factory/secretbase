@@ -256,7 +256,7 @@ fn draw_mention_popup(frame: &mut Frame, app: &App, compose_area: Rect, matches:
 
 /// The status-strip hint for the chat, by interaction mode.
 pub(crate) fn chat_hint(app: &App) -> &'static str {
-    if app.selected_msg_idx.is_some() {
+    if app.select.cursor.is_some() {
         "↑/↓ move · Space mark · e edit · x del · + react · y copy · / find · Esc close"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
@@ -593,11 +593,11 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             prev = Some((&m.sender, m.sent_at, m_is_system));
 
             let start = off;
-            let is_selected = app.selected_msg_idx == Some(idx);
+            let is_selected = app.select.cursor == Some(idx);
             // Marked messages (multi-select for copy) get the same shading as
             // the cursor — the cursor is told apart by its action bar below.
             // Marks are message ids, stable across re-reads.
-            let is_marked = app.msg_marks.contains(&m.id);
+            let is_marked = app.select.marks.contains(&m.id);
             if is_selected {
                 selected_line = Some(start);
             }
@@ -708,10 +708,10 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // In Select mode, keep the highlighted message inside the viewport —
         // cursor navigation alone never scrolls, so it could otherwise drift
         // above the fold with no way back.
-        if let Some(sel) = selected_line.filter(|_| app.selected_msg_idx.is_some()) {
+        if let Some(sel) = selected_line.filter(|_| app.select.cursor.is_some()) {
             // One-shot vim alignment (zz/zt/zb) — applied before the
             // keep-visible clamp, which then has nothing to correct.
-            if let Some(align) = app.pending_align.take() {
+            if let Some(align) = app.select.align.take() {
                 scroll_y = match align {
                     crate::tui::app::AlignReq::Top => sel,
                     crate::tui::app::AlignReq::Center => sel.saturating_sub(viewport / 2),
@@ -1566,7 +1566,7 @@ fn select_actions_lines(
     t: &crate::tui::theme::Theme,
     width: usize,
 ) -> Vec<Line<'static>> {
-    let marks = app.msg_marks.len();
+    let marks = app.select.marks.len();
     // With a multi-selection active the action set collapses to copy / react
     // (plus mark / done); otherwise it's the full per-message menu.
     let actions: Vec<(&str, &str)> = if marks > 0 {

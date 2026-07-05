@@ -89,8 +89,8 @@ pub(crate) fn try_jump_to_search_target(app: &mut App) {
         // highlight it (same as Select mode).
         app.pending_search_jump = None;
         app.compose_open = false;
-        app.select_from_compose = false;
-        app.selected_msg_idx = Some(idx);
+        app.select.from_compose = false;
+        app.select.cursor = Some(idx);
         app.set_action(ActionState::Done("Jumped to message".into()));
     } else if app.messages_next.is_some() && !app.messages_loading_older {
         app.messages_loading_older = true;

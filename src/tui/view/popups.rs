@@ -72,7 +72,8 @@ pub fn react_input(frame: &mut Frame, app: &App) {
     let title = if app.react_to_compose {
         format!("Insert emoji · {n}")
     } else {
-        app.selected_msg_idx
+        app.select
+            .cursor
             .and_then(|i| app.messages.get(i))
             .map(|m| format!("React to #{} · by {} · {n}", m.id, m.sender))
             .unwrap_or_else(|| format!("React · {n}"))

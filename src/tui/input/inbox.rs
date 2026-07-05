@@ -122,8 +122,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         // that follow, yanking focus mid-sentence. The leader only arms
         // where nothing types (tree, cmdlog, Chat in Select mode); in
         // typing surfaces the key falls through to `route_line_editor`.
-        let typing = app.focus == Focus::Search
-            || (app.focus == Focus::Chat && app.selected_msg_idx.is_none());
+        let typing =
+            app.focus == Focus::Search || (app.focus == Focus::Chat && app.select.cursor.is_none());
         if !typing {
             app.pending_pane_nav = true;
             return;

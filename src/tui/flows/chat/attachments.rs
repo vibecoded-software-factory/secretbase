@@ -48,7 +48,7 @@ pub(crate) fn safe_attachment_basename(raw: &str, msg_id: u64) -> String {
 
 pub fn open_download_for_selected(app: &mut App) {
     use crate::domain::MessageContent;
-    let Some(idx) = app.selected_msg_idx else {
+    let Some(idx) = app.select.cursor else {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
@@ -201,10 +201,10 @@ pub fn web_image_path_for(url: &str) -> String {
 /// Whether the single selected message is an image whose file is on disk —
 /// returns its `(cache path, mime)` so `c` can copy the image itself.
 fn selected_ready_image(app: &App) -> Option<(String, String)> {
-    if !app.msg_marks.is_empty() {
+    if !app.select.marks.is_empty() {
         return None; // multi-select copies text, not a single image
     }
-    let m = app.messages.get(app.selected_msg_idx?)?;
+    let m = app.messages.get(app.select.cursor?)?;
     let crate::domain::MessageContent::Attachment(att) = &m.content else {
         return None;
     };
@@ -300,7 +300,7 @@ pub fn handle_download_attachment_response(
                 true,
                 format!("msg #{message_id} → {path}"),
             );
-            app.selected_msg_idx = None;
+            app.select.cursor = None;
         }
         Err(e) => {
             app.set_action(ActionState::Error(e.to_string()));

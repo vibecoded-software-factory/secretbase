@@ -30,6 +30,7 @@ pub mod members_state;
 pub mod mouse_areas;
 pub mod pin_state;
 pub mod screens;
+pub mod select_state;
 pub mod settings_model;
 pub mod syntax;
 pub mod teams_state;
