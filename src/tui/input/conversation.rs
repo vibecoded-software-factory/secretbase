@@ -135,7 +135,14 @@ pub(crate) fn submit_compose(app: &mut App) {
 /// Opens the file picker to attach a file. Shared by `Alt+A`, the Attach
 /// button (keyboard activate) and the Attach button click.
 pub(crate) fn open_attach_picker(app: &mut App) {
-    let start = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    // $HOME, not the process cwd: over SSH the cwd is wherever the binary
+    // was launched — rarely where the user's files live. (The download
+    // picker's Downloads default has the same spirit.)
+    let start = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
     app.picker_action = crate::tui::app::PickerAction::Upload;
     app.file_picker = Some(crate::tui::file_picker::FilePicker::new(&start));
 }

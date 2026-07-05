@@ -137,6 +137,7 @@ pub fn handle_login_paperkey_response(app: &mut App, result: Result<(), KeybaseE
 pub fn handle_status_response(app: &mut App, result: Result<IdentityInfo, KeybaseError>) {
     match result {
         Ok(info) => {
+            app.boot_error = None; // the binary answered — the notice is stale
             let logged_in = info.logged_in;
             app.push_cmd(
                 "keybase status --json",
@@ -167,6 +168,15 @@ pub fn handle_status_response(app: &mut App, result: Result<IdentityInfo, Keybas
         Err(e) => {
             app.push_cmd("keybase status --json", false, e.to_string());
             app.set_action(ActionState::Error(e.to_string()));
+            // A spawn failure means the `keybase` binary itself is missing /
+            // unrunnable — the login form can never succeed. Persist the real
+            // cause on the Login screen (the toast expires in seconds).
+            app.boot_error = match &e {
+                crate::ports::KeybaseError::Spawn(_) => Some(
+                    "keybase binary not found on PATH — install Keybase, then press F5".to_string(),
+                ),
+                _ => None,
+            };
             app.screen = Screen::Login;
             prepare_login_screen(app);
         }
