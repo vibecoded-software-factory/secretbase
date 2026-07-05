@@ -38,24 +38,16 @@ use zeroize::Zeroizing;
 /// Login screen's retry — the response handler routes from the splash
 /// (logged in → load chats then enter the inbox; logged out → Login).
 pub fn request_status(app: &mut App) {
-    if !app.begin(InFlight::Status) {
-        return;
-    }
-    app.set_action(ActionState::Running("Checking session…".into()));
     // Best-effort: a dead worker is reported once the response never
     // arrives (the run loop would surface the timeout via the
     // feedback strip — but in practice the worker is alive for the
     // entire process lifetime).
-    let _ = app.worker_tx.send(WorkerRequest::Status);
+    app.submit(InFlight::Status, "Checking session…", WorkerRequest::Status);
 }
 
 /// Queues `keybase logout`.
 pub fn request_logout(app: &mut App) {
-    if !app.begin(InFlight::Logout) {
-        return;
-    }
-    app.set_action(ActionState::Running("Logging out…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::Logout);
+    app.submit(InFlight::Logout, "Logging out…", WorkerRequest::Logout);
 }
 
 /// Pre-fills the Login form when the app lands on the signed-out screen:
@@ -96,15 +88,15 @@ pub fn request_login_paperkey(app: &mut App) {
         return;
     }
     let paperkey = Zeroizing::new(app.login_paperkey.text().trim().to_string());
-    if !app.begin(InFlight::LoginPaperkey) {
-        return;
-    }
-    app.set_action(ActionState::Running("Logging in…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::LoginPaperkey {
-        username,
-        device,
-        paperkey,
-    });
+    app.submit(
+        InFlight::LoginPaperkey,
+        "Logging in…",
+        WorkerRequest::LoginPaperkey {
+            username,
+            device,
+            paperkey,
+        },
+    );
 }
 
 /// Asks the run loop to cede the terminal to interactive `keybase login`

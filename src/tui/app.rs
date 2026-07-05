@@ -1611,6 +1611,25 @@ impl App {
         }
     }
 
+    /// Starts a worker request **end-to-end**: claims the in-flight slot
+    /// ([`Self::begin`]), shows the `Running` toast, and sends on the user
+    /// lane. A failed send (worker gone) releases the slot and routes
+    /// through [`Self::on_worker_dead`] instead of leaving the UI busy
+    /// forever. Returns whether the request was dispatched — the shared
+    /// body of every `request_*` flow.
+    pub fn submit(&mut self, slot: InFlight, label: &str, req: WorkerRequest) -> bool {
+        if !self.begin(slot) {
+            return false;
+        }
+        self.set_action(ActionState::Running(label.to_string()));
+        if self.worker_tx.send(req).is_err() {
+            self.in_flight = None;
+            self.on_worker_dead();
+            return false;
+        }
+        true
+    }
+
     /// Replaces the action state and resets the spinner tick counter so
     /// the next animation frame starts from zero.
     pub fn set_action(&mut self, state: ActionState) {

@@ -34,13 +34,11 @@ pub fn request_load_teams(app: &mut App) {
         ));
         return;
     }
-    if !app.begin(InFlight::LoadTeams) {
-        return;
-    }
-    app.set_action(ActionState::Running("Loading teams…".into()));
-    let _ = app
-        .worker_tx
-        .send(WorkerRequest::ListSelfMemberships { username });
+    app.submit(
+        InFlight::LoadTeams,
+        "Loading teams…",
+        WorkerRequest::ListSelfMemberships { username },
+    );
 }
 
 /// Applies the worker response — populates [`App::teams`] and clamps

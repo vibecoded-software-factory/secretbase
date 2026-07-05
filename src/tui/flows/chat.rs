@@ -63,11 +63,7 @@ pub fn request_boot_load_inbox(app: &mut App) {
 /// Shared body of the foreground inbox `list` request, parameterised by the
 /// spinner label.
 fn send_list_inbox(app: &mut App, label: &str) {
-    if !app.begin(InFlight::LoadInbox) {
-        return;
-    }
-    app.set_action(ActionState::Running(label.to_string()));
-    let _ = app.worker_tx.send(WorkerRequest::ListConversations);
+    app.submit(InFlight::LoadInbox, label, WorkerRequest::ListConversations);
 }
 
 /// Variant of [`request_load_inbox`] used by the auto-refresh hook.
@@ -189,16 +185,16 @@ pub fn request_mark_read(app: &mut App) {
     // Carry the conversation *id*, not an index: a background inbox refresh
     // can reorder/replace `conversations` before the response lands, so an
     // index would then flip `unread` on the wrong row (or be out of bounds).
-    if !app.begin(InFlight::MarkRead {
-        conv_id: this_conv_id,
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running("Marking as read…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::MarkRead {
-        channel,
-        message_id: upto,
-    });
+    app.submit(
+        InFlight::MarkRead {
+            conv_id: this_conv_id,
+        },
+        "Marking as read…",
+        WorkerRequest::MarkRead {
+            channel,
+            message_id: upto,
+        },
+    );
 }
 
 pub fn handle_mark_read_response(app: &mut App, result: Result<(), KeybaseError>, conv_id: String) {
@@ -574,16 +570,16 @@ fn request_load_messages_num(app: &mut App, num: u32) {
     app.messages_next = None;
     app.messages_loading_older = false;
     let peek = !app.settings_cache.auto_mark_read;
-    if !app.begin(InFlight::LoadMessages) {
-        return;
-    }
-    app.set_action(ActionState::Running("Loading messages…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::ReadMessages {
-        channel,
-        num,
-        peek,
-        next_cursor: None,
-    });
+    app.submit(
+        InFlight::LoadMessages,
+        "Loading messages…",
+        WorkerRequest::ReadMessages {
+            channel,
+            num,
+            peek,
+            next_cursor: None,
+        },
+    );
 }
 
 pub fn handle_load_messages_response(
@@ -764,16 +760,16 @@ pub fn request_load_older_messages(app: &mut App) {
         return;
     };
     let peek = !app.settings_cache.auto_mark_read;
-    if !app.begin(InFlight::LoadOlderMessages) {
-        return;
-    }
-    app.set_action(ActionState::Running("Loading older messages…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::ReadMessages {
-        channel,
-        num: MESSAGES_PER_PAGE,
-        peek,
-        next_cursor: Some(cursor),
-    });
+    app.submit(
+        InFlight::LoadOlderMessages,
+        "Loading older messages…",
+        WorkerRequest::ReadMessages {
+            channel,
+            num: MESSAGES_PER_PAGE,
+            peek,
+            next_cursor: Some(cursor),
+        },
+    );
 }
 
 pub fn handle_load_older_messages_response(
@@ -890,16 +886,18 @@ pub fn request_unhide_conversation(app: &mut App) {
         members_type: "impteamnative".into(),
         topic_name: None,
     };
-    if !app.begin(InFlight::SetConvStatus {
-        done_label: "Restored".to_string(),
-    }) {
+    if !app.submit(
+        InFlight::SetConvStatus {
+            done_label: "Restored".to_string(),
+        },
+        "Restoring…",
+        WorkerRequest::SetConvStatus {
+            channel,
+            status: "unfiled".to_string(),
+        },
+    ) {
         return;
     }
-    app.set_action(ActionState::Running("Restoring…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::SetConvStatus {
-        channel,
-        status: "unfiled".to_string(),
-    });
     // Close the popup now; `handle_set_conv_status_response` refreshes the inbox.
     app.unhide_input.clear();
     app.screen = crate::tui::screens::Screen::Inbox;
@@ -1019,13 +1017,11 @@ pub fn request_rename_channel(app: &mut App) {
         cancel_channel_rename(app);
         return;
     }
-    if !app.begin(InFlight::RenameChannel { topic: new.clone() }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Renaming #{old} → #{new}…")));
-    let _ = app
-        .worker_tx
-        .send(WorkerRequest::RenameChannel { team, old, new });
+    app.submit(
+        InFlight::RenameChannel { topic: new.clone() },
+        &format!("Renaming #{old} → #{new}…"),
+        WorkerRequest::RenameChannel { team, old, new },
+    );
 }
 
 pub fn handle_rename_channel_response(
@@ -1076,16 +1072,16 @@ pub fn confirm_channel_delete(app: &mut App) {
         return;
     };
     app.channel_confirm_delete = None;
-    if !app.begin(InFlight::DeleteChannel {
-        topic: topic.clone(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Deleting #{topic}…")));
-    let _ = app.worker_tx.send(WorkerRequest::DeleteChannel {
-        team,
-        channel: topic,
-    });
+    app.submit(
+        InFlight::DeleteChannel {
+            topic: topic.clone(),
+        },
+        &format!("Deleting #{topic}…"),
+        WorkerRequest::DeleteChannel {
+            team,
+            channel: topic,
+        },
+    );
 }
 
 pub fn handle_delete_channel_response(
@@ -1158,13 +1154,11 @@ pub fn toggle_default_channel(app: &mut App) {
     let Some(team) = app.channel_browser_team.clone() else {
         return;
     };
-    if !app.begin(InFlight::DefaultChannels { setting: true }) {
-        return;
-    }
-    app.set_action(ActionState::Running("Updating default channels…".into()));
-    let _ = app
-        .worker_tx
-        .send(WorkerRequest::DefaultChannels { team, set });
+    app.submit(
+        InFlight::DefaultChannels { setting: true },
+        "Updating default channels…",
+        WorkerRequest::DefaultChannels { team, set },
+    );
 }
 
 pub fn handle_default_channels_response(
@@ -1286,11 +1280,11 @@ pub fn request_load_members(app: &mut App) {
     let Some(channel) = app.members_channel.clone() else {
         return;
     };
-    if !app.begin(InFlight::LoadMembers) {
-        return;
-    }
-    app.set_action(ActionState::Running("Loading members…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::LoadMembers { channel });
+    app.submit(
+        InFlight::LoadMembers,
+        "Loading members…",
+        WorkerRequest::LoadMembers { channel },
+    );
 }
 
 pub fn handle_load_members_response(
@@ -1367,13 +1361,11 @@ pub fn request_add_members(app: &mut App) {
         return;
     }
     let count = usernames.len();
-    if !app.begin(InFlight::AddToChannel { count }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Adding {count} member(s)…")));
-    let _ = app
-        .worker_tx
-        .send(WorkerRequest::AddToChannel { channel, usernames });
+    app.submit(
+        InFlight::AddToChannel { count },
+        &format!("Adding {count} member(s)…"),
+        WorkerRequest::AddToChannel { channel, usernames },
+    );
 }
 
 pub fn handle_add_members_response(app: &mut App, result: Result<(), KeybaseError>, count: usize) {
@@ -1419,16 +1411,16 @@ pub fn confirm_remove_member(app: &mut App) {
         return;
     };
     app.member_confirm_remove = None;
-    if !app.begin(InFlight::RemoveFromChannel {
-        username: username.clone(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Removing {username}…")));
-    let _ = app.worker_tx.send(WorkerRequest::RemoveFromChannel {
-        channel,
-        usernames: vec![username],
-    });
+    app.submit(
+        InFlight::RemoveFromChannel {
+            username: username.clone(),
+        },
+        &format!("Removing {username}…"),
+        WorkerRequest::RemoveFromChannel {
+            channel,
+            usernames: vec![username],
+        },
+    );
 }
 
 pub fn handle_remove_member_response(
@@ -1465,17 +1457,15 @@ pub fn request_create_channel(app: &mut App) {
         members_type: "team".into(),
         topic_name: Some(topic.clone()),
     };
-    if !app.begin(InFlight::CreateChannel {
-        topic: topic.clone(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Creating #{topic}…")));
     // Reuses the newconv worker request; routed to the channel handler by the
     // CreateChannel in-flight slot.
-    let _ = app
-        .worker_tx
-        .send(WorkerRequest::NewConversation { channel });
+    app.submit(
+        InFlight::CreateChannel {
+            topic: topic.clone(),
+        },
+        &format!("Creating #{topic}…"),
+        WorkerRequest::NewConversation { channel },
+    );
 }
 
 pub fn handle_create_channel_response(
@@ -1510,11 +1500,11 @@ pub fn request_load_channels(app: &mut App) {
     let Some(team) = app.channel_browser_team.clone() else {
         return;
     };
-    if !app.begin(InFlight::LoadChannels) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Loading channels of {team}…")));
-    let _ = app.worker_tx.send(WorkerRequest::LoadChannels { team });
+    app.submit(
+        InFlight::LoadChannels,
+        &format!("Loading channels of {team}…"),
+        WorkerRequest::LoadChannels { team },
+    );
 }
 
 pub fn handle_load_channels_response(
@@ -1595,13 +1585,13 @@ pub fn request_join_selected_channel(app: &mut App) {
     let Some((topic, channel)) = selected_channel_read(app) else {
         return;
     };
-    if !app.begin(InFlight::JoinChannel {
-        topic: topic.clone(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Joining #{topic}…")));
-    let _ = app.worker_tx.send(WorkerRequest::JoinChannel { channel });
+    app.submit(
+        InFlight::JoinChannel {
+            topic: topic.clone(),
+        },
+        &format!("Joining #{topic}…"),
+        WorkerRequest::JoinChannel { channel },
+    );
 }
 
 pub fn handle_join_response(app: &mut App, result: Result<(), KeybaseError>, topic: String) {
@@ -1635,13 +1625,13 @@ pub fn request_leave_selected_channel(app: &mut App) {
     let Some((topic, channel)) = selected_channel_read(app) else {
         return;
     };
-    if !app.begin(InFlight::LeaveChannel {
-        topic: topic.clone(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Leaving #{topic}…")));
-    let _ = app.worker_tx.send(WorkerRequest::LeaveChannel { channel });
+    app.submit(
+        InFlight::LeaveChannel {
+            topic: topic.clone(),
+        },
+        &format!("Leaving #{topic}…"),
+        WorkerRequest::LeaveChannel { channel },
+    );
 }
 
 pub fn handle_leave_response(app: &mut App, result: Result<(), KeybaseError>, topic: String) {
@@ -1698,13 +1688,11 @@ pub fn request_create_new_conversation(app: &mut App) {
         members_type: "impteamnative".into(),
         topic_name: None,
     };
-    if !app.begin(InFlight::NewConversation) {
-        return;
-    }
-    app.set_action(ActionState::Running("Creating conversation…".into()));
-    let _ = app
-        .worker_tx
-        .send(WorkerRequest::NewConversation { channel });
+    app.submit(
+        InFlight::NewConversation,
+        "Creating conversation…",
+        WorkerRequest::NewConversation { channel },
+    );
 }
 
 pub fn handle_new_conversation_response(app: &mut App, result: Result<String, KeybaseError>) {
@@ -1759,14 +1747,14 @@ pub fn request_search_inbox_remote(app: &mut App) {
         app.set_action(ActionState::Error("Query is empty".into()));
         return;
     }
-    if !app.begin(InFlight::SearchInboxRemote) {
-        return;
-    }
-    app.set_action(ActionState::Running("Searching…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::SearchInboxHits {
-        query: q,
-        max_hits: 30,
-    });
+    app.submit(
+        InFlight::SearchInboxRemote,
+        "Searching…",
+        WorkerRequest::SearchInboxHits {
+            query: q,
+            max_hits: 30,
+        },
+    );
 }
 
 pub fn handle_search_inbox_response(app: &mut App, result: Result<Vec<InboxHit>, KeybaseError>) {
@@ -1866,15 +1854,15 @@ pub fn request_conv_search(app: &mut App) {
     let Some((_, channel)) = open_channel(app) else {
         return;
     };
-    if !app.begin(InFlight::ConvSearch) {
-        return;
-    }
-    app.set_action(ActionState::Running("Searching conversation…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::SearchRegexp {
-        channel,
-        query: q,
-        max_hits: CONV_SEARCH_MAX_HITS,
-    });
+    app.submit(
+        InFlight::ConvSearch,
+        "Searching conversation…",
+        WorkerRequest::SearchRegexp {
+            channel,
+            query: q,
+            max_hits: CONV_SEARCH_MAX_HITS,
+        },
+    );
 }
 
 pub fn handle_conv_search_response(app: &mut App, result: Result<Vec<InboxHit>, KeybaseError>) {
@@ -2183,15 +2171,15 @@ pub fn request_save_edit(app: &mut App) {
     let Some((_, channel)) = open_channel(app) else {
         return;
     };
-    if !app.begin(InFlight::EditMessage { target_id }) {
-        return;
-    }
-    app.set_action(ActionState::Running("Saving edit…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::EditMessage {
-        channel,
-        message_id: target_id,
-        body,
-    });
+    app.submit(
+        InFlight::EditMessage { target_id },
+        "Saving edit…",
+        WorkerRequest::EditMessage {
+            channel,
+            message_id: target_id,
+            body,
+        },
+    );
 }
 
 pub fn handle_save_edit_response(app: &mut App, result: Result<(), KeybaseError>, target_id: u64) {
@@ -2310,18 +2298,18 @@ pub fn request_download_to(
     let Some((_, channel)) = open_channel(app) else {
         return;
     };
-    if !app.begin(InFlight::DownloadAttachment {
-        message_id,
-        path: output.clone(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Downloading {filename}…")));
-    let _ = app.worker_tx.send(WorkerRequest::DownloadAttachment {
-        channel,
-        message_id,
-        output,
-    });
+    app.submit(
+        InFlight::DownloadAttachment {
+            message_id,
+            path: output.clone(),
+        },
+        &format!("Downloading {filename}…"),
+        WorkerRequest::DownloadAttachment {
+            channel,
+            message_id,
+            output,
+        },
+    );
 }
 
 /// Cache directory for downloaded inline-preview images
@@ -2629,18 +2617,19 @@ fn fire_next_delete(app: &mut App, id: u64, done: usize, total: usize) {
         app.pending_batch = None;
         return;
     };
-    if !app.begin(InFlight::DeleteMessage { message_id: id }) {
-        return;
-    }
-    app.set_action(ActionState::Running(if total > 1 {
+    let label = if total > 1 {
         format!("Deleting… {}/{}", done + 1, total)
     } else {
-        "Deleting…".into()
-    }));
-    let _ = app.worker_tx.send(WorkerRequest::DeleteMessage {
-        channel,
-        message_id: id,
-    });
+        "Deleting…".to_string()
+    };
+    app.submit(
+        InFlight::DeleteMessage { message_id: id },
+        &label,
+        WorkerRequest::DeleteMessage {
+            channel,
+            message_id: id,
+        },
+    );
 }
 
 pub fn handle_delete_response(app: &mut App, result: Result<(), KeybaseError>, message_id: u64) {
@@ -2823,19 +2812,20 @@ fn fire_next_react(app: &mut App, id: u64, body: String, done: usize, total: usi
         app.pending_batch = None;
         return;
     };
-    if !app.begin(InFlight::SendReaction { body: body.clone() }) {
-        return;
-    }
-    app.set_action(ActionState::Running(if total > 1 {
+    let label = if total > 1 {
         format!("Reacting… {}/{}", done + 1, total)
     } else {
-        "Sending reaction…".into()
-    }));
-    let _ = app.worker_tx.send(WorkerRequest::React {
-        channel,
-        message_id: id,
-        body,
-    });
+        "Sending reaction…".to_string()
+    };
+    app.submit(
+        InFlight::SendReaction { body: body.clone() },
+        &label,
+        WorkerRequest::React {
+            channel,
+            message_id: id,
+            body,
+        },
+    );
 }
 
 pub fn handle_react_response(app: &mut App, result: Result<(), KeybaseError>, body: String) {
@@ -2885,14 +2875,14 @@ pub fn request_pin_selected_message(app: &mut App) {
     let Some((_, channel)) = open_channel(app) else {
         return;
     };
-    if !app.begin(InFlight::PinMessage { message_id: msg_id }) {
-        return;
-    }
-    app.set_action(ActionState::Running("Pinning…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::PinMessage {
-        channel,
-        message_id: msg_id,
-    });
+    app.submit(
+        InFlight::PinMessage { message_id: msg_id },
+        "Pinning…",
+        WorkerRequest::PinMessage {
+            channel,
+            message_id: msg_id,
+        },
+    );
 }
 
 pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, message_id: u64) {
@@ -2918,11 +2908,11 @@ pub fn request_unpin_conversation(app: &mut App) {
     let Some((_, channel)) = open_channel(app) else {
         return;
     };
-    if !app.begin(InFlight::UnpinConversation) {
-        return;
-    }
-    app.set_action(ActionState::Running("Unpinning…".into()));
-    let _ = app.worker_tx.send(WorkerRequest::UnpinMessage { channel });
+    app.submit(
+        InFlight::UnpinConversation,
+        "Unpinning…",
+        WorkerRequest::UnpinMessage { channel },
+    );
 }
 
 pub fn handle_unpin_response(app: &mut App, result: Result<(), KeybaseError>) {
@@ -3095,17 +3085,17 @@ pub fn request_upload_attachment(app: &mut App, path: std::path::PathBuf) {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| filename.clone());
-    if !app.begin(InFlight::UploadAttachment {
-        filename: display.clone(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(format!("Uploading {display}…")));
-    let _ = app.worker_tx.send(WorkerRequest::UploadAttachment {
-        channel,
-        filename,
-        title: String::new(),
-    });
+    app.submit(
+        InFlight::UploadAttachment {
+            filename: display.clone(),
+        },
+        &format!("Uploading {display}…"),
+        WorkerRequest::UploadAttachment {
+            channel,
+            filename,
+            title: String::new(),
+        },
+    );
 }
 
 pub fn handle_upload_response(app: &mut App, result: Result<(), KeybaseError>, filename: String) {
@@ -3211,16 +3201,16 @@ fn set_conv_status_request(app: &mut App, status: &str, running: &str, done: &st
     let Some(channel) = resolve_channel_or_fail(app, channel_result) else {
         return;
     };
-    if !app.begin(InFlight::SetConvStatus {
-        done_label: done.to_string(),
-    }) {
-        return;
-    }
-    app.set_action(ActionState::Running(running.to_string()));
-    let _ = app.worker_tx.send(WorkerRequest::SetConvStatus {
-        channel,
-        status: status.to_string(),
-    });
+    app.submit(
+        InFlight::SetConvStatus {
+            done_label: done.to_string(),
+        },
+        running,
+        WorkerRequest::SetConvStatus {
+            channel,
+            status: status.to_string(),
+        },
+    );
 }
 
 pub fn handle_set_conv_status_response(
