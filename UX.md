@@ -223,6 +223,9 @@ fetch reveals the client IP to giphy (the GUI avoids this via the encrypted
 re-host, which the API can't reach); the **`web_previews` setting**
 (Settings → Images, default on) turns the whole path off, falling back to
 the plain URL.
+**Catch-up motions**: `Alt+N` jumps to the first message after the
+`new messages` divider (both modes), and in Select mode `[` / `]` walk the
+messages that **@mention you** — the ones you owe a response to.
 **In Select mode the wheel moves the cursor** (3 rows per notch), exactly
 like it does on the tree and the command log — the render follows the
 highlighted message, so a raw viewport scroll there would be a dead control

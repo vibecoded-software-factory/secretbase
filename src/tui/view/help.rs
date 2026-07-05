@@ -95,6 +95,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 "Alt+G",
                 "GIF search (giphy — needs your API key in Settings)",
             ),
+            ("Alt+N", "jump to the `new messages` divider"),
             ("Alt+U", "unpin channel"),
             (
                 "Alt+H",
@@ -128,6 +129,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
             ("x / +", "delete / react — ALL marked (or the cursor)"),
+            ("[ / ]", "previous / next message that @mentions you"),
             (
                 "+ then Enter",
                 "fast react: empty query sends your most-used",

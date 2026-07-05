@@ -848,6 +848,53 @@ pub fn select_activate(app: &mut App) {
     }
 }
 
+/// `Alt+N`: jump to the first message after the `new messages` divider
+/// (the session's last-seen boundary). Enters Select mode on it — the
+/// render then scrolls it into view. Honest fallbacks when there's no
+/// boundary or nothing newer.
+pub fn jump_to_new_messages(app: &mut App) {
+    let Some(boundary) = app.unread_boundary else {
+        app.set_action(ActionState::Done("No new-messages marker here".into()));
+        return;
+    };
+    let Some(idx) = app.messages.iter().position(|m| m.id > boundary) else {
+        app.set_action(ActionState::Done(
+            "Nothing newer than your last visit".into(),
+        ));
+        return;
+    };
+    app.compose_open = false;
+    app.selected_msg_idx = Some(idx);
+    select_resync_anchor_marks(app);
+    app.set_action(ActionState::Done("Jumped to new messages".into()));
+}
+
+/// `[` / `]` in Select mode: previous / next message that **@mentions me**
+/// in the loaded history — the messages you actually owe a response to.
+pub fn select_jump_mention(app: &mut App, dir: isize) {
+    let me = app.identity.username.clone();
+    if me.is_empty() {
+        return;
+    }
+    let mentions_me = |m: &Message| m.mentions.iter().any(|u| u.eq_ignore_ascii_case(&me));
+    let cur = app.selected_msg_idx.unwrap_or(0);
+    let found = if dir < 0 {
+        app.messages[..cur].iter().rposition(&mentions_me)
+    } else {
+        app.messages[cur + 1..]
+            .iter()
+            .position(mentions_me)
+            .map(|i| cur + 1 + i)
+    };
+    match found {
+        Some(i) => {
+            app.selected_msg_idx = Some(i);
+            select_resync_anchor_marks(app);
+        }
+        None => app.set_action(ActionState::Done("No more mentions of you".into())),
+    }
+}
+
 pub fn select_move_up(app: &mut App) {
     match app.selected_msg_idx {
         // At the top of the loaded window — pull an older page instead of
