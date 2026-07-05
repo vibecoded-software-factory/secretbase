@@ -343,7 +343,10 @@ knowable for pins set by this session) · `getdeviceinfo` ·
   arrive as `content.unfurl.{messageID, unfurl.{url, unfurl.{unfurlType,
   giphy|generic{title,siteName,…}}}}` (verified live). Their media assets
   are **service-encrypted S3 blobs with no JSON-API download path**, so a
-  client can only render a label card (GIPHY / site title / URL).
+  client can only render a label card (GIPHY / site title / URL). For
+  **giphy** specifically, secretbase fetches the public `.gif` rendition
+  directly from `media[N].giphy.com` (allowlisted, opt-out via the
+  `web_previews` setting) — the only way to show the media in a TUI.
 - ⚠️ **Slash builtins (`/giphy`, `/flip`, …) do not work through `send`**:
   the service intercepts them (`AttemptBuiltinCommand`) and the interactive
   ones need the GUI's preview UI — verified live: `send {"body":"/giphy"}`

@@ -360,6 +360,11 @@ pub struct App {
     /// `(conv, msg_id)` pin-body fetches already issued — one attempt per
     /// target, so a failing `get` can't loop on every reload.
     pub pin_fetch_attempted: std::collections::HashSet<(String, u64)>,
+    /// `cache path → source URL` for **web media** previews (giphy GIFs
+    /// linked in messages). Filled by the view when it reserves image rows;
+    /// `ensure_visible_images` routes these to the web fetcher instead of a
+    /// keybase attachment download. Session-local.
+    pub web_image_urls: HashMap<String, String>,
     /// When true, the emoji picker (`Screen::React`) inserts the chosen
     /// emoji into the **compose draft** instead of reacting to a message —
     /// the compose bar's emoji button / `Alt+I`.
@@ -898,6 +903,7 @@ impl App {
             pinned_local,
             pin_bodies: HashMap::new(),
             pin_fetch_attempted: std::collections::HashSet::new(),
+            web_image_urls: HashMap::new(),
             react_to_compose: false,
             pin_envelope_id: None,
             pins_dismissed,
@@ -1216,6 +1222,7 @@ impl App {
             SettingId::Device => or_dash(&self.identity.device_name),
             SettingId::DeviceType => or_dash(&self.identity.device_type),
             SettingId::AutoMarkRead => if s.auto_mark_read { "on" } else { "off" }.to_string(),
+            SettingId::WebPreviews => if s.web_previews { "on" } else { "off" }.to_string(),
             SettingId::InboxRefresh => secs_off(s.inbox_refresh_secs),
             SettingId::CmdlogRows => {
                 if s.cmdlog_rows == 0 {
@@ -1247,6 +1254,11 @@ impl App {
                     "auto_mark_read",
                     if v { "true" } else { "false" }.to_string(),
                 )
+            }
+            SettingId::WebPreviews => {
+                let v = !self.settings_cache.web_previews;
+                self.settings_cache.web_previews = v;
+                ("web_previews", if v { "true" } else { "false" }.to_string())
             }
             SettingId::InboxRefresh => {
                 let n = step_clamp(self.settings_cache.inbox_refresh_secs, delta, 30, 0, 3600);

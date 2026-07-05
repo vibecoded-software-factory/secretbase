@@ -71,7 +71,7 @@ impl SettingsSection {
             SettingsSection::Emoji => &[EmojiStyle, IconStyle],
             SettingsSection::Clipboard => &[ClipboardClear],
             SettingsSection::Network => &[ListTimeout, DownloadTimeout],
-            SettingsSection::Images => &[ImageProtocol, ImageSymbols],
+            SettingsSection::Images => &[ImageProtocol, ImageSymbols, WebPreviews],
         }
     }
 }
@@ -92,6 +92,7 @@ pub enum SettingId {
     DownloadTimeout,
     ImageProtocol,
     ImageSymbols,
+    WebPreviews,
     EmojiStyle,
     IconStyle,
 }
@@ -141,6 +142,7 @@ impl SettingId {
             SettingId::DownloadTimeout => "Download timeout",
             SettingId::ImageProtocol => "Image protocol",
             SettingId::ImageSymbols => "Symbol set",
+            SettingId::WebPreviews => "Web media (giphy)",
             SettingId::EmojiStyle => "Display",
             SettingId::IconStyle => "Icons",
         }
@@ -150,7 +152,7 @@ impl SettingId {
     pub fn kind(self) -> SettingKind {
         match self {
             SettingId::Username | SettingId::Device | SettingId::DeviceType => SettingKind::Info,
-            SettingId::AutoMarkRead => SettingKind::Toggle,
+            SettingId::AutoMarkRead | SettingId::WebPreviews => SettingKind::Toggle,
             SettingId::CmdlogRows => SettingKind::Number {
                 step: 1,
                 min: 0,

@@ -200,9 +200,18 @@ a grid. The screen is mouse-interactive: click a message to select it
 (`mouse_areas` carries the messages viewport rect + a per-message row map).
 Link previews (`unfurl` messages) render as a compact dim card
 (`↳ preview · GIPHY` / the site title) grouped under the URL message that
-triggered them — the media itself is service-encrypted and unreachable over
-the JSON API. As pushes they are **decorations**: appended live but never
-marking unread or bumping recency (the URL message already did).
+triggered them — the re-hosted media in the unfurl is service-encrypted and
+unreachable over the JSON API. As pushes they are **decorations**: appended
+live but never marking unread or bumping recency (the URL message already
+did). **Giphy GIFs render inline** anyway: a text message linking
+`media[N].giphy.com` media gets the full image-attachment treatment (source
+line, skeleton, animated GIF via the existing pipeline) by fetching the
+`.gif` rendition **directly from giphy** — host-allowlisted, https-pinned,
+size-capped (`adapters::web_fetch`), cached by URL hash. Privacy: a direct
+fetch reveals the client IP to giphy (the GUI avoids this via the encrypted
+re-host, which the API can't reach); the **`web_previews` setting**
+(Settings → Images, default on) turns the whole path off, falling back to
+the plain URL.
 **In Select mode the wheel moves the cursor** (3 rows per notch), exactly
 like it does on the tree and the command log — the render follows the
 highlighted message, so a raw viewport scroll there would be a dead control
