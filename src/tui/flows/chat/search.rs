@@ -113,17 +113,18 @@ pub fn open_conv_search(app: &mut App) {
     if app.open_conv_id.is_none() {
         return;
     }
-    app.conv_search.clear();
-    app.conv_search_results.clear();
-    app.conv_search_selected = 0;
+    // The previous query + hits are retained (vim keeps the last search
+    // pattern): reopening shows them pre-selected, editing the query
+    // invalidates them (the input handler clears on change), and `Ctrl+U`
+    // clears the line. Switching/closing the conversation resets everything.
     app.screen = crate::tui::screens::Screen::ConvSearch;
 }
 
-/// Closes the search modal, clearing its query + results, back to the inbox/chat.
+/// Closes the search modal, back to the inbox/chat. Query + hits are
+/// **retained** so `n`/`N` can cycle them from Select mode and a reopen
+/// picks up where the search left off — a conversation switch/close is
+/// what resets them.
 pub fn close_conv_search(app: &mut App) {
-    app.conv_search.clear();
-    app.conv_search_results.clear();
-    app.conv_search_selected = 0;
     if app.screen == crate::tui::screens::Screen::ConvSearch {
         app.screen = crate::tui::screens::Screen::Inbox;
     }
@@ -169,6 +170,28 @@ pub fn handle_conv_search_response(app: &mut App, result: Result<Vec<InboxHit>, 
 /// Jumps to the highlighted in-conversation match: closes the search and
 /// reuses the message-jump path (finds it in the loaded history, paginating
 /// older if needed).
+/// `n`/`N` in Select mode — jump to the next/previous retained search hit,
+/// wrapping (vim's post-`/` motion). Points at `Ctrl+F` when there is
+/// nothing to cycle.
+pub fn conv_search_cycle(app: &mut App, delta: isize) {
+    let len = app.conv_search_results.len();
+    if len == 0 {
+        app.set_action(ActionState::Error(
+            "No search hits — Ctrl+F (or / in Select) to search".into(),
+        ));
+        return;
+    }
+    let cur = app.conv_search_selected as isize;
+    app.conv_search_selected = (cur + delta).rem_euclid(len as isize) as usize;
+    let Some(hit) = app.conv_search_results.get(app.conv_search_selected) else {
+        return;
+    };
+    let target = hit.message_id;
+    app.focus = crate::tui::screens::Focus::Chat;
+    app.pending_search_jump = Some(target);
+    try_jump_to_search_target(app);
+}
+
 pub fn conv_search_jump_selected(app: &mut App) {
     let Some(hit) = app.conv_search_results.get(app.conv_search_selected) else {
         return;
