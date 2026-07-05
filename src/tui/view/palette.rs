@@ -60,6 +60,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 Style::default().fg(t.dim),
             ))],
             legend: &[("↑↓", "select"), ("Enter", "run"), ("Esc", "cancel")],
+            footer: None,
         },
     );
 }

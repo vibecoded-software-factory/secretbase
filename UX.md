@@ -542,6 +542,13 @@ decision.
   switcher's DRAFTS/UNREAD/RECENT and the palette's categories) with the
   one `▶` + `selected_bg` selection treatment, and a width-fitted
   `legend_line` footer. A new picker overlay **must** use it.
+- `widgets::inline_input_line` / `inline_confirm_line` — the picker modals'
+  bottom **action row**: the labeled-editor input mode (channel create/
+  rename, member add) and the navigable inline confirm (shared `button`
+  pair, default = cancel, one canonical `(←/→ · Enter · y/n · Esc)` hint —
+  the popup confirm advertises the same keys now).
+- `widgets::draw_input_popup(frame, theme, title, label, editor, legend)` —
+  the small centered single-input popup (new conversation, unhide).
 - `widgets::focus_style(theme, focused)` — the single focused/unfocused
   chrome style (accent+bold vs `inactive`); `titled_block`, the Settings
   block and the Login inputs all consume it, so "what focus looks like" is

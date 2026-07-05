@@ -1,32 +1,28 @@
 //! Channel browser (`c` on the inbox, or Enter on a team in the Teams view).
 //!
 //! Lists **every** channel of a team (`keybase chat api listconvsonname`),
-//! marking the ones you're in. `Enter` opens a joined channel or joins one you
-//! aren't in; `Shift+L` leaves; `Esc` closes.
+//! marking the ones you're in. `Enter` opens a joined channel or joins one
+//! you aren't in; `Shift+L` leaves; `Esc` closes. Rendered on the shared
+//! [`draw_picker_modal`] skeleton; the bottom row swaps to the inline
+//! create/rename input or the navigable delete confirm.
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
 
 use crate::domain::MemberStatus;
 use crate::tui::app::App;
 use crate::tui::view::widgets::{
-    MODAL_HEIGHT, MODAL_WIDTH_PCT, center_rect, editor_spans, rounded_block,
+    PickerModal, PickerRow, draw_picker_modal, inline_confirm_line, inline_input_line,
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
-    let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
-    frame.render_widget(Clear, area);
-
     let team = app.channel_browser_team.clone().unwrap_or_default();
-    let layout = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(area);
 
-    let items: Vec<ListItem> = app
+    let rows: Vec<PickerRow> = app
         .channels
         .iter()
         .map(|c| {
@@ -41,7 +37,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 (" ", Style::default().fg(t.dim))
             };
             let mut spans = vec![
-                Span::styled(format!(" {mark} "), mark_style),
+                Span::styled(format!("{mark} "), mark_style),
                 Span::styled(format!("#{topic}"), Style::default().fg(t.foreground)),
             ];
             if !joined {
@@ -51,66 +47,53 @@ pub fn draw(frame: &mut Frame, app: &App) {
             if topic == "general" || app.default_channels.contains(&topic) {
                 spans.push(Span::styled("  ★ default", Style::default().fg(t.accent)));
             }
-            ListItem::new(Line::from(spans))
+            PickerRow::Item(vec![Line::from(spans)])
         })
         .collect();
 
-    let mut state = ListState::default();
-    state.select(if app.channels.is_empty() {
-        None
-    } else {
-        Some(app.channel_selected.min(app.channels.len() - 1))
-    });
-
-    let title = format!(" Channels — {team} · {} ", app.channels.len());
-    frame.render_stateful_widget(
-        List::new(items)
-            .block(
-                rounded_block(Style::default().fg(t.accent)).title(Span::styled(
-                    title,
-                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
-                )),
-            )
-            .highlight_style(Style::default().bg(t.selected_bg))
-            .highlight_symbol("▶ "),
-        layout[0],
-        &mut state,
-    );
-
-    // Bottom row: create / rename input, delete confirm, else the hint.
-    let bottom = if app.channel_creating {
-        let mut spans = vec![Span::styled(" new channel #", Style::default().fg(t.dim))];
-        spans.extend(editor_spans(&app.channel_new_name, true, t));
-        spans.push(Span::styled(
-            "   (Enter create · Esc cancel)",
-            Style::default().fg(t.dim),
-        ));
-        Line::from(spans)
+    // Bottom row: create / rename input, delete confirm, else the legend.
+    let footer = if app.channel_creating {
+        Some(inline_input_line(
+            "new channel #",
+            &app.channel_new_name,
+            "create",
+            t,
+        ))
     } else if app.channel_renaming.is_some() {
-        let mut spans = vec![Span::styled(" rename to #", Style::default().fg(t.dim))];
-        spans.extend(editor_spans(&app.channel_new_name, true, t));
-        spans.push(Span::styled(
-            "   (Enter rename · Esc cancel)",
-            Style::default().fg(t.dim),
-        ));
-        Line::from(spans)
-    } else if let Some(topic) = &app.channel_confirm_delete {
-        // Same navigable button pair as every confirm overlay (default =
-        // cancel), rendered inline on the browser's bottom row.
-        Line::from(vec![
-            Span::styled(
-                format!(" Delete #{topic}? "),
-                Style::default().fg(t.error).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("irreversible  ", Style::default().fg(t.dim)),
-            crate::tui::view::widgets::button("delete", app.channel_delete_yes, t),
-            Span::raw(" "),
-            crate::tui::view::widgets::button("cancel", !app.channel_delete_yes, t),
-            Span::styled("   (←/→ · Enter · y/n · Esc)", Style::default().fg(t.muted)),
-        ])
+        Some(inline_input_line(
+            "rename to #",
+            &app.channel_new_name,
+            "rename",
+            t,
+        ))
     } else {
-        crate::tui::view::widgets::legend_line(
-            &[
+        app.channel_confirm_delete.as_ref().map(|topic| {
+            inline_confirm_line(
+                &format!("Delete #{topic}?"),
+                "irreversible",
+                "delete",
+                app.channel_delete_yes,
+                t,
+            )
+        })
+    };
+
+    draw_picker_modal(
+        frame,
+        t,
+        PickerModal {
+            title: format!("Channels — {team} · {}", app.channels.len()),
+            query: None,
+            selected: app
+                .channel_selected
+                .min(app.channels.len().saturating_sub(1)),
+            rows,
+            empty: crate::tui::view::widgets::empty_state_lines(
+                "No channels loaded",
+                &["F5 to refresh"],
+                t,
+            ),
+            legend: &[
                 ("Enter", "open/join"),
                 ("n", "new"),
                 ("r", "rename"),
@@ -121,9 +104,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 ("F5", "refresh"),
                 ("Esc", "close"),
             ],
-            layout[1].width as usize,
-            t,
-        )
-    };
-    frame.render_widget(Paragraph::new(bottom), layout[1]);
+            footer,
+        },
+    );
 }

@@ -76,6 +76,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 ("n/N", "cycle after jump"),
                 ("Esc", "close"),
             ],
+            footer: None,
         },
     );
 }
