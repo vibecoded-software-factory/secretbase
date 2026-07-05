@@ -896,29 +896,29 @@ pub fn editor_lines(editor: &LineEditor, theme: &Theme) -> Vec<Line<'static>> {
 /// bottom. `cmd_log_scroll` walks back through history.
 ///
 /// Takes `&mut App` because the renderer owns the viewport: it clamps
-/// `app.cmd_log_scroll` against the real overflow and writes it back, so
+/// `app.cmdlog.scroll` against the real overflow and writes it back, so
 /// the input handler can use a `usize::MAX` "jump to oldest" sentinel
 /// without the title showing a 20-digit number or the scroll getting
 /// stuck above the bottom.
 pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool, tag: &str) {
     // Inner height = block area minus the two borders.
     let visible_rows = (area.height as usize).saturating_sub(2);
-    let total = app.cmd_log.len();
+    let total = app.cmdlog.entries.len();
 
     // When focused, the window follows the visual-select cursor (so you can
     // scroll the whole history); otherwise it stays pinned to the newest.
-    let cursor = app.cmdlog_cursor.min(total.saturating_sub(1));
+    let cursor = app.cmdlog.cursor.min(total.saturating_sub(1));
     let (start, end) = if focused && total > visible_rows {
         let end = (cursor + 1).max(visible_rows).min(total);
         (end - visible_rows, end)
     } else {
         (total.saturating_sub(visible_rows), total)
     };
-    app.cmd_log_scroll = total - end; // keep the field consistent for clicks
+    app.cmdlog.scroll = total - end; // keep the field consistent for clicks
 
     // Title: show the cursor position + selection while focused.
     let pos = if focused && total > 0 {
-        let marks = app.cmdlog_marks.len();
+        let marks = app.cmdlog.marks.len();
         let sel = if marks > 0 {
             format!(" · {marks} sel")
         } else {
@@ -944,7 +944,7 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
     if visible_rows == 0 {
         return;
     }
-    if app.cmd_log.is_empty() {
+    if app.cmdlog.entries.is_empty() {
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 "  no commands yet",
@@ -956,9 +956,9 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
     }
     let lines: Vec<Line> = (start..end)
         .map(|i| {
-            let e = &app.cmd_log[i];
+            let e = &app.cmdlog.entries[i];
             let is_cursor = focused && i == cursor;
-            let is_marked = app.cmdlog_marks.contains(&i);
+            let is_marked = app.cmdlog.marks.contains(&i);
             // Left gutter: ▶ cursor · ● marked · two-space pad otherwise.
             let (gutter, gutter_style) = if is_cursor {
                 (

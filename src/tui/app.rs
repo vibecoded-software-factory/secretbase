@@ -23,9 +23,6 @@ use crate::tui::theme::{self, Theme};
 use crate::tui::worker::{InFlight, WorkerRequest, WorkerResponse};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Maximum number of command-log entries kept in memory.
-pub const CMD_LOG_LIMIT: usize = 50;
-
 /// Step size in rows for PgUp/PgDn navigation.
 pub const PAGE_STEP: usize = 10;
 
@@ -574,21 +571,11 @@ pub struct App {
     /// cleared by [`crate::tui::flows::apply_response`] once the
     /// matching response arrives.
     pub in_flight: Option<InFlight>,
-    pub cmd_log: Vec<CmdEntry>,
-    /// Number of cmd-log lines scrolled UP from the bottom. `0` keeps
-    /// the latest entry pinned to the bottom-visible row; larger
-    /// values walk back through history. Resets to `0` on every new
-    /// `push_cmd` so the user always sees the freshest entry by
-    /// default.
-    pub cmd_log_scroll: usize,
-    /// Cursor over the command log (absolute index into [`Self::cmd_log`])
-    /// when the panel holds focus — used for the visual multi-select.
-    pub cmdlog_cursor: usize,
-    /// Command-log lines marked for copy (absolute indices). Empty = none;
-    /// copying then falls back to the cursor line.
-    pub cmdlog_marks: HashSet<usize>,
-    /// Anchor for `Shift+↑/↓` range shading in the command log.
-    pub cmdlog_anchor: Option<usize>,
+    /// The command-log panel's state — the entry ring buffer, its scroll,
+    /// and the visual-multi-select cursor / marks / anchor — extracted into
+    /// its own cohesive type (see [`crate::tui::cmdlog_state`]). Appending
+    /// stays [`Self::push_cmd`], which bridges to `last_op_elapsed`.
+    pub cmdlog: crate::tui::cmdlog_state::CmdLogState,
     /// `Ctrl+W` window-nav leader is armed — the next key is read as a
     /// direction (`h/j/k/l` or an arrow) to move between panels positionally.
     pub pending_pane_nav: bool,
@@ -908,11 +895,7 @@ impl App {
             action_state: ActionState::Idle,
             action_tick: 0,
             in_flight: None,
-            cmd_log: Vec::new(),
-            cmd_log_scroll: 0,
-            cmdlog_cursor: 0,
-            cmdlog_marks: HashSet::new(),
-            cmdlog_anchor: None,
+            cmdlog: crate::tui::cmdlog_state::CmdLogState::default(),
             pending_pane_nav: false,
             last_term_title: String::new(),
             select_z_pending: false,
@@ -1580,9 +1563,11 @@ impl App {
         self.action_tick = (self.action_tick + 1) % 4;
     }
 
-    /// Pushes a new entry to the command log, trimming to
-    /// [`CMD_LOG_LIMIT`] from the front. Resets [`Self::cmd_log_scroll`]
-    /// so the user always sees the freshest entry after every action.
+    /// Pushes a new entry to the command log. Bridges to the timing state
+    /// this method owns (the elapsed duration from [`Self::last_op_elapsed`])
+    /// and mirrors the line to the debug log, then hands the built entry to
+    /// [`crate::tui::cmdlog_state::CmdLogState::push`], which owns the
+    /// ring-buffer trim + cursor/marks alignment.
     ///
     /// Each entry is also mirrored to `~/.secretbase.log` when the
     /// `SECRETBASE_DEBUG=1` env var is set, giving the user a
@@ -1597,25 +1582,12 @@ impl App {
             if ok { "ok" } else { "ERR" }
         ));
         let duration = self.last_op_elapsed.take();
-        self.cmd_log.push(CmdEntry {
+        self.cmdlog.push(CmdEntry {
             cmd,
             ok,
             detail,
             duration,
         });
-        let over = self.cmd_log.len().saturating_sub(CMD_LOG_LIMIT);
-        if over > 0 {
-            self.cmd_log.drain(..over);
-            // Keep the visual-select cursor / marks pointing at the same
-            // entries after the front of the ring is trimmed.
-            self.cmdlog_cursor = self.cmdlog_cursor.saturating_sub(over);
-            self.cmdlog_marks = self
-                .cmdlog_marks
-                .iter()
-                .filter_map(|&i| i.checked_sub(over))
-                .collect();
-        }
-        self.cmd_log_scroll = 0;
     }
 
     /// Whether a modal overlay (a popup screen or the file picker) is on top.
@@ -1641,77 +1613,6 @@ impl App {
                     | Screen::ConvSearch
                     | Screen::GiphySearch
             )
-    }
-
-    /// Enters the command-log panel: seat the cursor on the newest entry and
-    /// clear any prior selection.
-    pub fn enter_cmdlog(&mut self) {
-        self.cmdlog_cursor = self.cmd_log.len().saturating_sub(1);
-        self.cmdlog_marks.clear();
-        self.cmdlog_anchor = None;
-    }
-
-    /// Moves the command-log cursor by `delta`, clamped to the log. A plain
-    /// move re-anchors the next `Shift+↑/↓` range.
-    pub fn cmdlog_move(&mut self, delta: isize) {
-        let len = self.cmd_log.len();
-        if len == 0 {
-            return;
-        }
-        let max = (len - 1) as isize;
-        let cur = (self.cmdlog_cursor.min(len - 1)) as isize;
-        self.cmdlog_cursor = cur.saturating_add(delta).clamp(0, max) as usize;
-        // While a `v` anchor is set, every motion extends the shaded range
-        // (vim visual) — same mechanic as the chat's Select mode.
-        if let Some(anchor) = self.cmdlog_anchor {
-            let (lo, hi) = (
-                anchor.min(self.cmdlog_cursor),
-                anchor.max(self.cmdlog_cursor),
-            );
-            self.cmdlog_marks = (lo..=hi).collect();
-        }
-    }
-
-    /// `v` in the command log — toggle the visual anchor (see
-    /// [`Self::cmdlog_move`]); turning it off clears the shading.
-    pub fn cmdlog_toggle_anchor(&mut self) {
-        if self.cmdlog_anchor.take().is_some() {
-            self.cmdlog_marks.clear();
-        } else if !self.cmd_log.is_empty() {
-            let cur = self.cmdlog_cursor.min(self.cmd_log.len() - 1);
-            self.cmdlog_anchor = Some(cur);
-            self.cmdlog_marks = [cur].into_iter().collect();
-        }
-    }
-
-    /// Extends a contiguous shaded selection by `delta` (Shift+↑/↓) in the
-    /// command log: the anchor holds while the cursor moves; the range is
-    /// re-marked each step.
-    pub fn cmdlog_extend(&mut self, delta: isize) {
-        let len = self.cmd_log.len();
-        if len == 0 {
-            return;
-        }
-        let max = (len - 1) as isize;
-        let cur = self.cmdlog_cursor.min(len - 1);
-        let anchor = *self.cmdlog_anchor.get_or_insert(cur);
-        let new = (cur as isize).saturating_add(delta).clamp(0, max) as usize;
-        self.cmdlog_cursor = new;
-        let (lo, hi) = (anchor.min(new), anchor.max(new));
-        self.cmdlog_marks = (lo..=hi).collect();
-    }
-
-    /// Toggles the mark on the cursor's command-log line (multi-select).
-    pub fn cmdlog_toggle_mark(&mut self) {
-        self.cmdlog_anchor = None;
-        let len = self.cmd_log.len();
-        if len == 0 {
-            return;
-        }
-        let c = self.cmdlog_cursor.min(len - 1);
-        if !self.cmdlog_marks.remove(&c) {
-            self.cmdlog_marks.insert(c);
-        }
     }
 
     /// Rebuilds the `@`-mention candidate list for the open conversation:

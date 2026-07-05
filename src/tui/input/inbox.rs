@@ -37,9 +37,9 @@ fn cycle(app: &App, forward: bool) -> Focus {
 /// entered/left.
 fn set_focus(app: &mut App, f: Focus) {
     if f == Focus::CmdLog {
-        app.enter_cmdlog();
+        app.cmdlog.enter();
     } else if app.focus == Focus::CmdLog {
-        app.cmdlog_marks.clear();
+        app.cmdlog.marks.clear();
     }
     app.focus = f;
 }
@@ -236,43 +236,43 @@ fn handle_cmdlog(app: &mut App, key: KeyEvent) {
     match key.code {
         // Shade a contiguous range with Alt+Shift+↑/↓ or Alt+Shift+K/J — kept
         // consistent because many terminals only deliver Shift+arrows with Alt.
-        KeyCode::Char('K') if alt => app.cmdlog_extend(-1),
-        KeyCode::Char('J') if alt => app.cmdlog_extend(1),
-        KeyCode::Up if shift => app.cmdlog_extend(-1),
-        KeyCode::Down if shift => app.cmdlog_extend(1),
+        KeyCode::Char('K') if alt => app.cmdlog.extend(-1),
+        KeyCode::Char('J') if alt => app.cmdlog.extend(1),
+        KeyCode::Up if shift => app.cmdlog.extend(-1),
+        KeyCode::Down if shift => app.cmdlog.extend(1),
         // `v` anchors a visual range; j/k then extend it (vim), same as the
         // chat's Select mode.
-        KeyCode::Char('v') => app.cmdlog_toggle_anchor(),
+        KeyCode::Char('v') => app.cmdlog.toggle_anchor(),
         // `:` = the command line (the palette), vim-style.
         KeyCode::Char(':') => crate::tui::flows::palette::open_command_palette(app),
         KeyCode::Char('u') | KeyCode::Char('U')
             if key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
-            app.cmdlog_move(-5)
+            app.cmdlog.move_cursor(-5)
         }
         KeyCode::Char('d') | KeyCode::Char('D')
             if key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
-            app.cmdlog_move(5)
+            app.cmdlog.move_cursor(5)
         }
-        KeyCode::Up | KeyCode::Char('k') => app.cmdlog_move(-1),
-        KeyCode::Down | KeyCode::Char('j') => app.cmdlog_move(1),
-        KeyCode::PageUp => app.cmdlog_move(-5),
-        KeyCode::PageDown => app.cmdlog_move(5),
-        KeyCode::Home | KeyCode::Char('g') => app.cmdlog_move(isize::MIN),
-        KeyCode::End | KeyCode::Char('G') => app.cmdlog_move(isize::MAX),
+        KeyCode::Up | KeyCode::Char('k') => app.cmdlog.move_cursor(-1),
+        KeyCode::Down | KeyCode::Char('j') => app.cmdlog.move_cursor(1),
+        KeyCode::PageUp => app.cmdlog.move_cursor(-5),
+        KeyCode::PageDown => app.cmdlog.move_cursor(5),
+        KeyCode::Home | KeyCode::Char('g') => app.cmdlog.move_cursor(isize::MIN),
+        KeyCode::End | KeyCode::Char('G') => app.cmdlog.move_cursor(isize::MAX),
         // Multi-select: toggle the cursor line.
-        KeyCode::Char(' ') => app.cmdlog_toggle_mark(),
+        KeyCode::Char(' ') => app.cmdlog.toggle_mark(),
         // Copy the marked lines (or the cursor line): full line vs detail only.
         KeyCode::Char('y') | KeyCode::Enter => chat::do_copy_cmd_log(app, true),
         KeyCode::Char('c') => chat::do_copy_cmd_log(app, false),
         // Esc clears the selection, then (next press) leaves the panel.
         KeyCode::Esc => {
-            if app.cmdlog_marks.is_empty() {
+            if app.cmdlog.marks.is_empty() {
                 app.focus = Focus::Tree;
             } else {
-                app.cmdlog_marks.clear();
-                app.cmdlog_anchor = None;
+                app.cmdlog.marks.clear();
+                app.cmdlog.anchor = None;
             }
         }
         _ => {}

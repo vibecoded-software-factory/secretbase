@@ -622,7 +622,8 @@ fn silent_load_inbox_leaves_action_state_idle_on_success() {
     // audit the refresh history if curious.
     assert!(
         rig.app
-            .cmd_log
+            .cmdlog
+            .entries
             .iter()
             .any(|e| e.ok && e.cmd == "keybase chat api list"),
         "successful refresh must leave a cmd_log entry"
@@ -674,13 +675,14 @@ fn load_inbox_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
     // can see *what* failed.
     let log_has_diag = rig
         .app
-        .cmd_log
+        .cmdlog
+        .entries
         .iter()
         .any(|e| !e.ok && e.detail.contains("conversation #2"));
     assert!(
         log_has_diag,
         "expected diag in cmd_log: {:?}",
-        rig.app.cmd_log
+        rig.app.cmdlog.entries
     );
 }
 
@@ -3178,7 +3180,8 @@ fn load_teams_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
     }
     let log_has_diag = rig
         .app
-        .cmd_log
+        .cmdlog
+        .entries
         .iter()
         .any(|e| !e.ok && e.detail.contains("team #4"));
     assert!(log_has_diag);
@@ -4280,18 +4283,21 @@ fn cmdlog_multiselect_copies_marked_lines() {
     rig.app.push_cmd("a", true, "one");
     rig.app.push_cmd("b", true, "two");
     rig.app.push_cmd("c", false, "three");
-    rig.app.enter_cmdlog(); // cursor on the newest (index 2), no marks
-    rig.app.cmdlog_toggle_mark(); // mark idx 2
-    rig.app.cmdlog_move(isize::MIN); // cursor -> oldest (0)
-    rig.app.cmdlog_toggle_mark(); // mark idx 0
-    assert_eq!(rig.app.cmdlog_marks.len(), 2);
+    rig.app.cmdlog.enter(); // cursor on the newest (index 2), no marks
+    rig.app.cmdlog.toggle_mark(); // mark idx 2
+    rig.app.cmdlog.move_cursor(isize::MIN); // cursor -> oldest (0)
+    rig.app.cmdlog.toggle_mark(); // mark idx 0
+    assert_eq!(rig.app.cmdlog.marks.len(), 2);
 
     do_copy_cmd_log(&mut rig.app, true);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
     // Selection is kept (so it can be copied full + detail), and the copy
     // itself is logged.
-    assert_eq!(rig.app.cmdlog_marks.len(), 2);
-    assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "clipboard write");
+    assert_eq!(rig.app.cmdlog.marks.len(), 2);
+    assert_eq!(
+        rig.app.cmdlog.entries.last().unwrap().cmd,
+        "clipboard write"
+    );
 }
 
 #[test]
@@ -4400,11 +4406,14 @@ fn open_url_opens_first_link_or_reports_none() {
     rig.app.selected_msg_idx = Some(0);
     do_open_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
-    assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "open url");
+    assert_eq!(rig.app.cmdlog.entries.last().unwrap().cmd, "open url");
     // Copy the same link.
     do_copy_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
-    assert_eq!(rig.app.cmd_log.last().unwrap().cmd, "clipboard write");
+    assert_eq!(
+        rig.app.cmdlog.entries.last().unwrap().cmd,
+        "clipboard write"
+    );
 
     rig.app.messages = vec![text("no link here")];
     rig.app.selected_msg_idx = Some(0);
@@ -4783,10 +4792,10 @@ fn apply_response_drops_message_when_no_in_flight_slot() {
     );
     // No state change beyond the cmd_log warning.
     assert!(rig.app.in_flight.is_none());
-    let logged = rig.app.cmd_log.iter().any(|e| {
+    let logged = rig.app.cmdlog.entries.iter().any(|e| {
         !e.ok && e.cmd == "worker response" && e.detail.contains("without an in-flight slot")
     });
-    assert!(logged, "cmd_log: {:?}", rig.app.cmd_log);
+    assert!(logged, "cmd_log: {:?}", rig.app.cmdlog.entries);
 }
 
 #[test]
@@ -4809,7 +4818,8 @@ fn apply_response_surfaces_dispatch_mismatch_to_user() {
     assert!(rig.app.in_flight.is_none());
     let logged = rig
         .app
-        .cmd_log
+        .cmdlog
+        .entries
         .iter()
         .any(|e| !e.ok && e.detail.contains("dispatch mismatch"));
     assert!(logged);
