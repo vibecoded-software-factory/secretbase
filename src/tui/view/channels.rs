@@ -12,13 +12,18 @@ use ratatui::{
     text::{Line, Span},
 };
 
+use ratatui::layout::Rect;
+
 use crate::domain::MemberStatus;
 use crate::tui::app::App;
 use crate::tui::view::widgets::{
-    PickerModal, PickerRow, draw_picker_modal, inline_confirm_line, inline_input_line,
+    PickerModal, PickerRow, draw_picker_into, inline_confirm_line, inline_input_line,
 };
 
-pub fn draw(frame: &mut Frame, app: &App) {
+/// Renders the channel browser **in the Home shell's right pane** (the Teams
+/// section's drill-down: team → its channels), not as a floating modal. Same
+/// picker skeleton, just drawn into `area`; `focused` accents its border.
+pub(crate) fn render_in_pane(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
     let t = &app.theme;
     let team = app.channel_browser.team.clone().unwrap_or_default();
 
@@ -79,9 +84,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
         })
     };
 
-    draw_picker_modal(
+    draw_picker_into(
         frame,
         t,
+        area,
+        focused,
         PickerModal {
             title: format!(
                 "Channels — {team} · {} of {}",

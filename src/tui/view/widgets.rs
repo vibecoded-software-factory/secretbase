@@ -474,7 +474,27 @@ pub fn picker_row_at(column: u16, row: u16) -> Option<usize> {
 pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
     let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
-    let block = rounded_block(Style::default().fg(theme.accent)).title(Span::styled(
+    draw_picker_into(frame, theme, area, true, m);
+}
+
+/// Renders the picker skeleton **into `area`** (no `Clear`) — the in-pane form,
+/// for a picker that lives in a pane of the Home shell rather than floating as
+/// an overlay. `focused` accents the border (accent when the pane holds focus,
+/// else the unfocused `inactive` tint). [`draw_picker_modal`] is the
+/// centered-overlay wrapper around this.
+pub fn draw_picker_into(
+    frame: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    focused: bool,
+    m: PickerModal<'_>,
+) {
+    let border = if focused {
+        theme.accent
+    } else {
+        theme.inactive
+    };
+    let block = rounded_block(Style::default().fg(border)).title(Span::styled(
         format!(" {} ", m.title.trim()),
         Style::default()
             .fg(theme.accent)

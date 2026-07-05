@@ -57,13 +57,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::ConfirmConvAction
         | Screen::NewConversation
         | Screen::UnhideConversation
-        | Screen::ChannelBrowser
-        | Screen::Members
         | Screen::SearchGlobal
         | Screen::ConfirmDeleteMessage
         | Screen::ConvSearch
         | Screen::GiphySearch
         | Screen::React => Screen::Inbox,
+        // Members floats over wherever it was opened (the in-pane channel
+        // browser, or the open conversation) — draw that underneath.
+        Screen::Members => app.members.return_to,
         // The quick switcher / command palette float over wherever opened.
         Screen::QuickSwitcher => app.switcher.from,
         Screen::CommandPalette => app.palette.from,
@@ -150,7 +151,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
         Screen::NewConversation => new_conversation::draw(frame, app),
         Screen::UnhideConversation => unhide::draw(frame, app),
-        Screen::ChannelBrowser => channels::draw(frame, app),
         Screen::Members => members::draw(frame, app),
         Screen::SearchGlobal => search_global::draw(frame, app),
         Screen::React => popups::react_input(frame, app),
@@ -182,9 +182,9 @@ fn draw_screen(frame: &mut Frame, app: &mut App, screen: Screen) {
     match screen {
         Screen::Splash => splash::draw(frame, app),
         Screen::Login => login::draw(frame, app),
-        // Teams is no longer a separate full screen — it's a *section* of the
-        // Home shell (the same two-pane layout), rendered in the right pane.
-        Screen::Inbox | Screen::Teams => inbox::draw(frame, app),
+        // Teams and the channel browser are *sections* of the Home shell (the
+        // same two-pane layout), rendered in the right pane — not full screens.
+        Screen::Inbox | Screen::Teams | Screen::ChannelBrowser => inbox::draw(frame, app),
         // Overlays are never a base screen — fall back to the inbox.
         _ => inbox::draw(frame, app),
     }
