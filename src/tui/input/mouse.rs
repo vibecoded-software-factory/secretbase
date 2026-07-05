@@ -130,7 +130,7 @@ fn picker_click(app: &mut App, item: usize) {
         ),
         Screen::ChannelBrowser => (&mut app.channel_selected, chat::channel_browser_activate),
         // Members has no Enter action — click just moves the cursor.
-        Screen::Members => (&mut app.members_selected, |_| {}),
+        Screen::Members => (&mut app.members.selected, |_| {}),
         Screen::GiphySearch => (&mut app.giphy_selected, chat::giphy_send_selected),
         _ => return,
     };

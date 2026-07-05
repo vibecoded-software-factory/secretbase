@@ -24,6 +24,7 @@ pub mod icons;
 pub mod image;
 pub mod image_pipeline;
 pub mod input;
+pub mod members_state;
 pub mod mouse_areas;
 pub mod screens;
 pub mod settings_model;

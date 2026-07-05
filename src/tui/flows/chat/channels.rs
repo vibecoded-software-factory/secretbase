@@ -308,19 +308,19 @@ pub fn handle_default_channels_response(
 
 /// Clears the Members view's inline modes (add input / remove confirm).
 fn clear_member_input(app: &mut App) {
-    app.member_adding = false;
-    app.member_add_input.clear();
-    app.member_confirm_remove = None;
+    app.members.adding = false;
+    app.members.add_input.clear();
+    app.members.confirm_remove = None;
 }
 
 /// Opens the Members view for `channel` (labelled `label`), returning to
 /// `return_to` on close, and loads the member list.
 fn open_members(app: &mut App, channel: ReadChannel, label: String, return_to: Screen) {
-    app.members_channel = Some(channel);
-    app.members_label = label;
-    app.members.clear();
-    app.members_selected = 0;
-    app.members_return = return_to;
+    app.members.channel = Some(channel);
+    app.members.label = label;
+    app.members.list.clear();
+    app.members.selected = 0;
+    app.members.return_to = return_to;
     clear_member_input(app);
     app.screen = Screen::Members;
     request_load_members(app);
@@ -376,16 +376,16 @@ pub fn open_members_from_conversation(app: &mut App) {
 }
 
 pub fn close_members(app: &mut App) {
-    let return_to = app.members_return;
-    app.members_channel = None;
-    app.members.clear();
-    app.members_selected = 0;
+    let return_to = app.members.return_to;
+    app.members.channel = None;
+    app.members.list.clear();
+    app.members.selected = 0;
     clear_member_input(app);
     app.screen = return_to;
 }
 
 pub fn request_load_members(app: &mut App) {
-    let Some(channel) = app.members_channel.clone() else {
+    let Some(channel) = app.members.channel.clone() else {
         return;
     };
     app.submit(
@@ -409,10 +409,11 @@ pub fn handle_load_members_response(
                     .then_with(|| a.username.cmp(&b.username))
             });
             let n = members.len();
-            app.members = members;
-            app.members_selected = app
-                .members_selected
-                .min(app.members.len().saturating_sub(1));
+            app.members.list = members;
+            app.members.selected = app
+                .members
+                .selected
+                .min(app.members.list.len().saturating_sub(1));
             app.set_action(ActionState::Done(format!("{n} members")));
             app.push_cmd("keybase chat api listmembers", true, format!("{n} members"));
         }
@@ -424,22 +425,22 @@ pub fn handle_load_members_response(
 }
 
 pub fn members_move(app: &mut App, delta: isize) {
-    let len = app.members.len();
+    let len = app.members.list.len();
     if len == 0 {
         return;
     }
-    app.members_selected =
-        (app.members_selected as isize + delta).clamp(0, len as isize - 1) as usize;
+    app.members.selected =
+        (app.members.selected as isize + delta).clamp(0, len as isize - 1) as usize;
 }
 
 // add member(s)
 
 pub fn open_member_add(app: &mut App) {
-    if app.members_channel.is_none() {
+    if app.members.channel.is_none() {
         return;
     }
     clear_member_input(app);
-    app.member_adding = true;
+    app.members.adding = true;
 }
 
 pub fn cancel_member_add(app: &mut App) {
@@ -448,12 +449,13 @@ pub fn cancel_member_add(app: &mut App) {
 
 pub fn request_add_members(app: &mut App) {
     use crate::domain::is_valid_keybase_identity;
-    let Some(channel) = app.members_channel.clone() else {
+    let Some(channel) = app.members.channel.clone() else {
         return;
     };
     // Accept comma / whitespace separated usernames.
     let usernames: Vec<String> = app
-        .member_add_input
+        .members
+        .add_input
         .text()
         .split([',', ' ', '\t'])
         .map(str::trim)
@@ -498,13 +500,17 @@ pub fn handle_add_members_response(app: &mut App, result: Result<(), KeybaseErro
 // remove member (inline confirm)
 
 pub fn open_member_remove_confirm(app: &mut App) {
-    let Some(m) = app.selected_member_idx().and_then(|i| app.members.get(i)) else {
+    let Some(m) = app
+        .members
+        .selected_idx()
+        .and_then(|i| app.members.list.get(i))
+    else {
         return;
     };
     let username = m.username.clone();
     clear_member_input(app);
-    app.member_confirm_remove = Some(username);
-    app.member_remove_yes = false; // destructive → default highlight = cancel
+    app.members.confirm_remove = Some(username);
+    app.members.remove_yes = false; // destructive → default highlight = cancel
 }
 
 pub fn cancel_member_remove(app: &mut App) {
@@ -512,13 +518,13 @@ pub fn cancel_member_remove(app: &mut App) {
 }
 
 pub fn confirm_remove_member(app: &mut App) {
-    let Some(channel) = app.members_channel.clone() else {
+    let Some(channel) = app.members.channel.clone() else {
         return;
     };
-    let Some(username) = app.member_confirm_remove.clone() else {
+    let Some(username) = app.members.confirm_remove.clone() else {
         return;
     };
-    app.member_confirm_remove = None;
+    app.members.confirm_remove = None;
     app.submit(
         InFlight::RemoveFromChannel {
             username: username.clone(),
