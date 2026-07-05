@@ -120,9 +120,15 @@ impl SystemClipboardAdapter {
             .spawn()
             .map_err(|e| format!("clipboard `{tool}`: spawn failed ({e})"))?;
         if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|e| format!("clipboard `{tool}`: write to stdin failed ({e})"))?;
+            // A `BrokenPipe` here is NOT conclusive: a backend that read
+            // what it wanted and exited (or forked its daemon) closes its
+            // read end before our write finishes — the exit status below is
+            // the real verdict. Any other write error is fatal as before.
+            if let Err(e) = stdin.write_all(text.as_bytes())
+                && e.kind() != std::io::ErrorKind::BrokenPipe
+            {
+                return Err(format!("clipboard `{tool}`: write to stdin failed ({e})"));
+            }
             // Drop `stdin` here so the child sees EOF on its read
             // side and is free to fork its daemon / exit.
         }
