@@ -676,6 +676,10 @@ whole modal family now shares the single rounded chrome — position (the
   single "unread / attention" emphasis (`conv_unread` + bold) and its `●` / `★`
   marker spans. Every unread affordance (the tree's dot + count, the ★
   favourite) draws through these so the emphasis is identical everywhere.
+- **`Alt+1..9`** in every query picker (switcher, palette, react, both
+  searches, GIF) selects **and activates** the Nth row in one stroke —
+  atuin's instant-pick, for the hottest path where the match you want is
+  already near the top.
 - Every picker/search **title carries its live count** (`· N` / `N hits` /
   `shown of total`) and the in-conversation `n`/`N` cycling toasts
   `Hit x of y` — the fzf/tig counter discipline, applied uniformly.

@@ -187,6 +187,14 @@ pub fn members(app: &mut App, key: KeyEvent) {
 // ── Global search popup ───────────────────────────────────────────────
 
 pub fn search_global(app: &mut App, key: KeyEvent) {
+    // Alt+1..9 — instant pick-and-activate of the Nth row.
+    if let Some(i) = common::alt_digit(&key) {
+        if i < app.search_global_results.len() {
+            app.search_global_selected = i;
+            chat::open_selected_search_result(app);
+        }
+        return;
+    }
     match key.code {
         KeyCode::Esc => chat::close_search_global(app),
         KeyCode::Enter => {
@@ -237,6 +245,14 @@ pub fn confirm_delete_message(app: &mut App, key: KeyEvent) {
 // ── Reaction input popup ──────────────────────────────────────────────
 
 pub fn react(app: &mut App, key: KeyEvent) {
+    // Alt+1..9 — instant pick-and-activate of the Nth row.
+    if let Some(i) = common::alt_digit(&key) {
+        if i < app.filtered_emoji_indices().len() {
+            app.react_selected = i;
+            chat::request_send_reaction(app);
+        }
+        return;
+    }
     let len = app.filtered_emoji_indices().len();
     if common::list_nav_arrows(&key, len, app.react_selected, |i| app.react_selected = i) {
         return;
@@ -263,6 +279,14 @@ pub fn react(app: &mut App, key: KeyEvent) {
 /// and Enter sends the selected GIF; editing the query invalidates results
 /// (next Enter re-searches) — the same contract as the conversation search.
 pub fn giphy_search(app: &mut App, key: KeyEvent) {
+    // Alt+1..9 — instant pick-and-activate of the Nth row.
+    if let Some(i) = common::alt_digit(&key) {
+        if i < app.giphy_results.len() {
+            app.giphy_selected = i;
+            chat::giphy_send_selected(app);
+        }
+        return;
+    }
     match key.code {
         KeyCode::Esc => chat::close_giphy_search(app),
         KeyCode::Enter => {
@@ -288,6 +312,14 @@ pub fn giphy_search(app: &mut App, key: KeyEvent) {
 }
 
 pub fn conv_search(app: &mut App, key: KeyEvent) {
+    // Alt+1..9 — instant pick-and-activate of the Nth row.
+    if let Some(i) = common::alt_digit(&key) {
+        if i < app.conv_search_results.len() {
+            app.conv_search_selected = i;
+            chat::conv_search_jump_selected(app);
+        }
+        return;
+    }
     match key.code {
         KeyCode::Esc => chat::close_conv_search(app),
         KeyCode::Enter => {
@@ -320,6 +352,14 @@ pub fn conv_search(app: &mut App, key: KeyEvent) {
 // ── Command palette (Ctrl+P) ──────────────────────────────────────────
 
 pub fn command_palette(app: &mut App, key: KeyEvent) {
+    // Alt+1..9 — instant pick-and-activate of the Nth row.
+    if let Some(i) = common::alt_digit(&key) {
+        if i < crate::tui::flows::palette::filtered_commands(app).len() {
+            app.palette_selected = i;
+            crate::tui::flows::palette::palette_run_selected(app);
+        }
+        return;
+    }
     use crate::tui::flows::palette;
     let len = palette::filtered_commands(app).len();
     if common::list_nav_arrows(&key, len, app.palette_selected, |i| {
@@ -344,6 +384,14 @@ pub fn command_palette(app: &mut App, key: KeyEvent) {
 // ── Quick switcher (Ctrl+K) ───────────────────────────────────────────
 
 pub fn quick_switcher(app: &mut App, key: KeyEvent) {
+    // Alt+1..9 — instant pick-and-activate of the Nth row.
+    if let Some(i) = common::alt_digit(&key) {
+        if i < app.switcher_selectable().len() {
+            app.switcher_selected = i;
+            chat::quick_switcher_open_selected(app);
+        }
+        return;
+    }
     let len = app.switcher_selectable().len();
     if common::list_nav_arrows(&key, len, app.switcher_selected, |i| {
         app.switcher_selected = i
