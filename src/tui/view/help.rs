@@ -308,6 +308,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
     lines.push(section("Global", t));
     for (k, d) in [
+        (
+            "-- MODE --",
+            "the badge: NORMAL act · COMPOSE type · SELECT act on messages · SEARCH type a query",
+        ),
         ("F1", "toggle help"),
         ("F10", "settings"),
         (
