@@ -1295,24 +1295,28 @@ fn channel_browser_loads_sorts_joined_first_and_joins() {
     // Return them not-joined-first so the sort is observable.
     rig.mock.st().channels = vec![random, general];
 
-    rig.app.channel_browser_team = Some("phoenix".into());
+    rig.app.channel_browser.team = Some("phoenix".into());
     request_load_channels(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.channels.len(), 2);
+    assert_eq!(rig.app.channel_browser.channels.len(), 2);
     // Joined channel floats to the top.
     assert_eq!(
-        rig.app.channels[0].channel.topic_name.as_deref(),
+        rig.app.channel_browser.channels[0]
+            .channel
+            .topic_name
+            .as_deref(),
         Some("general")
     );
 
     // Select the not-joined "random" and activate → join it.
     let ri = rig
         .app
+        .channel_browser
         .channels
         .iter()
         .position(|c| c.channel.topic_name.as_deref() == Some("random"))
         .unwrap();
-    rig.app.channel_selected = ri;
+    rig.app.channel_browser.selected = ri;
     channel_browser_activate(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.mock.st().joined, vec!["random".to_string()]);
@@ -1321,16 +1325,16 @@ fn channel_browser_loads_sorts_joined_first_and_joins() {
 #[test]
 fn channel_browser_create_fires_newconv_and_exits_create_mode() {
     let mut rig = build_rig();
-    rig.app.channel_browser_team = Some("phoenix".into());
+    rig.app.channel_browser.team = Some("phoenix".into());
     open_channel_create(&mut rig.app);
-    assert!(rig.app.channel_creating);
-    rig.app.channel_new_name.set("announcements");
+    assert!(rig.app.channel_browser.creating);
+    rig.app.channel_browser.new_name.set("announcements");
     request_create_channel(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // newconv fired on the team (the channel's team name).
     assert!(rig.mock.st().new_convs.contains(&"phoenix".to_string()));
     // Create mode exits on success.
-    assert!(!rig.app.channel_creating);
+    assert!(!rig.app.channel_browser.creating);
 }
 
 #[test]
@@ -1340,13 +1344,13 @@ fn channel_browser_rename_calls_adapter() {
     general.channel.topic_name = Some("general".into());
     general.member_status = MemberStatus::Active;
     rig.mock.st().channels = vec![general];
-    rig.app.channel_browser_team = Some("phoenix".into());
+    rig.app.channel_browser.team = Some("phoenix".into());
     request_load_channels(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // Enter rename mode, type a new name, submit.
     open_channel_rename(&mut rig.app);
-    assert_eq!(rig.app.channel_renaming.as_deref(), Some("general"));
-    rig.app.channel_new_name.set("lobby");
+    assert_eq!(rig.app.channel_browser.renaming.as_deref(), Some("general"));
+    rig.app.channel_browser.new_name.set("lobby");
     request_rename_channel(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(
@@ -1357,7 +1361,7 @@ fn channel_browser_rename_calls_adapter() {
             "lobby".to_string()
         )]
     );
-    assert!(rig.app.channel_renaming.is_none());
+    assert!(rig.app.channel_browser.renaming.is_none());
 }
 
 #[test]
@@ -1367,18 +1371,21 @@ fn channel_browser_delete_needs_confirm_then_calls_adapter() {
     random.channel.topic_name = Some("random".into());
     random.member_status = MemberStatus::Active;
     rig.mock.st().channels = vec![random];
-    rig.app.channel_browser_team = Some("phoenix".into());
+    rig.app.channel_browser.team = Some("phoenix".into());
     request_load_channels(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // `d` opens the inline confirm — nothing deleted yet.
     open_channel_delete_confirm(&mut rig.app);
-    assert_eq!(rig.app.channel_confirm_delete.as_deref(), Some("random"));
+    assert_eq!(
+        rig.app.channel_browser.confirm_delete.as_deref(),
+        Some("random")
+    );
     assert!(rig.mock.st().deleted_channels.is_empty());
     // Confirm → delete fires.
     confirm_channel_delete(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(rig.mock.st().deleted_channels, vec!["random".to_string()]);
-    assert!(rig.app.channel_confirm_delete.is_none());
+    assert!(rig.app.channel_browser.confirm_delete.is_none());
 }
 
 #[test]
@@ -1391,26 +1398,27 @@ fn channel_browser_toggle_default_sends_full_set() {
     random.channel.topic_name = Some("random".into());
     random.member_status = MemberStatus::Active;
     rig.mock.st().channels = vec![general, random];
-    rig.app.channel_browser_team = Some("phoenix".into());
+    rig.app.channel_browser.team = Some("phoenix".into());
     request_load_channels(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // The chained default-channels get ran (mock returns none → general only).
-    assert!(rig.app.default_channels.is_empty());
+    assert!(rig.app.channel_browser.defaults.is_empty());
     // Toggle "random" ON → SET fires with the full new set [random].
     let ri = rig
         .app
+        .channel_browser
         .channels
         .iter()
         .position(|c| c.channel.topic_name.as_deref() == Some("random"))
         .unwrap();
-    rig.app.channel_selected = ri;
+    rig.app.channel_browser.selected = ri;
     toggle_default_channel(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(
         rig.mock.st().default_channels_set,
         vec![vec!["random".to_string()]]
     );
-    assert_eq!(rig.app.default_channels, vec!["random".to_string()]);
+    assert_eq!(rig.app.channel_browser.defaults, vec!["random".to_string()]);
 }
 
 // ── members (listmembers / addtochannel / removefromchannel) ─────────
@@ -2279,16 +2287,19 @@ fn channel_filter_projects_selection_for_actions() {
         c.channel.topic_name = Some(topic.to_string());
         c
     };
-    rig.app.channels = vec![ch("general"), ch("dev"), ch("design")];
-    rig.app.channel_filter.insert_str("de");
+    rig.app.channel_browser.channels = vec![ch("general"), ch("dev"), ch("design")];
+    rig.app.channel_browser.filter.insert_str("de");
     // Filter matches dev + design; cursor 1 must resolve to `design`,
     // not to the unfiltered index 1 (`dev`).
-    rig.app.channel_selected = 1;
-    let filtered = rig.app.channels_filtered();
+    rig.app.channel_browser.selected = 1;
+    let filtered = rig.app.channel_browser.filtered();
     assert_eq!(filtered, vec![1, 2]);
-    let idx = rig.app.selected_channel_idx().unwrap();
+    let idx = rig.app.channel_browser.selected_idx().unwrap();
     assert_eq!(
-        rig.app.channels[idx].channel.topic_name.as_deref(),
+        rig.app.channel_browser.channels[idx]
+            .channel
+            .topic_name
+            .as_deref(),
         Some("design")
     );
 }
