@@ -72,6 +72,19 @@ pub fn list_nav_arrows(key: &KeyEvent, len: usize, sel: usize, set: impl FnOnce(
     true
 }
 
+/// atuin-style instant pick: `Alt+1..9` addresses the Nth item of the
+/// active picker list (0-based index returned). The caller selects it and
+/// activates in one stroke.
+pub fn alt_digit(key: &KeyEvent) -> Option<usize> {
+    if !key.modifiers.contains(KeyModifiers::ALT) {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char(c @ '1'..='9') => Some(c as usize - '1' as usize),
+        _ => None,
+    }
+}
+
 /// Next focus in `order` from `current`, wrapping. `forward = false`
 /// goes backwards (Shift+Tab).
 pub fn cycle_focus(order: &[Focus], current: Focus, forward: bool) -> Focus {

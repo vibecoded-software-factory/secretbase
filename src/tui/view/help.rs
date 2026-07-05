@@ -348,6 +348,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             "Ctrl+J / Ctrl+K",
             "in any picker popup: selection down / up",
         ),
+        (
+            "Alt+1..9",
+            "in any query picker: pick-and-activate the Nth row",
+        ),
         (":", "command palette (from any non-typing surface)"),
         (
             "Ctrl+N",

@@ -117,6 +117,7 @@ stays in sync with these tables.
 | `Ctrl+O`                | Previous conversation (vim's alternate-buffer toggle) |
 | `Ctrl+D` / `Ctrl+U`     | Half-page down / up in every list and viewer |
 | `Ctrl+J` / `Ctrl+K`     | Selection down / up inside every picker popup |
+| `Alt+1`..`Alt+9`        | Pick-and-activate the Nth row in any query picker |
 | **lowercase = frequent, safe** | |
 | `n`                     | New conversation |
 | `r` / `F5`              | Refresh inbox |
