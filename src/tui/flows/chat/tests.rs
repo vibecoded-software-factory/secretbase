@@ -1031,9 +1031,9 @@ fn delete_selected_calls_adapter_with_correct_id() {
 }
 
 #[test]
-fn input_shift_x_in_select_opens_delete_confirm() {
-    // Gradient: in Select mode the destructive delete is Shift+X (Char('X')),
-    // matching Shift-remove in the channel browser / members — not bare `d`.
+fn input_x_in_select_opens_delete_confirm() {
+    // Delete is bare `x` like every other select-mode verb — the navigable
+    // confirm (default = cancel) is the guard. `X` stays as an alias.
     use crate::tui::screens::Focus;
     let mut rig = build_rig();
     preload_inbox(
@@ -1047,7 +1047,7 @@ fn input_shift_x_in_select_opens_delete_confirm() {
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Chat;
     rig.app.selected_msg_idx = Some(0);
-    press(&mut rig.app, KeyCode::Char('X'), KeyModifiers::SHIFT);
+    press(&mut rig.app, KeyCode::Char('x'), KeyModifiers::NONE);
     assert_eq!(rig.app.screen, Screen::ConfirmDeleteMessage);
     // A bare `d` must NOT delete anymore (it's inert in Select).
     rig.app.screen = Screen::Inbox;

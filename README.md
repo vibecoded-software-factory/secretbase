@@ -165,7 +165,7 @@ In **Select** mode: `↑` / `↓` (·`PgUp`/`PgDn`) move the cursor · `g`/`G`
 (`Home`/`End`) jump to the first / latest message · `v` sets a **visual
 anchor** — every motion (`j`/`k`, paging, `g`/`G`, `{`/`}`) then extends the
 range, `v` again clears it (`Shift+↑/↓` still shades too) · `{` / `}` jump by
-**speaker run** · `Space` mark / unmark. **`Shift+X` delete and `+` react act on
+**speaker run** · `Space` mark / unmark. **`x` delete and `+` react act on
 the whole marked set** (or the cursor if nothing's marked) — a multi-message
 action runs one at a time and you stay in Select mode with the shading cleared.
 `y` copy selection (author + time + body) · `c` copy bodies only · `o` / `u`
@@ -192,9 +192,9 @@ leave.
 | `r` / `F5`              | Refresh · `Esc` back to inbox |
 
 **Channel browser** (`c` on a team): `Enter` open/join · `n` new · `r` rename ·
-`t` toggle team-default · `m` members · `Shift+L` leave · `Shift+X` delete ·
+`t` toggle team-default · `m` members · `Shift+L` leave · `x` delete ·
 `F5` refresh. **Members** (`m` in the browser, or `Alt+P` on an open team
-channel): `a` add · `Shift+X` remove · `F5` refresh.
+channel): `a` add · `x` remove · `F5` refresh.
 
 ### Login (signed out)
 

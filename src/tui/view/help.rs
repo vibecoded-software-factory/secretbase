@@ -118,7 +118,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("{ / }", "previous / next speaker run"),
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
-            ("Shift+X / +", "delete / react — ALL marked (or the cursor)"),
+            ("x / +", "delete / react — ALL marked (or the cursor)"),
             (
                 "+ then Enter",
                 "fast react: empty query sends your most-used",
@@ -167,7 +167,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     ("t", "toggle as a team default (new members auto-join)"),
                     ("m", "members of the channel"),
                     ("Shift+L", "leave a joined channel"),
-                    ("Shift+X", "delete the channel"),
+                    ("x", "delete the channel"),
                     ("F5 / Esc", "refresh / close"),
                 ] {
                     lines.push(help_line(k, d, t));
@@ -178,7 +178,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 for (k, d) in [
                     ("↑/↓ k/j · PgUp/Dn", "navigate"),
                     ("a", "add member(s) (comma/space-separated)"),
-                    ("Shift+X", "remove the selected member"),
+                    ("x", "remove the selected member"),
                     ("F5 / Esc", "refresh / back"),
                 ] {
                     lines.push(help_line(k, d, t));

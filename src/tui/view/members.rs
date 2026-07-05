@@ -64,7 +64,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             ),
             legend: &[
                 ("a", "add"),
-                ("Shift+X", "remove"),
+                ("x", "remove"),
                 ("F5", "refresh"),
                 ("Esc", "close"),
             ],

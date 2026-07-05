@@ -87,7 +87,7 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         KeyCode::Char('m') => chat::open_members_from_browser(app), // members
         // ── destructive / loud (Shift) ────────────────────────────────────
         KeyCode::Char('L') => chat::request_leave_selected_channel(app), // leave (Shift+L)
-        KeyCode::Char('X') => chat::open_channel_delete_confirm(app),    // delete (Shift+X)
+        KeyCode::Char('x') | KeyCode::Char('X') => chat::open_channel_delete_confirm(app), // delete (confirm-gated)
         KeyCode::F(5) => chat::request_load_channels(app),
         _ => {}
     }
@@ -128,8 +128,8 @@ pub fn members(app: &mut App, key: KeyEvent) {
         KeyCode::End | KeyCode::Char('G') => chat::members_move(app, isize::MAX),
         // Add member(s) — bare (safe/common).
         KeyCode::Char('a') => chat::open_member_add(app),
-        // Remove the selected member — Shift+X (destructive tier).
-        KeyCode::Char('X') => chat::open_member_remove_confirm(app),
+        // Remove the selected member — bare `x`, gated by the inline confirm.
+        KeyCode::Char('x') | KeyCode::Char('X') => chat::open_member_remove_confirm(app),
         KeyCode::F(5) => chat::request_load_members(app),
         _ => {}
     }

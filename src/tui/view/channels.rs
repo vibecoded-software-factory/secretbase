@@ -100,7 +100,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 ("t", "default"),
                 ("m", "members"),
                 ("Shift+L", "leave"),
-                ("Shift+X", "del"),
+                ("x", "del"),
                 ("F5", "refresh"),
                 ("Esc", "close"),
             ],
