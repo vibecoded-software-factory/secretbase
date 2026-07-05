@@ -167,27 +167,40 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),
         KeyCode::Down | KeyCode::Char('j') => chat::select_move_down(app),
+        // `v` anchors a visual range; every motion then extends it (vim).
+        KeyCode::Char('v') => chat::select_toggle_anchor(app),
+        // `{` / `}` — previous / next speaker run (paragraph motion).
+        KeyCode::Char('{') => chat::select_jump_run(app, -1),
+        KeyCode::Char('}') => chat::select_jump_run(app, 1),
         KeyCode::PageUp => {
             if let Some(i) = app.selected_msg_idx {
                 app.selected_msg_idx = Some(i.saturating_sub(crate::tui::app::PAGE_STEP));
+                chat::select_resync_anchor_marks(app);
             }
         }
         KeyCode::PageDown => {
             let max = app.messages.len().saturating_sub(1);
             if let Some(i) = app.selected_msg_idx {
                 app.selected_msg_idx = Some((i + crate::tui::app::PAGE_STEP).min(max));
+                chat::select_resync_anchor_marks(app);
             }
         }
-        KeyCode::Home | KeyCode::Char('g') => app.selected_msg_idx = Some(0),
+        KeyCode::Home | KeyCode::Char('g') => {
+            app.selected_msg_idx = Some(0);
+            chat::select_resync_anchor_marks(app);
+        }
         KeyCode::End | KeyCode::Char('G') => {
             app.selected_msg_idx = Some(app.messages.len().saturating_sub(1));
+            chat::select_resync_anchor_marks(app);
         }
         // Multi-select + copy (reduced action set).
         KeyCode::Char(' ') => chat::msg_toggle_mark(app),
         KeyCode::Char('y') => chat::do_copy_messages(app, true), // author + time + body
         KeyCode::Char('c') => chat::do_copy_content(app),        // image, or body text
         KeyCode::Char('o') => chat::do_open_url(app),            // open first link
-        KeyCode::Char('l') => chat::do_copy_url(app),            // copy first link
+        // `u` copies the URL — `l` stays motion-vocabulary everywhere (it was
+        // the one place the app overloaded its own universal `l` = open/right).
+        KeyCode::Char('u') => chat::do_copy_url(app),
         KeyCode::Char('+') => chat::open_react_for_selected(app), // react (emoji)
         // Destructive: Shift+X deletes ALL marked (or the cursor) — the
         // gradient's danger tier, matching Shift-remove in channels/members.

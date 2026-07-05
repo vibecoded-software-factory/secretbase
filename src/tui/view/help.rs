@@ -114,6 +114,8 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
         for (k, d) in [
             ("↑/↓ k/j · PgUp/Dn", "move cursor"),
             ("g / G · Home / End", "first / latest message"),
+            ("v", "visual anchor — motions then extend the range"),
+            ("{ / }", "previous / next speaker run"),
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
             ("Shift+X / +", "delete / react — ALL marked (or the cursor)"),
@@ -122,7 +124,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 "c",
                 "copy body — or the image itself, for an image attachment",
             ),
-            ("o / l", "open / copy the first link in the message"),
+            ("o / u", "open / copy the first link in the message"),
             ("e / p", "edit / pin the cursor message"),
             ("r / s", "reply / download"),
             ("i / a / Enter", "back to compose (insert)"),
@@ -274,6 +276,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 for (k, d) in [
                     ("↑/↓ k/j", "move cursor (scrolls history)"),
                     ("PgUp/Dn · g/G", "page · oldest / newest"),
+                    ("v", "visual anchor — j/k extend the range"),
                     ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
                     ("Space", "mark / unmark a line (multi-select)"),
                     ("y / Enter", "copy full line(s)"),

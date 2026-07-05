@@ -219,6 +219,9 @@ fn handle_cmdlog(app: &mut App, key: KeyEvent) {
         KeyCode::Char('J') if alt => app.cmdlog_extend(1),
         KeyCode::Up if shift => app.cmdlog_extend(-1),
         KeyCode::Down if shift => app.cmdlog_extend(1),
+        // `v` anchors a visual range; j/k then extend it (vim), same as the
+        // chat's Select mode.
+        KeyCode::Char('v') => app.cmdlog_toggle_anchor(),
         KeyCode::Up | KeyCode::Char('k') => app.cmdlog_move(-1),
         KeyCode::Down | KeyCode::Char('j') => app.cmdlog_move(1),
         KeyCode::PageUp => app.cmdlog_move(-5),

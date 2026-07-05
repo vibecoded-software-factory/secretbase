@@ -127,13 +127,18 @@ status strip at the bottom.
 - **cmdlog** — `widgets::draw_cmd_log`: the rolling `keybase …` command log
   (6 rows, `✓ cmd  →  detail  (3s)`, newest at the bottom). When focused
   (`Focus::CmdLog`) it is a **visual multi-select**: a `▶` cursor walks the
-  whole history (the window follows it; `App::cmdlog_cursor`), `Alt+Shift+K/J` (or `Alt+Shift+↑/↓`) shades a contiguous range (`App::cmdlog_anchor`), `Space` toggles a line
+  whole history (the window follows it; `App::cmdlog_cursor`), **`v` anchors a
+  visual range** that plain `j/k` extend (`App::cmdlog_anchor`; `Alt+Shift+K/J`
+  / `Alt+Shift+↑/↓` remain as chord aliases), `Space` toggles a line
   (`●`, `App::cmdlog_marks`), and `y`/`Enter` copy the **full** line(s) while
   `c` copies the **detail only** (`chat::do_copy_cmd_log(full)`) — marked
   lines, or the cursor line; the selection is kept so both copies work. `Esc`
   clears the selection then leaves. The title shows `cursor/total · N sel`.
-  The chat's **Select mode** (`Alt+V`) uses the **same multi-select**: `Space`
-  marks messages, `Alt+Shift+K/J` (or `Alt+Shift+↑/↓`) shades a range, `y` copies author + time + body
+  The chat's **Select mode** (`Alt+V`, or `Esc` from the compose) uses the
+  **same multi-select**: `Space` marks messages, **`v` sets a visual anchor**
+  — every motion (`j/k`, paging, `g/G`, `{`/`}` speaker runs) then extends the
+  shaded range, `v` again clears it (`Alt+Shift+K/J` / `Alt+Shift+↑/↓` remain
+  as chord aliases) — `y` copies author + time + body
   and `c` copies bodies only (`chat::do_copy_messages(full)`), separated by a
   blank line / newline; with a selection active the action bar collapses to
   the reduced copy / react set. **`Shift+X` delete and `+` react operate on the

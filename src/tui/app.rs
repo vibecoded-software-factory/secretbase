@@ -1516,7 +1516,6 @@ impl App {
     /// Moves the command-log cursor by `delta`, clamped to the log. A plain
     /// move re-anchors the next `Shift+↑/↓` range.
     pub fn cmdlog_move(&mut self, delta: isize) {
-        self.cmdlog_anchor = None;
         let len = self.cmd_log.len();
         if len == 0 {
             return;
@@ -1524,6 +1523,27 @@ impl App {
         let max = (len - 1) as isize;
         let cur = (self.cmdlog_cursor.min(len - 1)) as isize;
         self.cmdlog_cursor = cur.saturating_add(delta).clamp(0, max) as usize;
+        // While a `v` anchor is set, every motion extends the shaded range
+        // (vim visual) — same mechanic as the chat's Select mode.
+        if let Some(anchor) = self.cmdlog_anchor {
+            let (lo, hi) = (
+                anchor.min(self.cmdlog_cursor),
+                anchor.max(self.cmdlog_cursor),
+            );
+            self.cmdlog_marks = (lo..=hi).collect();
+        }
+    }
+
+    /// `v` in the command log — toggle the visual anchor (see
+    /// [`Self::cmdlog_move`]); turning it off clears the shading.
+    pub fn cmdlog_toggle_anchor(&mut self) {
+        if self.cmdlog_anchor.take().is_some() {
+            self.cmdlog_marks.clear();
+        } else if !self.cmd_log.is_empty() {
+            let cur = self.cmdlog_cursor.min(self.cmd_log.len() - 1);
+            self.cmdlog_anchor = Some(cur);
+            self.cmdlog_marks = [cur].into_iter().collect();
+        }
     }
 
     /// Extends a contiguous shaded selection by `delta` (Shift+↑/↓) in the

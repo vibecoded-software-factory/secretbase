@@ -157,11 +157,13 @@ collapse a group); the header search fuzzy-filters it.
 | `Esc`                   | vim chain: cancel edit → cancel reply → **Select mode** → close (drafts are never destroyed) |
 
 In **Select** mode: `↑` / `↓` (·`PgUp`/`PgDn`) move the cursor · `g`/`G`
-(`Home`/`End`) jump to the first / latest message · `Shift+↑/↓`
-shade a range · `Space` mark / unmark. **`Shift+X` delete and `+` react act on
+(`Home`/`End`) jump to the first / latest message · `v` sets a **visual
+anchor** — every motion (`j`/`k`, paging, `g`/`G`, `{`/`}`) then extends the
+range, `v` again clears it (`Shift+↑/↓` still shades too) · `{` / `}` jump by
+**speaker run** · `Space` mark / unmark. **`Shift+X` delete and `+` react act on
 the whole marked set** (or the cursor if nothing's marked) — a multi-message
 action runs one at a time and you stay in Select mode with the shading cleared.
-`y` copy selection (author + time + body) · `c` copy bodies only · `o` / `l`
+`y` copy selection (author + time + body) · `c` copy bodies only · `o` / `u`
 open / copy the first link · `e` / `p` edit / pin the cursor message · `r` / `s`
 reply / download · `/` search this conversation · `n` / `N` jump to the next /
 previous search hit (hits are retained after `Ctrl+F`, vim-style) · `i` / `a` /
@@ -169,7 +171,8 @@ previous search hit (hits are retained after `Ctrl+F`, vim-style) · `i` / `a` /
 conversation.
 
 The **command log** (Tab to focus it) has the same visual multi-select:
-`↑/↓` move (·`PgUp`/`PgDn` page · `g`/`G` oldest / newest) · `Shift+↑/↓` range ·
+`↑/↓` move (·`PgUp`/`PgDn` page · `g`/`G` oldest / newest) · `v` visual anchor
+(j/k extend) · `Shift+↑/↓` range ·
 `Space` mark · `y` copy full line(s) · `c` copy detail only · `Esc` clear /
 leave.
 

@@ -1266,7 +1266,7 @@ fn select_actions_lines(
         };
         if !crate::domain::extract_urls(body_text).is_empty() {
             actions.push(("o", "open link"));
-            actions.push(("l", "copy link"));
+            actions.push(("u", "copy link"));
         }
         if is_me {
             actions.push(("e", "edit"));

@@ -1767,6 +1767,73 @@ fn search_hits_are_retained_and_cycled_with_n() {
 }
 
 #[test]
+fn visual_anchor_extends_with_plain_motions() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![
+        text_msg(1, "alice", "a"),
+        text_msg(2, "alice", "b"),
+        text_msg(3, "bob", "c"),
+    ];
+    rig.app.rebuild_msg_meta();
+    rig.app.selected_msg_idx = Some(0);
+    // v anchors and marks the cursor row…
+    select_toggle_anchor(&mut rig.app);
+    let one: std::collections::HashSet<u64> = [1u64].into_iter().collect();
+    assert_eq!(rig.app.msg_marks, one);
+    // …plain j (move down) extends the range, no Shift chord needed.
+    select_move_down(&mut rig.app);
+    select_move_down(&mut rig.app);
+    let all: std::collections::HashSet<u64> = [1u64, 2, 3].into_iter().collect();
+    assert_eq!(rig.app.msg_marks, all);
+    // Moving back shrinks it (range is anchor..cursor, not sticky).
+    select_move_up(&mut rig.app);
+    let two: std::collections::HashSet<u64> = [1u64, 2].into_iter().collect();
+    assert_eq!(rig.app.msg_marks, two);
+    // v again exits visual: anchor + marks clear.
+    select_toggle_anchor(&mut rig.app);
+    assert!(rig.app.msg_marks.is_empty());
+    assert!(rig.app.select_anchor.is_none());
+}
+
+#[test]
+fn brace_motions_jump_by_speaker_run() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![
+        text_msg(1, "alice", "a1"),
+        text_msg(2, "alice", "a2"),
+        text_msg(3, "bob", "b1"),
+        text_msg(4, "bob", "b2"),
+        text_msg(5, "carol", "c1"),
+    ];
+    rig.app.rebuild_msg_meta();
+    rig.app.selected_msg_idx = Some(4); // carol
+    select_jump_run(&mut rig.app, -1); // head of bob's run
+    assert_eq!(rig.app.selected_msg_idx, Some(2));
+    select_jump_run(&mut rig.app, -1); // head of alice's run
+    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    select_jump_run(&mut rig.app, -1); // clamped at the top
+    assert_eq!(rig.app.selected_msg_idx, Some(0));
+    select_jump_run(&mut rig.app, 1); // next run: bob
+    assert_eq!(rig.app.selected_msg_idx, Some(2));
+    select_jump_run(&mut rig.app, 1); // carol
+    assert_eq!(rig.app.selected_msg_idx, Some(4));
+    select_jump_run(&mut rig.app, 1); // clamped at the end
+    assert_eq!(rig.app.selected_msg_idx, Some(4));
+}
+
+#[test]
 fn esc_chain_never_destroys_the_draft() {
     // vim chain: Esc in compose with a draft → Select mode, draft intact;
     // Esc in Select → close; the close stashes the draft for reopen.
