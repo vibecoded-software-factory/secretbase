@@ -70,14 +70,38 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         );
         return;
     }
+    // `/` filter input owns typing while active (tree-search contract).
+    if app.channel_filtering {
+        match common::search_key(&mut app.channel_filter, key) {
+            common::SearchAction::ClearAndExit | common::SearchAction::Exit => {
+                app.channel_filtering = false;
+            }
+            common::SearchAction::Rebuild => app.channel_selected = 0,
+            common::SearchAction::ToList(k) => {
+                let len = app.channels_filtered().len();
+                common::list_nav(&k, len, app.channel_selected, |i| app.channel_selected = i);
+            }
+            common::SearchAction::Idle => {}
+        }
+        return;
+    }
     // Universal movement through the shared router — hand-rolled arms had
     // drifted (no Ctrl+D/U half-page, a private page step of 10).
-    if common::list_nav(&key, app.channels.len(), app.channel_selected, |i| {
-        app.channel_selected = i
-    }) {
+    if common::list_nav(
+        &key,
+        app.channels_filtered().len(),
+        app.channel_selected,
+        |i| app.channel_selected = i,
+    ) {
         return;
     }
     match key.code {
+        KeyCode::Char('/') => app.channel_filtering = true,
+        // Esc clears an applied filter before closing the browser.
+        KeyCode::Esc if !app.channel_filter.is_empty() => {
+            app.channel_filter.clear();
+            app.channel_selected = 0;
+        }
         KeyCode::Esc => chat::close_channel_browser(app),
         // Enter / → / l: open a channel you're in, join one you're not.
         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => chat::channel_browser_activate(app),
@@ -119,14 +143,37 @@ pub fn members(app: &mut App, key: KeyEvent) {
         );
         return;
     }
+    // `/` filter input owns typing while active (tree-search contract).
+    if app.member_filtering {
+        match common::search_key(&mut app.member_filter, key) {
+            common::SearchAction::ClearAndExit | common::SearchAction::Exit => {
+                app.member_filtering = false;
+            }
+            common::SearchAction::Rebuild => app.members_selected = 0,
+            common::SearchAction::ToList(k) => {
+                let len = app.members_filtered().len();
+                common::list_nav(&k, len, app.members_selected, |i| app.members_selected = i);
+            }
+            common::SearchAction::Idle => {}
+        }
+        return;
+    }
     // Universal movement through the shared router — same drift fix as the
     // channel browser (Ctrl+D/U, unified page step).
-    if common::list_nav(&key, app.members.len(), app.members_selected, |i| {
-        app.members_selected = i
-    }) {
+    if common::list_nav(
+        &key,
+        app.members_filtered().len(),
+        app.members_selected,
+        |i| app.members_selected = i,
+    ) {
         return;
     }
     match key.code {
+        KeyCode::Char('/') => app.member_filtering = true,
+        KeyCode::Esc if !app.member_filter.is_empty() => {
+            app.member_filter.clear();
+            app.members_selected = 0;
+        }
         KeyCode::Esc => chat::close_members(app),
         // Add member(s) — bare (safe/common).
         KeyCode::Char('a') => chat::open_member_add(app),

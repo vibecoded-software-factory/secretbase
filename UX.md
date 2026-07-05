@@ -750,7 +750,10 @@ under react/delete/download).
   joined one (`leave`), `n` enters an inline **create** mode (a channel-name
   input → `newconv` on a team channel, reusing the `NewConversation` request
   routed by an `InFlight::CreateChannel` slot), `r` an inline **rename** mode
-  (pre-filled → `rename-channel`), `x` an inline **delete** confirm
+  (pre-filled → `rename-channel`), `/` a **topic filter** on the picker's
+  query slot (tree-search contract; the title reads `shown of total` and
+  every action routes through the filtered projection via
+  `App::selected_channel_idx`), `x` an inline **delete** confirm
   (destructive + irreversible — the same navigable confirm mechanics as the
   overlays: `widgets::button` pair, default = cancel, `←/→`/Tab/Enter/`y`/`n`,
   error-red → `delete-channel`), `t` toggles the
@@ -769,7 +772,8 @@ under react/delete/download).
   `ChatMembersDetails` role buckets flattened to `domain::ChatMember`, sorted
   higher-privilege-role first then by name, with the role label dimmed). `a`
   enters an inline **add** mode (comma/space-separated usernames, validated →
-  `addtochannel`), `x` an inline **remove** confirm (navigable, default =
+  `addtochannel`), `/` a **username filter** (same contract,
+  `App::selected_member_idx`), `x` an inline **remove** confirm (navigable, default =
   cancel → `removefromchannel`),
   `F5` reloads, `Esc` returns to wherever it was opened from (`members_return`).
   Add/remove reload the list on success. DMs/non-team convs are refused (fixed

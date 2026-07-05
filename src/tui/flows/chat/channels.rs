@@ -96,7 +96,7 @@ pub fn cancel_channel_create(app: &mut App) {
 
 /// Enters rename mode on the selected channel (`r`), pre-filling its name.
 pub fn open_channel_rename(app: &mut App) {
-    let Some(c) = app.channels.get(app.channel_selected) else {
+    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
         return;
     };
     let old = channel_topic(c);
@@ -158,7 +158,7 @@ pub fn handle_rename_channel_response(
 
 /// Opens the inline delete confirm for the selected channel (`d`).
 pub fn open_channel_delete_confirm(app: &mut App) {
-    let Some(c) = app.channels.get(app.channel_selected) else {
+    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
         return;
     };
     let topic = channel_topic(c);
@@ -237,7 +237,7 @@ pub fn request_get_default_channels(app: &mut App) {
 /// can't clear the set to empty (`--channel`-less = get), so removing the last
 /// one is refused with an explanation.
 pub fn toggle_default_channel(app: &mut App) {
-    let Some(c) = app.channels.get(app.channel_selected) else {
+    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
         return;
     };
     let topic = channel_topic(c);
@@ -331,7 +331,7 @@ pub fn open_members_from_browser(app: &mut App) {
     let Some(team) = app.channel_browser_team.clone() else {
         return;
     };
-    let Some(c) = app.channels.get(app.channel_selected) else {
+    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
         return;
     };
     let topic = channel_topic(c);
@@ -498,7 +498,7 @@ pub fn handle_add_members_response(app: &mut App, result: Result<(), KeybaseErro
 // remove member (inline confirm)
 
 pub fn open_member_remove_confirm(app: &mut App) {
-    let Some(m) = app.members.get(app.members_selected) else {
+    let Some(m) = app.selected_member_idx().and_then(|i| app.members.get(i)) else {
         return;
     };
     let username = m.username.clone();
@@ -662,7 +662,7 @@ pub fn channel_browser_move(app: &mut App, delta: isize) {
 
 /// `Enter` in the browser: open a channel you're in, or join one you're not.
 pub fn channel_browser_activate(app: &mut App) {
-    let Some(c) = app.channels.get(app.channel_selected) else {
+    let Some(c) = app.selected_channel_idx().and_then(|i| app.channels.get(i)) else {
         return;
     };
     if channel_joined(c) {
@@ -677,7 +677,9 @@ pub fn channel_browser_activate(app: &mut App) {
 /// Builds the `team#channel` [`ReadChannel`] for the selected browser row.
 fn selected_channel_read(app: &App) -> Option<(String, ReadChannel)> {
     let team = app.channel_browser_team.clone()?;
-    let c = app.channels.get(app.channel_selected)?;
+    let c = app
+        .selected_channel_idx()
+        .and_then(|i| app.channels.get(i))?;
     let topic = channel_topic(c);
     Some((
         topic.clone(),
