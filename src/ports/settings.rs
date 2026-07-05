@@ -69,6 +69,13 @@ pub struct UserSettings {
     /// pins this client set itself — persisted here so they survive a
     /// restart, same local-only pattern as [`Self::favorites`].
     pub pins: Vec<String>,
+    /// **Local-only** dismissed pin banners, one `"convid:pin_msg_id"` pair
+    /// per entry (the id of the *pin envelope*, not its target). Mirrors the
+    /// GUI's local `IgnorePinnedMessage`: hiding the banner posts nothing
+    /// and unpins for no one — and since that ignore list lives in the other
+    /// client's local storage, it can't be synced; this is our own.
+    /// A newer pin (a new envelope id) revives the banner automatically.
+    pub pins_dismissed: Vec<String>,
 }
 
 impl Default for UserSettings {
@@ -87,6 +94,7 @@ impl Default for UserSettings {
             favorites: Vec::new(),
             muted: Vec::new(),
             pins: Vec::new(),
+            pins_dismissed: Vec::new(),
         }
     }
 }

@@ -58,6 +58,11 @@ status strip at the bottom.
   own pins survive a restart; when the known target is older than the loaded
   window, the body is fetched once in the background (`{"method":"get"}`) and
   the snippet still renders), or titled `~ Topic` with the quoted headline.
+  The banner offers `Alt+U` **unpin** (real: posts the superseding DELETE)
+  and `Alt+H` **hide** — the GUI-parity local dismiss (`IgnorePinnedMessage`
+  is local there too, nothing to sync): records the pin *envelope* id in the
+  `pins_dismissed` config key, unpins for no one, and a newer pin (new
+  envelope id) revives the banner automatically.
   When there's **neither** it collapses to **0 rows** and the message history
   takes the space, so no chrome is reserved for nothing.
 - **body** — `─[Alt+C]-Chats` tree (`Length(28)`) on the left, the chat

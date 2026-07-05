@@ -172,6 +172,7 @@ impl SettingsPort for TomlSettingsAdapter {
             favorites: Vec::new(),
             muted: Vec::new(),
             pins: Vec::new(),
+            pins_dismissed: Vec::new(),
         };
         let Ok(text) = fs::read_to_string(self.file()) else {
             return cfg;
@@ -278,6 +279,14 @@ impl SettingsPort for TomlSettingsAdapter {
                         .map(str::to_string)
                         .collect();
                 }
+                "pins_dismissed" => {
+                    cfg.pins_dismissed = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect();
+                }
                 _ => {}
             }
         }
@@ -363,6 +372,7 @@ impl UpdateBuffer {
         "favorites",
         "muted",
         "pins",
+        "pins_dismissed",
     ];
 
     fn parse(text: &str) -> Self {

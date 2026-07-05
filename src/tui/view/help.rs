@@ -91,6 +91,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("mouse", "click a message to select, scroll to page history"),
             ("Alt+V", "select mode — act on a message"),
             ("Alt+U", "unpin channel"),
+            (
+                "Alt+H",
+                "hide the pin banner (local only — unpins for no one)",
+            ),
             ("Alt+R", "resend failed message"),
             ("Alt+A", "attach a file (opens the file picker)"),
             ("Alt+P", "members (team channels) — add / remove"),

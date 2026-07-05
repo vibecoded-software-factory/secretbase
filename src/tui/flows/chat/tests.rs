@@ -1940,6 +1940,39 @@ fn out_of_window_pin_target_fetches_body_once() {
 }
 
 #[test]
+fn dismissed_pin_banner_stays_hidden_until_a_newer_pin() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let mut pin_msg = text_msg(158, "alice", "");
+    pin_msg.content = MessageContent::Pin { target_id: 0 };
+    rig.app.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
+    rig.app.rebuild_msg_meta();
+    assert!(rig.app.pin_present);
+    assert_eq!(rig.app.pin_envelope_id, Some(158));
+    // Local dismiss: hidden, persisted, still hidden after a reload rebuild.
+    dismiss_pin_banner(&mut rig.app);
+    assert!(!rig.app.pin_present);
+    assert_eq!(
+        rig.app.settings_cache.pins_dismissed,
+        vec!["c1:158".to_string()]
+    );
+    rig.app.rebuild_msg_meta();
+    assert!(!rig.app.pin_present);
+    // A newer pin (new envelope id) revives the banner.
+    let mut newer = text_msg(160, "alice", "");
+    newer.content = MessageContent::Pin { target_id: 0 };
+    rig.app.messages.push(newer);
+    rig.app.rebuild_msg_meta();
+    assert!(rig.app.pin_present);
+    assert_eq!(rig.app.pin_envelope_id, Some(160));
+}
+
+#[test]
 fn pin_without_payload_shows_presence_and_uses_local_target() {
     // The JSON API strips the pin payload (convertMsgBody omits Pin__), so
     // a real read returns {"type":"pin"} → target_id 0. Presence must still
