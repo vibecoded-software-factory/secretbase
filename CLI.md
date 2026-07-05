@@ -268,7 +268,13 @@ wired yet, it's flagged as a future-feature candidate.
 `searchinbox` · `searchregexp` · `newconv` · `listconvsonname` · `join` ·
 `leave` · `addtochannel` · `removefromchannel` · `loadflip` ·
 `getunfurlsettings` · `setunfurlsettings` · `advertisecommands` ·
-`clearcommands` · `listcommands` · `pin` · `unpin` · `getdeviceinfo` ·
+`clearcommands` · `listcommands` · `pin` · `unpin` (**note:** `read` output
+strips the pin payload — `chat_svc_handler.go::convertMsgBody` maps every
+`MessageBody` field except `Pin__`, so a pin message arrives as
+`{"type":"pin"}` with **no target id**; and `unpin` posts a `DELETE`
+superseding the pin message, so a cleared pin simply disappears from the
+history. Presence of a `pin` message = an active pin; the *target* is only
+knowable for pins set by this session) · `getdeviceinfo` ·
 `getresetconvmembers` · `addresetconvmember` · `listmembers` ·
 `emojiadd` · `emojiaddalias` · `emojiremove` · `emojilist`.
 
