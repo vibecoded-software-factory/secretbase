@@ -35,7 +35,8 @@ fn has_adaptive_header(app: &App) -> bool {
 /// [`titled_block`] chrome as every other panel — an unstyled floating line
 /// broke the app's visual grammar) titled `📌 Pinned` when the conversation
 /// has a pin, else `~ Topic` for the channel headline. Content line:
-/// `sender · “body” · Alt+U unpin`. Only called when
+/// `sender · “body”` (no key hints — F1 documents `Alt+U`/`Alt+H`, the
+/// width belongs to the snippet). Only called when
 /// [`has_adaptive_header`] is true.
 fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
@@ -77,11 +78,9 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
                 };
                 // Leave room for the fixed chrome around the snippet —
                 // measured from the real strings (the lead space, ` · `, the
-                // quotes, `  ·  Alt+U unpin`) instead of a magic cap.
-                let suffix_w = 1
-                    + " · ".chars().count()
-                    + 2 // the “” quotes
-                    + "  ·  Alt+U unpin · Alt+H hide".chars().count();
+                // quotes) instead of a magic cap. No key hints here: they
+                // live in F1, and the width belongs to the pinned message.
+                let suffix_w = 1 + " · ".chars().count() + 2; // the “” quotes
                 let budget = w.saturating_sub(m.sender.chars().count() + suffix_w).max(8);
                 let snippet = trim_end_ellipsis(body.lines().next().unwrap_or(""), budget);
                 s.push(Span::styled(
@@ -108,18 +107,6 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
                 s.push(Span::styled(label, Style::default().fg(t.dim)));
             }
         }
-        s.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
-        s.push(Span::styled(
-            "Alt+U",
-            crate::tui::view::widgets::key_style(t),
-        ));
-        s.push(Span::styled(" unpin", Style::default().fg(t.dim)));
-        s.push(Span::styled(" · ", Style::default().fg(t.muted)));
-        s.push(Span::styled(
-            "Alt+H",
-            crate::tui::view::widgets::key_style(t),
-        ));
-        s.push(Span::styled(" hide", Style::default().fg(t.dim)));
         s
     } else if let Some(topic) = app.conv_headline.as_deref() {
         let topic = trim_end_ellipsis(

@@ -51,18 +51,20 @@ status strip at the bottom.
   proper bordered **section** on the standard `titled_block` rounded chrome
   (3 rows, unfocused tint — a floating borderless line broke the app's visual
   grammar next to the titled panels). Titled `📌 Pinned` with content
-  `sender · "body" · Alt+U unpin` (when the target isn't knowable — the chat
+  `sender · "body"` (when the target isn't knowable — the chat
   JSON API strips the pin payload — it degrades honestly to
   `<sender> pinned a message`, resolving for pins set by this client via
   `App::pinned_local`, which is **persisted** to config (`pins` key) so our
   own pins survive a restart; when the known target is older than the loaded
   window, the body is fetched once in the background (`{"method":"get"}`) and
   the snippet still renders), or titled `~ Topic` with the quoted headline.
-  The banner offers `Alt+U` **unpin** (real: posts the superseding DELETE)
-  and `Alt+H` **hide** — the GUI-parity local dismiss (`IgnorePinnedMessage`
-  is local there too, nothing to sync): records the pin *envelope* id in the
-  `pins_dismissed` config key, unpins for no one, and a newer pin (new
-  envelope id) revives the banner automatically.
+  The banner carries **no key hints** — the full width belongs to the
+  pinned snippet; `Alt+U` **unpin** (real: posts the superseding DELETE)
+  and `Alt+H` **hide** are documented in F1. Hide is the GUI-parity local
+  dismiss (`IgnorePinnedMessage` is local there too, nothing to sync): it
+  records the pin *envelope* id in the `pins_dismissed` config key, unpins
+  for no one, and a newer pin (new envelope id) revives the banner
+  automatically.
   When there's **neither** it collapses to **0 rows** and the message history
   takes the space, so no chrome is reserved for nothing.
 - **body** — `─[Alt+C]-Chats` tree (`Length(28)`) on the left, the chat
@@ -224,7 +226,7 @@ path for a GIF is attaching the file. Single-line inputs (search, react, new-con
 `widgets::editor_spans`. The chat column is **full-height** with an **adaptive
 header** (`has_adaptive_header` / `draw_adaptive_header`) — a bordered
 section on the standard `titled_block` chrome: `📌 Pinned` with
-`sender · "body" · Alt+U unpin` (target resolution + persistence + the
+`sender · "body"` (target resolution + persistence + the
 background body fetch as described in the Home section) or `~ Topic` with
 the quoted headline, or **nothing at all** (0 rows) when there's neither, so
 history isn't squeezed by empty chrome. **In-conversation search is a modal**
