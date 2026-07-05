@@ -340,11 +340,9 @@ on their own:
   a block**, not a one-liner: `↩ sender` (in their stable hue) on its own
   line, then up to 3 quoted body lines under a dim `│` gutter — code fences
   are stripped and their content shown as plain gray (no italics), an
-  image/GIF target shows `🖼 filename` plus a small chafa thumbnail (first
-  frame for GIFs) once the file is cached (no fetches are queued from a
-  quote; such replies are excluded from the render cache since they grow
-  when the thumbnail readies). An out-of-window parent stays the honest
-  `↩ …` line. **Day dividers**
+  image/GIF target shows `🖼 filename` (a mini thumbnail was tried and
+  removed — illegible at quote size). An out-of-window parent stays the
+  honest `↩ …` line. **Day dividers**
   (`── Today ── / Yesterday / Mon 12 Feb`, via `domain::day_divider_label` +
   `same_local_day`) mark each local-day change and carry the date, so the header
   only needs the clock. A **`new messages` divider** (`conv_unread`-coloured)

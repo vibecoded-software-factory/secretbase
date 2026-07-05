@@ -480,11 +480,6 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             app.web_image_urls.entry(path).or_insert(url);
         }
         let symbol_imgs = symbol_image_lines(app, img_w);
-        let quote_thumbs = quote_thumb_lines(app);
-        let pre_rendered = PreRendered {
-            symbols: &symbol_imgs,
-            quote_thumbs: &quote_thumbs,
-        };
         // Grouping / day-divider / unread-marker state (F3). Dividers are pushed
         // BEFORE each message's `start` is captured, so they fall outside every
         // `spans_map` / image range and stay non-selectable.
@@ -548,10 +543,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             // every other content kind is a pure function of the message +
             // epoch-guarded inputs and renders once per (history, width, theme).
             let cacheable = !matches!(m.content, MessageContent::Attachment(_))
-                && giphy_url_for(app, m).is_none()
-                // A reply quoting an image grows when its thumbnail readies
-                // (async) — keep it out of the block cache.
-                && quote_target_image_path(app, m).is_none();
+                && giphy_url_for(app, m).is_none();
             if cacheable {
                 let pinned = app.pinned_msg_id == Some(m.id);
                 let hit = cache
@@ -561,7 +553,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 if !hit {
                     let mut no_img: Vec<ImgReservation> = Vec::new();
                     let block =
-                        message_lines(m, app, &t, body_width, &mut no_img, &pre_rendered, !grouped);
+                        message_lines(m, app, &t, body_width, &mut no_img, &symbol_imgs, !grouped);
                     cache.blocks.insert(
                         m.id,
                         MsgBlock {
@@ -588,7 +580,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                     &t,
                     body_width,
                     &mut local_img,
-                    &pre_rendered,
+                    &symbol_imgs,
                     !grouped,
                 );
                 // Block-relative row ranges occupied by image thumbnails — these
@@ -1063,71 +1055,6 @@ fn symbol_image_lines(
     map
 }
 
-/// The image cache path a reply's *quoted target* renders as a thumbnail —
-/// an image attachment's preview file or a giphy text's fetched media.
-fn quote_target_image_path(app: &App, m: &Message) -> Option<String> {
-    let target = app
-        .msg_index
-        .get(&m.reply_to?)
-        .and_then(|&i| app.messages.get(i))?;
-    let conv_id = app.open_conv_id.as_deref()?;
-    match &target.content {
-        MessageContent::Attachment(a) if crate::tui::image::is_image(&a.mime_type, &a.filename) => {
-            Some(crate::tui::flows::chat::image_path_for(
-                conv_id,
-                target.id,
-                &a.filename,
-            ))
-        }
-        MessageContent::Text(b) => Some(crate::tui::flows::chat::web_image_path_for(
-            &crate::domain::giphy_gif_url(b)?,
-        )),
-        _ => None,
-    }
-}
-
-/// Pre-renders a **small** chafa thumbnail (first frame for GIFs) for every
-/// reply whose quoted target is an already-cached image — the reply quote's
-/// "little square". In-buffer ANSI symbols regardless of the active
-/// protocol, so it needs no reservation/paint pass. No fetches are queued
-/// from here: the target message's own render does that; the quote simply
-/// picks the file up once it's on disk.
-fn quote_thumb_lines(
-    app: &mut App,
-) -> std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>> {
-    let mut map = std::collections::HashMap::new();
-    if app.image_proto.is_none() {
-        return map;
-    }
-    let items: Vec<(u64, String)> = app
-        .messages
-        .iter()
-        .filter_map(|m| {
-            let path = quote_target_image_path(app, m)?;
-            app.image_ready.contains(&path).then_some((m.id, path))
-        })
-        .collect();
-    for (id, path) in items {
-        // First frame for GIFs: decoded frame 0 when available, else chafa
-        // takes the still of the raw file.
-        let render_path = match app.gif_anims.get(&path) {
-            Some(Some(g)) => g.frame_at(0).to_string(),
-            _ => path.clone(),
-        };
-        let lines = app.image_render_cache.symbol_lines(
-            crate::tui::image::ImgProto::Symbols,
-            &render_path,
-            14,
-            3,
-            5,
-        );
-        if !lines.is_empty() {
-            map.insert(id, lines);
-        }
-    }
-    map
-}
-
 /// Messages within this many seconds of the previous one (same sender) collapse
 /// into a group — the follow-ups hide their header (Discord/Slack-style).
 const GROUP_WINDOW_SECS: u64 = 300;
@@ -1181,21 +1108,13 @@ fn divider_line(label: &str, color: Color, width: usize) -> Line<'static> {
     ))
 }
 
-/// Pre-rendered chafa line maps handed into [`message_lines`]: full-size
-/// symbol images (symbols protocol) and the reply-quote mini thumbnails —
-/// both computed once per frame with `&mut App` before the immutable pass.
-struct PreRendered<'a> {
-    symbols: &'a std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>>,
-    quote_thumbs: &'a std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>>,
-}
-
 fn message_lines(
     m: &Message,
     app: &App,
     t: &crate::tui::theme::Theme,
     width: usize,
     img_res: &mut Vec<ImgReservation>,
-    pre: &PreRendered<'_>,
+    symbol_imgs: &std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>>,
     show_header: bool,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(3);
@@ -1244,13 +1163,7 @@ fn message_lines(
     // Threaded reply: quote block (sender line + gutter body + optional
     // image thumbnail) above the reply's own body.
     if let Some(target) = m.reply_to {
-        lines.extend(reply_quote_lines(
-            target,
-            app,
-            t,
-            width,
-            pre.quote_thumbs.get(&m.id),
-        ));
+        lines.extend(reply_quote_lines(target, app, t, width));
     }
     // Inline image attachment: the filename above, then reserved rows the run
     // loop paints the thumbnail into (kitty / sixel / chafa). Falls back to the
@@ -1280,7 +1193,7 @@ fn message_lines(
                 format!("      {} · {mime}", format_size(att.size)),
                 Style::default().fg(t.dim),
             )));
-            if let Some(sym) = pre.symbols.get(&m.id) {
+            if let Some(sym) = symbol_imgs.get(&m.id) {
                 // Symbols, ready: the pre-rendered lines *are* the image — push
                 // them directly at their real height (no reserved blank gap).
                 // Recorded in `img_res` only so the selection shading skips
@@ -1341,7 +1254,7 @@ fn message_lines(
                     .fg(t.conv_team)
                     .add_modifier(Modifier::BOLD),
             )));
-            if let Some(sym) = pre.symbols.get(&m.id) {
+            if let Some(sym) = symbol_imgs.get(&m.id) {
                 let block_offset = lines.len();
                 lines.extend(sym.iter().cloned());
                 img_res.push(ImgReservation {
@@ -1427,15 +1340,14 @@ fn quote_body_lines(body: &str, max: usize) -> (Vec<(String, bool)>, bool) {
 /// The reply-quote **block** rendered above a reply's own body: the quoted
 /// sender on its own line, then the quoted body under a `│` gutter —
 /// code-block content de-fenced and shown as plain gray, an image/GIF
-/// target shown as its filename plus (when the file is already cached) a
-/// small chafa thumbnail (`thumb`, first frame for GIFs). Falls back to a
-/// single `↩ …` line when the parent isn't in the loaded window.
+/// target shown as its filename. (A mini chafa thumbnail was tried and
+/// removed — at quote size it was an illegible smudge, not feedback.)
+/// Falls back to a single `↩ …` line when the parent isn't in the window.
 fn reply_quote_lines(
     target: u64,
     app: &App,
     t: &crate::tui::theme::Theme,
     width: usize,
-    thumb: Option<&std::rc::Rc<[Line<'static>]>>,
 ) -> Vec<Line<'static>> {
     let Some(m) = app
         .msg_index
@@ -1491,9 +1403,6 @@ fn reply_quote_lines(
                     Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
                 ),
             ]));
-            if let Some(thumb) = thumb {
-                lines.extend(thumb.iter().cloned());
-            }
         }
         _ => {
             lines.push(Line::from(vec![
