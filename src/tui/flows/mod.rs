@@ -93,6 +93,16 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
             chat::handle_emojis_response(app, r);
             return;
         }
+        // Background pinned-message body fetch — routed by variant (no
+        // `in_flight` ticket; fire-and-forget for the 📌 header).
+        WorkerResponse::GetPinnedMessage {
+            conv_id,
+            message_id,
+            result,
+        } => {
+            chat::handle_get_pinned_message_response(app, conv_id, message_id, result);
+            return;
+        }
         // Background image preview downloads — routed by variant (no
         // `in_flight` ticket; many run concurrently while the user works).
         WorkerResponse::PreviewImage(path, r) => {

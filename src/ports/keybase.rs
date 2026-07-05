@@ -343,6 +343,16 @@ pub trait KeybasePort {
     /// `{"method":"pin","params":{...}}` — pins a single message.
     fn pin_message(&mut self, channel: &ReadChannel, message_id: u64) -> Result<(), KeybaseError>;
 
+    /// Fetches a single message by id (`keybase chat api {"method":"get"}`,
+    /// same `result.messages[].msg` shape as `read`). Returns `Ok(None)`
+    /// when the server doesn't return it (deleted / never existed). Used to
+    /// resolve a pinned message that is older than the loaded window.
+    fn get_message(
+        &mut self,
+        channel: &ReadChannel,
+        message_id: u64,
+    ) -> Result<Option<Message>, KeybaseError>;
+
     /// `{"method":"unpin","params":{...}}` — clears the channel's pin.
     fn unpin_message(&mut self, channel: &ReadChannel) -> Result<(), KeybaseError>;
 

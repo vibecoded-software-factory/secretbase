@@ -39,11 +39,22 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     let w = area.width as usize;
     let spans: Vec<Span<'static>> = if app.pin_present {
         let mut s = vec![Span::styled(" 📌 ", Style::default().fg(t.conv_unread))];
-        match app
-            .pinned_msg_id
-            .and_then(|pid| app.msg_index.get(&pid).copied())
-            .and_then(|i| app.messages.get(i))
-        {
+        // Resolve the pinned message: from the loaded window when present,
+        // else from the background-fetched body cache (targets older than
+        // the window, `maybe_fetch_pin_body`).
+        let resolved = app.pinned_msg_id.and_then(|pid| {
+            app.msg_index
+                .get(&pid)
+                .copied()
+                .and_then(|i| app.messages.get(i))
+                .or_else(|| {
+                    app.open_conv_id
+                        .as_ref()
+                        .and_then(|c| app.pin_bodies.get(c))
+                        .filter(|m| m.id == pid)
+                })
+        });
+        match resolved {
             Some(m) => {
                 let body = match &m.content {
                     MessageContent::Text(b) => b.clone(),

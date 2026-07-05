@@ -232,7 +232,7 @@ impl Default for KeybaseCliAdapter {
 fn is_idempotent_method(method: Option<&str>) -> bool {
     matches!(
         method,
-        Some("list" | "read" | "searchinbox" | "searchregexp" | "list-self-memberships")
+        Some("list" | "read" | "get" | "searchinbox" | "searchregexp" | "list-self-memberships")
     )
 }
 
@@ -699,6 +699,29 @@ impl KeybasePort for KeybaseCliAdapter {
         );
         self.chat_api(&req, QUICK_OP_TIMEOUT)?;
         Ok(())
+    }
+
+    fn get_message(
+        &mut self,
+        channel: &ReadChannel,
+        message_id: u64,
+    ) -> Result<Option<Message>, KeybaseError> {
+        let req = request_with_options(
+            "get",
+            json!({
+                "channel": channel_object(channel),
+                "message_ids": [message_id],
+            }),
+        );
+        let reply = self.chat_api(&req, READ_TIMEOUT)?;
+        let arr = reply
+            .pointer("/result/messages")
+            .and_then(Value::as_array)
+            .ok_or_else(|| KeybaseError::shape("keybase chat api get: missing result.messages"))?;
+        Ok(arr
+            .iter()
+            .filter_map(|entry| entry.get("msg"))
+            .find_map(parse_message))
     }
 
     fn pin_message(&mut self, channel: &ReadChannel, message_id: u64) -> Result<(), KeybaseError> {

@@ -47,7 +47,7 @@ status strip at the bottom.
   `conversation::chat_title`). In-conversation search is a **`Ctrl+F` modal**
   (`Screen::ConvSearch`). The chat draws an **adaptive header** only when it has
   something to say (`conversation::has_adaptive_header` / `draw_adaptive_header`):
-  a **pin** (`📌 sender · "content" · Alt+U unpin`; when the target isn't knowable -- the chat JSON API strips the pin payload -- it degrades honestly to `📌 <sender> pinned a message`, resolving for pins set this session via `App::pinned_local`) or, failing that, the channel
+  a **pin** (`📌 sender · "content" · Alt+U unpin`; when the target isn't knowable -- the chat JSON API strips the pin payload -- it degrades honestly to `📌 <sender> pinned a message`, resolving for pins set by this client via `App::pinned_local`, which is **persisted** to config (`pins` key) so our own pins survive a restart; when the known target is older than the loaded window, the body is fetched once in the background (`{"method":"get"}`) and the snippet still renders) or, failing that, the channel
   **topic** (latest `headline`) — one borderless line; when there's **neither**
   it collapses to **0 rows** and the message history takes the space, so no
   chrome is reserved for nothing.
@@ -186,7 +186,7 @@ the cursor visible), and `widgets::editor_lines` renders the multi-row
 cursor. Single-line inputs (search, react, new-conversation) keep
 `widgets::editor_spans`. The chat column is **full-height** with an **adaptive
 header** (`has_adaptive_header` / `draw_adaptive_header`) — a single borderless
-line for a **pin** (`📌 sender · "content" · Alt+U unpin`; when the target isn't knowable -- the chat JSON API strips the pin payload -- it degrades honestly to `📌 <sender> pinned a message`, resolving for pins set this session via `App::pinned_local`) or the channel
+line for a **pin** (`📌 sender · "content" · Alt+U unpin`; when the target isn't knowable -- the chat JSON API strips the pin payload -- it degrades honestly to `📌 <sender> pinned a message`, resolving for pins set by this client via `App::pinned_local`, which is **persisted** to config (`pins` key) so our own pins survive a restart; when the known target is older than the loaded window, the body is fetched once in the background (`{"method":"get"}`) and the snippet still renders) or the channel
 **topic**, or **nothing at all** (0 rows) when there's neither, so history isn't
 squeezed by empty chrome. **In-conversation search is a modal**
 (`Screen::ConvSearch`, `view::conv_search`): `Ctrl+F` opens a centered

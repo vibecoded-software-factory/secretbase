@@ -346,10 +346,20 @@ pub struct App {
     /// Sender of the newest pin message — the adaptive header's fallback
     /// text when the pinned *target* isn't known.
     pub pin_sender: Option<String>,
-    /// Pin targets **we** set this session, per conversation — the only
-    /// way to know *which* message is pinned, since the API doesn't carry
-    /// the pin payload. Session-local by nature.
+    /// Pin targets **we** set, per conversation — the only way to know
+    /// *which* message is pinned, since the API doesn't carry the pin
+    /// payload. Persisted to config (`pins` key, `"convid:msgid"` pairs)
+    /// so our own pins survive a restart — same local-only pattern as
+    /// [`Self::favorites`]. See [`Self::set_local_pin`].
     pub pinned_local: HashMap<String, u64>,
+    /// Pinned-message bodies fetched on demand (`{"method":"get"}`, the
+    /// background lane) when the known pin target is older than the loaded
+    /// window — the 📌 header shows a real snippet instead of just the id.
+    /// Keyed by conversation id; the `Message` zeroizes on drop.
+    pub pin_bodies: HashMap<String, crate::domain::Message>,
+    /// `(conv, msg_id)` pin-body fetches already issued — one attempt per
+    /// target, so a failing `get` can't loop on every reload.
+    pub pin_fetch_attempted: std::collections::HashSet<(String, u64)>,
     /// Latest channel topic/headline in the loaded history — the chat's
     /// adaptive header line, cached by [`Self::rebuild_msg_meta`] so the
     /// render doesn't rescan the history per frame. Zeroized on drop
@@ -800,6 +810,16 @@ impl App {
         let image_proto = crate::tui::image::resolve(&settings_cache.image_protocol);
         let image_symbols = settings_cache.image_symbols.clone();
         let favorites: HashSet<String> = settings_cache.favorites.iter().cloned().collect();
+        // Persisted pin targets ("convid:msgid" pairs) — malformed entries
+        // are skipped, same tolerance as every other config read.
+        let pinned_local: HashMap<String, u64> = settings_cache
+            .pins
+            .iter()
+            .filter_map(|p| {
+                let (conv, msg) = p.split_once(':')?;
+                Some((conv.to_string(), msg.trim().parse().ok()?))
+            })
+            .collect();
         let muted: HashSet<String> = settings_cache.muted.iter().cloned().collect();
         let theme = theme::load(&settings.config_dir());
         // Preselect the picker on the configured preset, else the shared
@@ -855,7 +875,9 @@ impl App {
             pinned_msg_id: None,
             pin_present: false,
             pin_sender: None,
-            pinned_local: HashMap::new(),
+            pinned_local,
+            pin_bodies: HashMap::new(),
+            pin_fetch_attempted: std::collections::HashSet::new(),
             conv_headline: None,
             msg_index: HashMap::new(),
             msg_cache_epoch: 0,
@@ -1343,6 +1365,37 @@ impl App {
         // derive from — refresh the cached rows so the badge updates now.
         self.rebuild_tree_rows();
         now_on
+    }
+
+    /// Records (or clears, `None`) the local pin target for a conversation
+    /// and **persists** the map to config — mirrors [`Self::toggle_favorite`].
+    /// Purely local bookkeeping; the pin itself was already posted to Keybase.
+    pub fn set_local_pin(&mut self, conv_id: String, target: Option<u64>) {
+        match target {
+            Some(id) => {
+                self.pinned_local.insert(conv_id.clone(), id);
+            }
+            None => {
+                self.pinned_local.remove(&conv_id);
+            }
+        }
+        // The cached body (and its one-shot fetch marker) belong to the old
+        // target — drop them so a re-pin resolves fresh.
+        self.pin_bodies.remove(&conv_id);
+        self.pin_fetch_attempted.retain(|(c, _)| c != &conv_id);
+        let mut pairs: Vec<String> = self
+            .pinned_local
+            .iter()
+            .map(|(c, m)| format!("{c}:{m}"))
+            .collect();
+        pairs.sort();
+        self.settings_cache.pins = pairs.clone();
+        if !self
+            .settings
+            .write_setting("pins", &toml_quoted(&pairs.join(",")))
+        {
+            self.push_cmd("settings write", false, "pins not saved");
+        }
     }
 
     /// **Effective** unread for display: the conversation is unread **and** not
