@@ -63,13 +63,14 @@ pub fn giphy_search_input(frame: &mut Frame, app: &App) {
 
 pub fn react_input(frame: &mut Frame, app: &App) {
     let t = &app.theme;
+    let n = app.filtered_emoji_indices().len();
     let title = if app.react_to_compose {
-        "Insert emoji".to_string()
+        format!("Insert emoji · {n}")
     } else {
         app.selected_msg_idx
             .and_then(|i| app.messages.get(i))
-            .map(|m| format!("React to #{} · by {}", m.id, m.sender))
-            .unwrap_or_else(|| "React".to_string())
+            .map(|m| format!("React to #{} · by {} · {n}", m.id, m.sender))
+            .unwrap_or_else(|| format!("React · {n}"))
     };
 
     let filtered = app.filtered_emoji_indices();
@@ -180,7 +181,7 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
         frame,
         t,
         PickerModal {
-            title: "Go to a conversation".to_string(),
+            title: format!("Go to a conversation · {}", app.switcher_selectable().len()),
             query: Some((&app.switcher, "type to search…")),
             selected: app.switcher_selected,
             rows,

@@ -60,7 +60,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
         frame,
         t,
         PickerModal {
-            title: "Search conversation".to_string(),
+            title: format!(
+                "Search conversation · {} hits",
+                app.conv_search_results.len()
+            ),
             query: Some((&app.conv_search, "search this chat…")),
             selected: app
                 .conv_search_selected
