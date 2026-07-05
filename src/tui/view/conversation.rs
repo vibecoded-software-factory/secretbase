@@ -752,6 +752,9 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // `n msgs` = messages currently loaded (paginated; older ones load on
         // scroll-up). The word reports where the viewport sits — no raw line
         // offset, which mixed units (lines vs messages) and read as confusing.
+        // Scrollbar on the panel's right border — the textual cue below
+        // says *where*, this says *how much*.
+        crate::tui::view::widgets::draw_scrollbar(frame, &t, area, total_lines, viewport, scroll_y);
         let n = app.messages.len();
         let counter = if app.messages_loading_older {
             format!("{n} msgs · loading older…")

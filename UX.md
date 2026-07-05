@@ -1011,6 +1011,11 @@ chat side is `Min(20/24)` and flexes, spanning the **full height** (no reserved
 header row) — the chat's adaptive header section appears only when there's a
 pin or topic, otherwise the message history takes the rows.
 
+**Scroll position cues:** every overflowing scrollable region draws a dim
+vertical scrollbar on its right border (`widgets::draw_scrollbar` — one
+implementation: `list_table` surfaces, the picker modal's list, the message
+history). It appears only on overflow; short lists stay clean.
+
 **Text that fits-or-degrades (never a fixed char cap that the terminal clips):**
 - **Footer hint** — `widgets::fit_segments` keeps only whole ` · ` segments that
   fit, appends ` …`, never cuts a keybinding in half; `F1 help · F10 settings`
