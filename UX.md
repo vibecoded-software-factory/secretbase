@@ -656,11 +656,13 @@ Popups are centered and **always drawn over their base screen** by
 under react/delete/download).
 
 - **Confirmations** (`ConfirmLogout`, `ConfirmDeleteMessage`,
-  `ConfirmConvAction`) render through `widgets::draw_confirm_popup`
-  (centered, the shared rounded chrome on the modal band) — its
-  `[ confirm ]` / `[ cancel ]` buttons are
-  `widgets::button` spans, matching the Login form's buttons: `←/→` (or
-  `Tab`/`h`/`l`) move between **confirm/cancel**, `Enter` activates the
+  `ConfirmConvAction`) render through `widgets::draw_confirm_popup`, which
+  is now literally **the picker-modal skeleton** (`draw_picker_modal`):
+  same band, same full height, same title treatment; the body lines are
+  non-selectable content rows and the bottom action row is
+  `inline_confirm_line` — the *exact* confirm the channel browser / members
+  footers show, so there is **one confirm look in the whole app**. `←/→`
+  (or `Tab`/`h`/`l`) move between **confirm/cancel**, `Enter` activates the
   highlighted one, `y`/`n`/`Esc` are shortcuts. **Default highlight = cancel** for the destructive action
   (`logout_yes` / `delete_msg_yes` / `conv_action_yes` default `false`).
   Classified by `input::common::confirm_key`/`ConfirmInput`.

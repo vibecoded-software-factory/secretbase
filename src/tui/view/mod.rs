@@ -81,7 +81,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::Settings => settings::draw_popup(frame, app),
         Screen::ConfirmLogout => widgets::draw_confirm_popup(
             frame,
-            frame.area(),
             &app.theme,
             " Log out of Keybase? ",
             vec![Line::from(Span::styled(
@@ -107,7 +106,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             };
             widgets::draw_confirm_popup(
                 frame,
-                frame.area(),
                 &app.theme,
                 &title,
                 vec![Line::from(Span::styled(
@@ -131,7 +129,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                     .unwrap_or_else(|| "(conversation)".to_string());
                 widgets::draw_confirm_popup(
                     frame,
-                    frame.area(),
                     &app.theme,
                     action.title(),
                     vec![
