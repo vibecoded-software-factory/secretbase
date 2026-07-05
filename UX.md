@@ -144,7 +144,7 @@ status strip at the bottom.
   as chord aliases) — `y` copies author + time + body
   and `c` copies bodies only (`chat::do_copy_messages(full)`), separated by a
   blank line / newline; with a selection active the action bar collapses to
-  the reduced copy / react set. **`Shift+X` delete and `+` react operate on the
+  the reduced copy / react set. **`x` delete and `+` react operate on the
   whole marked set** (or the cursor if nothing's marked). Because the worker is serial,
   a multi-message action runs as a **sequential batch** (`App::pending_batch` /
   `chat::PendingBatch`) — one request at a time, advanced by each response —
@@ -304,7 +304,7 @@ on their own:
   catalogue), collapsed under the message.
 - **Select mode** (`Alt+V`) shows a contextual **action bar** under the
   highlighted message listing what you can do with it and the key for each
-  (`+ react`, `r reply`, `e edit`/`Shift+X delete` on your own messages,
+  (`+ react`, `r reply`, `e edit`/`x delete` on your own messages,
   `p pin`, `s download` on attachments, `o open link`/`l copy link` when the
   message contains a URL) — visual feedback that accompanies the direct keybindings, it doesn't
   replace them. `o` opens the first `http(s)` link
@@ -619,7 +619,7 @@ under react/delete/download).
   joined one (`leave`), `n` enters an inline **create** mode (a channel-name
   input → `newconv` on a team channel, reusing the `NewConversation` request
   routed by an `InFlight::CreateChannel` slot), `r` an inline **rename** mode
-  (pre-filled → `rename-channel`), `Shift+X` an inline **delete** confirm
+  (pre-filled → `rename-channel`), `x` an inline **delete** confirm
   (destructive + irreversible — the same navigable confirm mechanics as the
   overlays: `widgets::button` pair, default = cancel, `←/→`/Tab/Enter/`y`/`n`,
   error-red → `delete-channel`), `t` toggles the
@@ -638,7 +638,7 @@ under react/delete/download).
   `ChatMembersDetails` role buckets flattened to `domain::ChatMember`, sorted
   higher-privilege-role first then by name, with the role label dimmed). `a`
   enters an inline **add** mode (comma/space-separated usernames, validated →
-  `addtochannel`), `Shift+X` an inline **remove** confirm (navigable, default =
+  `addtochannel`), `x` an inline **remove** confirm (navigable, default =
   cancel → `removefromchannel`),
   `F5` reloads, `Esc` returns to wherever it was opened from (`members_return`).
   Add/remove reload the list on success. DMs/non-team convs are refused (fixed
@@ -690,11 +690,14 @@ weight of the action before you press it. Every screen follows the same tiers:
   favorite, `t` teams, `c` channels). In a popup list the same tier holds its
   own vocabulary (`a` add, `r` rename, `m` members, …). This is the lazygit /
   aerc / mutt model: the list is "command mode", letters act on the cursor row.
-- **`Shift+letter` = the loud / destructive / irreversible tier**: `Shift+I`
-  ignore, `Shift+B` block, `Shift+R` report, `Shift+H` unhide, `Shift+L`
-  logout (inbox); `Shift+X` delete/remove and `Shift+L` leave (select mode,
-  channel browser, members). One rule everywhere: **if it removes, hides, or
-  can't be undone in-app, it's `Shift`** (and still guarded by a confirm).
+- **`Shift+letter` = the loud / destructive tier for *status* changes**:
+  `Shift+I` ignore, `Shift+B` block, `Shift+R` report, `Shift+H` unhide,
+  `Shift+L` logout (inbox) / leave (channel browser). **Deleting/removing a
+  concrete list item is bare `x`** (select-mode delete, channel delete,
+  member remove — `X` still works as an alias): those always pass through the
+  navigable confirm (default = cancel), which is the real guard — the
+  lazygit model, where `d`-delete is bare *because* it confirms. The Shift
+  tier is for loud one-keystroke ops that change a conversation's status.
 - **`Ctrl` = global** — works from any focus, never confused with typed text:
   `Ctrl+C` quit (the **only** quit), `Ctrl+F` in-chat find, `Ctrl+G` global
   search, `Ctrl+K` quick switcher, `Ctrl+P` command palette (both from the

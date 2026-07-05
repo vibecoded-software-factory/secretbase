@@ -266,7 +266,7 @@ fn palette_commands(app: &App) -> Vec<Command> {
         v.push(cmd(
             DeleteMessage,
             "Delete message(s)",
-            "Shift+X",
+            "x",
             "remove own",
             "Message",
         ));

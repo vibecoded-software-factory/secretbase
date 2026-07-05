@@ -310,7 +310,7 @@ knowable for pins set by this session) · `getdeviceinfo` ·
   <team> <channel>`** — CLI subcommands (no API method), so one-shot spawns.
   `delete-channel` is **non-interactive** (verified: resolves non-interactively +
   `DeleteConversationLocal`, no prompt) but destructive → secretbase confirms
-  inline first. Both are driven from the channel browser (`r` / `d`).
+  inline first. Both are driven from the channel browser (`r` / `x`).
 - **`keybase chat default-channels <team> [--channel C]…`** — CLI subcommand
   (no API method), plain-text output (not JSON). No `--channel` = **get**;
   repeated `--channel` = **replace** the default set, then print it. The default

@@ -1082,10 +1082,10 @@ mod tests {
     #[test]
     fn legend_line_keeps_whole_segments_and_ellipsizes() {
         let t = Theme::default();
-        let items = [("Enter", "open"), ("n", "new"), ("Shift+X", "delete")];
+        let items = [("Enter", "open"), ("n", "new"), ("x", "delete")];
         // Plenty of room: everything present, keys + labels + separators.
         let full = line_text(&legend_line(&items, 80, &t));
-        assert_eq!(full, "Enter open · n new · Shift+X delete");
+        assert_eq!(full, "Enter open · n new · x delete");
         // Tight: whole segments only, then an ellipsis — never a clipped key.
         let tight = line_text(&legend_line(&items, 20, &t));
         assert_eq!(tight, "Enter open · n new …");

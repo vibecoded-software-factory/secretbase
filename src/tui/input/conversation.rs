@@ -6,7 +6,7 @@
 //!   vertical arrows scroll messages; Enter sends.
 //! * **Select** — entered via `Alt+V` or via a message-action
 //!   shortcut. A cursor highlights one message; `e`/`p`/`r`/`+`
-//!   edit / pin / reply / react and `Shift+X` deletes; arrows move
+//!   edit / pin / reply / react / delete (`x`, confirm-gated); arrows move
 //!   the cursor; `i` / Enter / Esc return to Compose mode.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -232,9 +232,10 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         // the one place the app overloaded its own universal `l` = open/right).
         KeyCode::Char('u') => chat::do_copy_url(app),
         KeyCode::Char('+') => chat::open_react_for_selected(app), // react (emoji)
-        // Destructive: Shift+X deletes ALL marked (or the cursor) — the
-        // gradient's danger tier, matching Shift-remove in channels/members.
-        KeyCode::Char('X') => chat::open_delete_for_selected(app),
+        // Delete ALL marked (or the cursor) — bare `x` like every other
+        // select-mode verb; the navigable confirm (default = cancel) is the
+        // guard. `X` stays as a muscle-memory alias.
+        KeyCode::Char('x') | KeyCode::Char('X') => chat::open_delete_for_selected(app),
         // Single-message actions (operate on the cursor message).
         KeyCode::Char('e') => chat::open_edit_for_selected(app),
         KeyCode::Char('p') => chat::request_pin_selected_message(app),
