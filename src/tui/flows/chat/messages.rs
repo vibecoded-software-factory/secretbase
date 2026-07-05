@@ -1330,8 +1330,14 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
         Ok(()) => {
             app.set_action(ActionState::Done(format!("Pinned msg #{message_id}")));
             app.push_cmd("keybase chat api pin", true, format!("msg #{message_id}"));
+            // Remember the target locally: the JSON API strips the pin
+            // payload from reads, so this session-local record is the only
+            // way the 📌 header can point at the *specific* message.
+            if let Some(conv) = app.open_conv_id.clone() {
+                app.pinned_local.insert(conv, message_id);
+            }
             // Stay in Select mode (coherent with delete/react) and reload so
-            // `rebuild_pinned` refreshes the 📌 indicator from the new history.
+            // `rebuild_msg_meta` refreshes the 📌 indicator from the new history.
             app.msg_marks.clear();
             app.select_anchor = None;
             app.preserve_msg_scroll = true;
@@ -1360,6 +1366,9 @@ pub fn handle_unpin_response(app: &mut App, result: Result<(), KeybaseError>) {
         Ok(()) => {
             app.set_action(ActionState::Done("Pin cleared".into()));
             app.push_cmd("keybase chat api unpin", true, "ok");
+            if let Some(conv) = app.open_conv_id.clone() {
+                app.pinned_local.remove(&conv);
+            }
             // Reload so the 📌 banner clears from fresh history.
             request_reload_messages(app);
         }

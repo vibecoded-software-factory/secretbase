@@ -1767,6 +1767,55 @@ fn search_hits_are_retained_and_cycled_with_n() {
 }
 
 #[test]
+fn pin_without_payload_shows_presence_and_uses_local_target() {
+    // The JSON API strips the pin payload (convertMsgBody omits Pin__), so
+    // a real read returns {"type":"pin"} → target_id 0. Presence must still
+    // surface, and the target falls back to what *we* pinned this session.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let mut pin_msg = text_msg(158, "alice", "");
+    pin_msg.content = MessageContent::Pin { target_id: 0 };
+    rig.app.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
+    rig.app.rebuild_msg_meta();
+    // Presence + sender known; target unknown (nothing pinned locally).
+    assert!(rig.app.pin_present);
+    assert_eq!(rig.app.pin_sender.as_deref(), Some("alice"));
+    assert_eq!(rig.app.pinned_msg_id, None);
+    // Once this session pinned #157 itself, the target resolves.
+    rig.app.pinned_local.insert("c1".into(), 157);
+    rig.app.rebuild_msg_meta();
+    assert_eq!(rig.app.pinned_msg_id, Some(157));
+    // No pin message at all → no presence (unpin DELETEs the pin message,
+    // so fold_deletes removes it from a fresh read).
+    rig.app.messages = vec![text_msg(157, "alice", "pin me")];
+    rig.app.rebuild_msg_meta();
+    assert!(!rig.app.pin_present);
+    assert_eq!(rig.app.pinned_msg_id, None);
+}
+
+#[test]
+fn pin_response_records_local_target_and_unpin_forgets_it() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    handle_pin_response(&mut rig.app, Ok(()), 157);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.pinned_local.get("c1").copied(), Some(157));
+    handle_unpin_response(&mut rig.app, Ok(()));
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.pinned_local.get("c1"), None);
+}
+
+#[test]
 fn mention_badge_set_by_push_and_cleared_on_open() {
     let mut rig = build_rig();
     preload_inbox(

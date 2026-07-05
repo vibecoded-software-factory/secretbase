@@ -338,6 +338,18 @@ pub struct App {
     /// the conversation has no pin (or the pin event is older than
     /// the loaded history).
     pub pinned_msg_id: Option<u64>,
+    /// Whether the loaded history contains an (undeleted) `pin` message —
+    /// i.e. the conversation **has** an active pin. The JSON API strips the
+    /// pin payload (`convertMsgBody` omits `Pin__`), so presence is often
+    /// all we can know; see [`Self::pinned_msg_id`] for the target.
+    pub pin_present: bool,
+    /// Sender of the newest pin message — the adaptive header's fallback
+    /// text when the pinned *target* isn't known.
+    pub pin_sender: Option<String>,
+    /// Pin targets **we** set this session, per conversation — the only
+    /// way to know *which* message is pinned, since the API doesn't carry
+    /// the pin payload. Session-local by nature.
+    pub pinned_local: HashMap<String, u64>,
     /// Latest channel topic/headline in the loaded history — the chat's
     /// adaptive header line, cached by [`Self::rebuild_msg_meta`] so the
     /// render doesn't rescan the history per frame. Zeroized on drop
@@ -834,6 +846,9 @@ impl App {
             messages_max_back: 0,
             new_since_scroll: 0,
             pinned_msg_id: None,
+            pin_present: false,
+            pin_sender: None,
+            pinned_local: HashMap::new(),
             conv_headline: None,
             msg_index: HashMap::new(),
             msg_cache_epoch: 0,
@@ -1722,16 +1737,26 @@ impl App {
             }
             _ => None,
         });
-        // The first `Pin` event walking newest → oldest is
-        // authoritative. A `target_id == 0` event (which Keybase uses
-        // for "pin cleared") wins over older "pin set" events.
+        // The newest (undeleted) `Pin` message is authoritative — an unpin
+        // is a DELETE superseding it, so `fold_deletes` already removed
+        // cleared pins from the history. The JSON API does **not** carry
+        // the pin payload (`convertMsgBody` omits `Pin__`), so `target_id`
+        // is 0 in practice: presence + sender are what the read gives us,
+        // and the target falls back to what *we* pinned this session.
         self.pinned_msg_id = None;
+        self.pin_present = false;
+        self.pin_sender = None;
         for m in self.messages.iter().rev() {
             if let MessageContent::Pin { target_id } = &m.content {
-                self.pinned_msg_id = if *target_id == 0 {
-                    None
+                self.pin_present = true;
+                self.pin_sender = Some(m.sender.clone());
+                self.pinned_msg_id = if *target_id != 0 {
+                    Some(*target_id) // future-proof: use it if the API ever carries it
                 } else {
-                    Some(*target_id)
+                    self.open_conv_id
+                        .as_ref()
+                        .and_then(|id| self.pinned_local.get(id))
+                        .copied()
                 };
                 return;
             }

@@ -28,7 +28,7 @@ use crate::tui::view::widgets::{editor_lines, trim_end_ellipsis};
 /// no chrome is reserved for nothing (the name lives on the Messages panel
 /// title either way).
 fn has_adaptive_header(app: &App) -> bool {
-    app.pinned_msg_id.is_some() || app.conv_headline.is_some()
+    app.pin_present || app.conv_headline.is_some()
 }
 
 /// The adaptive header line: a **pin** (`📌 sender · "content" · Alt+U unpin`)
@@ -37,9 +37,13 @@ fn has_adaptive_header(app: &App) -> bool {
 fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let w = area.width as usize;
-    let spans: Vec<Span<'static>> = if let Some(pid) = app.pinned_msg_id {
+    let spans: Vec<Span<'static>> = if app.pin_present {
         let mut s = vec![Span::styled(" 📌 ", Style::default().fg(t.conv_unread))];
-        match app.msg_index.get(&pid).and_then(|&i| app.messages.get(i)) {
+        match app
+            .pinned_msg_id
+            .and_then(|pid| app.msg_index.get(&pid).copied())
+            .and_then(|i| app.messages.get(i))
+        {
             Some(m) => {
                 let body = match &m.content {
                     MessageContent::Text(b) => b.clone(),
@@ -68,8 +72,17 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
                     Style::default().fg(t.foreground),
                 ));
             }
-            // Pinned message is older than the loaded window — just its id.
-            None => s.push(Span::styled(format!("#{pid}"), Style::default().fg(t.dim))),
+            // Target unknown (the JSON API strips the pin payload) or older
+            // than the loaded window — say who pinned, honestly.
+            None => {
+                let who = app.pin_sender.clone().unwrap_or_default();
+                let label = match app.pinned_msg_id {
+                    Some(pid) => format!("#{pid}"),
+                    None if !who.is_empty() => format!("{who} pinned a message"),
+                    None => "a message is pinned".to_string(),
+                };
+                s.push(Span::styled(label, Style::default().fg(t.dim)));
+            }
         }
         s.push(Span::styled("  ·  ", Style::default().fg(t.muted)));
         s.push(Span::styled(
@@ -1418,7 +1431,14 @@ fn body_lines(
         MessageContent::Headline { headline } => {
             placeholder(&format!("channel headline: {headline}"), t)
         }
-        MessageContent::Pin { target_id } => placeholder(&format!("pinned msg #{target_id}"), t),
+        MessageContent::Pin { target_id } => {
+            if *target_id == 0 {
+                // The JSON API strips the pin payload — don't render "#0".
+                placeholder("pinned a message", t)
+            } else {
+                placeholder(&format!("pinned msg #{target_id}"), t)
+            }
+        }
         MessageContent::Join { joiner } => placeholder(&format!("{joiner} joined the channel"), t),
         MessageContent::Leave { leaver } => placeholder(&format!("{leaver} left the channel"), t),
         MessageContent::SendPayment { text } => stellar_lines("payment", text, t),
