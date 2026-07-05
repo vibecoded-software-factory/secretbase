@@ -942,7 +942,11 @@ to prove it's secondary.
 **Presets.** Themes are built from a `Palette` (13 named roles) via
 `Theme::from_palette`, which maps the core roles and derives the starfield +
 conversation-marker colors. Four presets ship (`Preset::ALL`:
-`catppuccin-mocha`, `dracula`, `nord` (default — `Preset::DEFAULT`),
+17 bundled presets — the full Catppuccin family (`-mocha`/`-frappe`/
+`-macchiato`/`-latte`), `dracula`, `nord` (default — `Preset::DEFAULT`),
+`tokyonight` (+ `-storm`), `gruvbox-dark`, `rose-pine` (+ `-dawn`),
+`everforest`, `kanagawa`, `one-dark`, `solarized-dark`/`-light`,
+`monokai-pro` —
 `catppuccin-latte`); `name = "<preset>"` in `[theme]` picks the base and per-key
 hex entries override it. The Settings picker applies live. Adding a preset = one
 `Palette` arm in `Preset::palette`.
