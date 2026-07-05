@@ -169,6 +169,7 @@ impl SettingsPort for TomlSettingsAdapter {
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
             icon_style: "unicode".to_string(),
+            smart_joins: true,
             web_previews: true,
             giphy_api_key: String::new(),
             favorites: Vec::new(),
@@ -237,6 +238,9 @@ impl SettingsPort for TomlSettingsAdapter {
                 }
                 "web_previews" => {
                     cfg.web_previews = value != "false";
+                }
+                "smart_joins" => {
+                    cfg.smart_joins = value != "false";
                 }
                 "giphy_api_key" => {
                     cfg.giphy_api_key = value.to_string();
@@ -378,6 +382,7 @@ impl UpdateBuffer {
         "emoji_style",
         "icon_style",
         "web_previews",
+        "smart_joins",
         "giphy_api_key",
         "favorites",
         "muted",

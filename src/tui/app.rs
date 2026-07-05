@@ -1338,6 +1338,7 @@ impl App {
             SettingId::DeviceType => or_dash(&self.identity.device_type),
             SettingId::AutoMarkRead => if s.auto_mark_read { "on" } else { "off" }.to_string(),
             SettingId::WebPreviews => if s.web_previews { "on" } else { "off" }.to_string(),
+            SettingId::SmartJoins => if s.smart_joins { "on" } else { "off" }.to_string(),
             // Never render the key itself — presence only.
             SettingId::GiphyApiKey => {
                 if s.giphy_api_key.is_empty() {
@@ -1382,6 +1383,11 @@ impl App {
                 let v = !self.settings_cache.web_previews;
                 self.settings_cache.web_previews = v;
                 ("web_previews", if v { "true" } else { "false" }.to_string())
+            }
+            SettingId::SmartJoins => {
+                let v = !self.settings_cache.smart_joins;
+                self.settings_cache.smart_joins = v;
+                ("smart_joins", if v { "true" } else { "false" }.to_string())
             }
             // Secrets aren't stepped — adjust opens the input editor.
             SettingId::GiphyApiKey => {

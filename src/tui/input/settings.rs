@@ -80,6 +80,11 @@ fn handle_panel(app: &mut App, key: KeyEvent) {
 fn adjust(app: &mut App, rows: &[SettingId], delta: isize) {
     if let Some(&id) = rows.get(app.settings_item) {
         app.settings_adjust(id, delta);
+        // The join/leave filter is applied at projection time — reload the
+        // open conversation so the toggle is visible immediately.
+        if id == SettingId::SmartJoins && app.open_conv_id.is_some() {
+            crate::tui::flows::chat::request_reload_messages(app);
+        }
     }
 }
 

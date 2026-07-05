@@ -263,6 +263,9 @@ clipboard_clear_secs = 30          # clipboard auto-clear (0 disables)
 list_inbox_timeout_secs = 30       # wall-clock budget for `keybase chat api list`
 download_timeout_secs = 300        # wall-clock budget for attachment downloads
 auto_mark_read = true              # mark conversations as read when opened
+smart_joins = true                 # hide join/leave notices except from people
+                                    # who spoke in the loaded history (weechat's
+                                    # smart filter; false shows them all)
 inbox_refresh_secs = 180           # safety-net inbox resync cadence (0 disables;
                                     # real-time updates come from api-listen)
 image_protocol = "auto"            # inline image attachments: auto | kitty | sixel

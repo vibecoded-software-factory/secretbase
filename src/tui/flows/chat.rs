@@ -31,7 +31,7 @@ pub const MESSAGES_PER_PAGE: u32 = 50;
 /// * **applies deletes** — drops the `delete` events and removes the deleted
 ///   originals, so a deleted message disappears rather than leaving a stray
 ///   `(deleted msg #N)` line at deletion time ([`crate::domain::fold_deletes`]).
-fn project_messages(msgs: Vec<Message>) -> Vec<Message> {
+fn project_messages(msgs: Vec<Message>, smart_joins: bool) -> Vec<Message> {
     use crate::domain::MessageContent;
     let mut out: Vec<Message> = msgs
         .into_iter()
@@ -44,6 +44,29 @@ fn project_messages(msgs: Vec<Message>) -> Vec<Message> {
         .collect();
     crate::domain::fold_edits(&mut out);
     crate::domain::fold_deletes(&mut out);
+    // weechat's smart filter: hide join/leave chatter except from people
+    // who actually spoke in the loaded window — membership noise drowns
+    // conversation in busy team channels. Hidden, not deleted: toggling
+    // the setting reprojects them back on the next load.
+    if smart_joins {
+        let speakers: std::collections::HashSet<String> = out
+            .iter()
+            .filter(|m| {
+                matches!(
+                    m.content,
+                    MessageContent::Text(_)
+                        | MessageContent::Edit { .. }
+                        | MessageContent::Attachment(_)
+                )
+            })
+            .map(|m| m.sender.to_ascii_lowercase())
+            .collect();
+        out.retain(|m| match &m.content {
+            MessageContent::Join { joiner } => speakers.contains(&joiner.to_ascii_lowercase()),
+            MessageContent::Leave { leaver } => speakers.contains(&leaver.to_ascii_lowercase()),
+            _ => true,
+        });
+    }
     out
 }
 
