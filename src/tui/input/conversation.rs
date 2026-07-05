@@ -154,6 +154,8 @@ fn handle_select(app: &mut App, key: KeyEvent) {
                 chat::close_conversation(app);
             }
         }
+        // `:` = the command line (the palette), vim-style.
+        KeyCode::Char(':') => crate::tui::flows::palette::open_command_palette(app),
         // vim buffer search: `/` in Select opens the in-conversation search;
         // `n` / `N` cycle the retained hits (wrapping) without reopening it.
         KeyCode::Char('/') => chat::open_conv_search(app),
@@ -167,6 +169,24 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),
         KeyCode::Down | KeyCode::Char('j') => chat::select_move_down(app),
+        // vim half-page over the message cursor (PgUp/PgDn aliases).
+        KeyCode::Char('u') | KeyCode::Char('U')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            if let Some(i) = app.selected_msg_idx {
+                app.selected_msg_idx = Some(i.saturating_sub(crate::tui::app::PAGE_STEP));
+                chat::select_resync_anchor_marks(app);
+            }
+        }
+        KeyCode::Char('d') | KeyCode::Char('D')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            let max = app.messages.len().saturating_sub(1);
+            if let Some(i) = app.selected_msg_idx {
+                app.selected_msg_idx = Some((i + crate::tui::app::PAGE_STEP).min(max));
+                chat::select_resync_anchor_marks(app);
+            }
+        }
         // `v` anchors a visual range; every motion then extends it (vim).
         KeyCode::Char('v') => chat::select_toggle_anchor(app),
         // `{` / `}` — previous / next speaker run (paragraph motion).

@@ -32,7 +32,12 @@ pub fn clamp_move(current: usize, delta: isize, len: usize) -> usize {
 /// [`PAGE_STEP`]: crate::tui::app::PAGE_STEP
 pub fn list_nav(key: &KeyEvent, len: usize, sel: usize, set: impl FnOnce(usize)) -> bool {
     let page = crate::tui::app::PAGE_STEP as isize;
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let new = match key.code {
+        // vim half-page aliases — laptops without easy PgUp/PgDn keys.
+        // Lists don't type, so Ctrl+U can't collide with kill-to-start here.
+        KeyCode::Char('u') | KeyCode::Char('U') if ctrl => clamp_move(sel, -page, len),
+        KeyCode::Char('d') | KeyCode::Char('D') if ctrl => clamp_move(sel, page, len),
         KeyCode::Up | KeyCode::Char('k') => clamp_move(sel, -1, len),
         KeyCode::Down | KeyCode::Char('j') => clamp_move(sel, 1, len),
         KeyCode::PageUp => clamp_move(sel, -page, len),
@@ -51,7 +56,12 @@ pub fn list_nav(key: &KeyEvent, len: usize, sel: usize, set: impl FnOnce(usize))
 /// query, and `Home`/`End` are the text cursor. Same contract as [`list_nav`].
 pub fn list_nav_arrows(key: &KeyEvent, len: usize, sel: usize, set: impl FnOnce(usize)) -> bool {
     let page = crate::tui::app::PAGE_STEP as isize;
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let new = match key.code {
+        // fzf's home-row motion for query-driven pickers: the bare letters
+        // belong to the query, but Ctrl+J/K are free in every popup.
+        KeyCode::Char('k') | KeyCode::Char('K') if ctrl => clamp_move(sel, -1, len),
+        KeyCode::Char('j') | KeyCode::Char('J') if ctrl => clamp_move(sel, 1, len),
         KeyCode::Up => clamp_move(sel, -1, len),
         KeyCode::Down => clamp_move(sel, 1, len),
         KeyCode::PageUp => clamp_move(sel, -page, len),

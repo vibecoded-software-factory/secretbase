@@ -222,6 +222,18 @@ fn handle_cmdlog(app: &mut App, key: KeyEvent) {
         // `v` anchors a visual range; j/k then extend it (vim), same as the
         // chat's Select mode.
         KeyCode::Char('v') => app.cmdlog_toggle_anchor(),
+        // `:` = the command line (the palette), vim-style.
+        KeyCode::Char(':') => crate::tui::flows::palette::open_command_palette(app),
+        KeyCode::Char('u') | KeyCode::Char('U')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            app.cmdlog_move(-5)
+        }
+        KeyCode::Char('d') | KeyCode::Char('D')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            app.cmdlog_move(5)
+        }
         KeyCode::Up | KeyCode::Char('k') => app.cmdlog_move(-1),
         KeyCode::Down | KeyCode::Char('j') => app.cmdlog_move(1),
         KeyCode::PageUp => app.cmdlog_move(-5),
@@ -248,12 +260,21 @@ fn handle_cmdlog(app: &mut App, key: KeyEvent) {
 
 fn handle_tree(app: &mut App, key: KeyEvent) {
     use crate::tui::app::ConvAction;
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
-        // ── navigation (bare letters + arrows) ────────────────────────────
+        // `:` = the command line (the palette), vim-style.
+        KeyCode::Char(':') => crate::tui::flows::palette::open_command_palette(app),
+        // ── navigation (bare letters + arrows; Ctrl+D/U half-page) ────────
+        KeyCode::Char('u') | KeyCode::Char('U') if ctrl => {
+            chat::tree_move(app, -(crate::tui::app::PAGE_STEP as isize))
+        }
+        KeyCode::Char('d') | KeyCode::Char('D') if ctrl => {
+            chat::tree_move(app, crate::tui::app::PAGE_STEP as isize)
+        }
         KeyCode::Up | KeyCode::Char('k') => chat::tree_move(app, -1),
         KeyCode::Down | KeyCode::Char('j') => chat::tree_move(app, 1),
-        KeyCode::PageUp => chat::tree_move(app, -10),
-        KeyCode::PageDown => chat::tree_move(app, 10),
+        KeyCode::PageUp => chat::tree_move(app, -(crate::tui::app::PAGE_STEP as isize)),
+        KeyCode::PageDown => chat::tree_move(app, crate::tui::app::PAGE_STEP as isize),
         KeyCode::Home | KeyCode::Char('g') => app.tree_selected = 0,
         KeyCode::End | KeyCode::Char('G') => chat::tree_move(app, isize::MAX),
         // Enter toggles a group / opens a conversation; →/l only open or

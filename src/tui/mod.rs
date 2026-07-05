@@ -92,17 +92,41 @@ pub fn run(
 
         execute!(std::io::stdout(), EnableMouseCapture)?;
 
+        // Kitty keyboard protocol (where the terminal supports it): makes
+        // the modifier chords this app leans on — Alt+Shift ranges,
+        // Alt+Enter, Shift+arrows — reliably distinguishable, which classic
+        // termios delivery often mangles over SSH. Push only the
+        // disambiguation flag (no release/repeat reporting — the input loop
+        // is Press-only anyway); unsupported terminals are detected and
+        // skipped, so behaviour degrades to exactly today's.
+        let kitty_keys = matches!(
+            crossterm::terminal::supports_keyboard_enhancement(),
+            Ok(true)
+        );
+        if kitty_keys {
+            let _ = execute!(
+                std::io::stdout(),
+                event::PushKeyboardEnhancementFlags(
+                    event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                )
+            );
+        }
+
         // Belt-and-suspenders terminal restore on a panic. `ratatui::run`
         // already installed a hook that leaves the alternate screen + raw mode,
-        // but it doesn't know we enabled mouse capture — so chain a hook that
-        // disables that first (while still on the alt screen), then defers to
-        // the previous hook. The normal and `?`-error exits restore it below;
-        // this only covers an unwinding panic, which otherwise leaves the
-        // terminal spewing mouse escape sequences. (A hard SIGSEGV can't be
-        // intercepted here under `#![forbid(unsafe_code)]`; the answer to that
-        // is to not crash — run `reset` if one ever slips through.)
+        // but it doesn't know we enabled mouse capture (or pushed keyboard
+        // flags) — so chain a hook that undoes those first (while still on
+        // the alt screen), then defers to the previous hook. The normal and
+        // `?`-error exits restore below; this only covers an unwinding panic,
+        // which otherwise leaves the terminal spewing mouse escape sequences.
+        // (A hard SIGSEGV can't be intercepted here under
+        // `#![forbid(unsafe_code)]`; the answer to that is to not crash —
+        // run `reset` if one ever slips through.)
         let prev_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
+            if kitty_keys {
+                let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
+            }
             let _ = execute!(std::io::stdout(), DisableMouseCapture);
             prev_hook(info);
         }));
@@ -113,6 +137,9 @@ pub fn run(
         flows::auth::request_status(&mut app);
 
         let result = run_loop(terminal, &mut app);
+        if kitty_keys {
+            let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
+        }
         let _ = execute!(std::io::stdout(), DisableMouseCapture);
         drain_pending_events();
         // Drop order: app first (closes its `worker_tx`), then
@@ -317,7 +344,15 @@ fn run_native_login(terminal: &mut ratatui::DefaultTerminal, username: &str) {
         EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     };
 
-    // Suspend the TUI: hand the real terminal to keybase.
+    // Suspend the TUI: hand the real terminal to keybase. Pop the keyboard
+    // enhancement flags too — keybase's own prompts expect classic delivery.
+    let kitty_keys = matches!(
+        crossterm::terminal::supports_keyboard_enhancement(),
+        Ok(true)
+    );
+    if kitty_keys {
+        let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
+    }
     let _ = execute!(std::io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
     let _ = disable_raw_mode();
 
@@ -335,9 +370,18 @@ fn run_native_login(terminal: &mut ratatui::DefaultTerminal, username: &str) {
     let _ = cmd.status(); // inherits stdio; the user interacts directly
     println!("\n  Returning to secretbase…");
 
-    // Restore the TUI.
+    // Restore the TUI (re-pushing the keyboard flags — the alternate
+    // screen's flag stack isn't guaranteed to survive the round-trip).
     let _ = enable_raw_mode();
     let _ = execute!(std::io::stdout(), EnterAlternateScreen, EnableMouseCapture);
+    if kitty_keys {
+        let _ = execute!(
+            std::io::stdout(),
+            event::PushKeyboardEnhancementFlags(
+                event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            )
+        );
+    }
     let _ = terminal.clear();
 }
 
