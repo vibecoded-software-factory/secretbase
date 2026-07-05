@@ -1717,10 +1717,24 @@ impl App {
     /// [`Self::messages`] (load, live append, clear), so the render path
     /// never rescans the whole history per frame for them.
     pub fn rebuild_msg_meta(&mut self) {
-        use crate::domain::MessageContent;
-        // Any history mutation invalidates the per-message render cache
+        // Any history *replacement* invalidates the per-message render cache
         // (an edit re-read keeps ids but changes their bodies).
         self.invalidate_msg_render_cache();
+        self.rebuild_msg_meta_impl();
+    }
+
+    /// [`Self::rebuild_msg_meta`] for **prepend-only** mutations (older-page
+    /// loads): the retained ids' content is unchanged and the per-entry
+    /// grouped/pinned fingerprints cover the page-boundary message, so the
+    /// render cache stays valid. Invalidating here made every wheel-driven
+    /// page rebuild the *whole* loaded history — quadratic over a scrollback
+    /// session, felt as a scroll freeze.
+    pub fn rebuild_msg_meta_after_prepend(&mut self) {
+        self.rebuild_msg_meta_impl();
+    }
+
+    fn rebuild_msg_meta_impl(&mut self) {
+        use crate::domain::MessageContent;
         // O(1) id → index lookups (reply quotes, the pin header). Projected
         // histories have unique ids; a duplicate would keep the later row,
         // matching what the reader sees.

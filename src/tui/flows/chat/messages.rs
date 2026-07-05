@@ -493,7 +493,7 @@ pub fn request_load_older_messages(app: &mut App) {
         return;
     };
     let peek = !app.settings_cache.auto_mark_read;
-    app.submit(
+    if !app.submit(
         InFlight::LoadOlderMessages,
         "Loading older messages…",
         WorkerRequest::ReadMessages {
@@ -502,7 +502,11 @@ pub fn request_load_older_messages(app: &mut App) {
             peek,
             next_cursor: Some(cursor),
         },
-    );
+    ) {
+        // Refused (another request in flight): clear the in-progress flag or
+        // the wheel's auto-pagination stays dead for the whole session.
+        app.messages_loading_older = false;
+    }
 }
 
 pub fn handle_load_older_messages_response(
@@ -523,7 +527,7 @@ pub fn handle_load_older_messages_response(
             app.messages = older;
             app.messages_next = next;
             app.messages_loading_older = false;
-            app.rebuild_msg_meta();
+            app.rebuild_msg_meta_after_prepend();
             app.set_action(ActionState::Done(format!("Loaded {n} older messages")));
             app.push_cmd(
                 "keybase chat api read (older)",
