@@ -90,6 +90,10 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
         MouseEventKind::Down(_) => {
             // Compose-bar chips: emoji picker (insert mode) and the attach
             // file picker — the compose's clickable buttons.
+            if hit_test(c, r, app.mouse_areas.compose_gif) {
+                chat::open_giphy_search(app);
+                return;
+            }
             if hit_test(c, r, app.mouse_areas.compose_emoji) {
                 chat::open_emoji_for_compose(app);
                 return;

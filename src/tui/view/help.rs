@@ -91,6 +91,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("mouse", "click a message to select, scroll to page history"),
             ("Alt+V", "select mode — act on a message"),
             ("Alt+I", "insert an emoji into the draft (picker)"),
+            (
+                "Alt+G",
+                "GIF search (giphy — needs your API key in Settings)",
+            ),
             ("Alt+U", "unpin channel"),
             (
                 "Alt+H",

@@ -62,6 +62,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::SearchGlobal
         | Screen::ConfirmDeleteMessage
         | Screen::ConvSearch
+        | Screen::GiphySearch
         | Screen::React => Screen::Inbox,
         // The quick switcher / command palette float over wherever opened.
         Screen::QuickSwitcher => app.switcher_from,
@@ -158,6 +159,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::QuickSwitcher => popups::quick_switcher(frame, app),
         Screen::CommandPalette => palette::draw(frame, app),
         Screen::ConvSearch => conv_search::draw(frame, app),
+        Screen::GiphySearch => popups::giphy_search_input(frame, app),
         _ => {}
     }
 

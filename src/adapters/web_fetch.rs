@@ -90,9 +90,128 @@ pub fn fetch_giphy_media(url: &str, output: &str) -> Result<(), KeybaseError> {
     }
 }
 
+/// Percent-encodes a search query for a URL query component.
+fn encode_query(q: &str) -> String {
+    let mut out = String::with_capacity(q.len());
+    for b in q.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Searches giphy with the **user's own API key** (`giphy_api_key` setting;
+/// Keybase's server-vended key isn't reachable over the JSON API). Returns
+/// the hits' titles + clean `.gif` rendition URLs. The key never appears in
+/// errors or logs.
+pub fn giphy_search(
+    api_key: &str,
+    query: &str,
+) -> Result<Vec<crate::domain::GiphyHit>, KeybaseError> {
+    let endpoint = format!(
+        "https://api.giphy.com/v1/gifs/search?api_key={}&q={}&limit=25",
+        encode_query(api_key),
+        encode_query(query)
+    );
+    let run = Command::new("curl")
+        .args([
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--proto",
+            "=https",
+            "--max-time",
+            "20",
+            "--max-filesize",
+            "2097152",
+            "--",
+            &endpoint,
+        ])
+        .output();
+    match run {
+        Ok(out) if out.status.success() => {
+            let body = String::from_utf8_lossy(&out.stdout);
+            Ok(parse_giphy_search(&body))
+        }
+        // Redact: curl's stderr echoes the URL (which carries the key).
+        Ok(out) => Err(KeybaseError::Internal(format!(
+            "giphy search failed (curl exited {}; wrong key or no network?)",
+            out.status
+        ))),
+        Err(e) => Err(KeybaseError::Internal(format!("curl not runnable: {e}"))),
+    }
+}
+
+/// Parses a giphy `/v1/gifs/search` response body into hits — tolerant:
+/// malformed entries are skipped, never the whole list. URLs are stripped
+/// of their `?cid=…` tracking params so what gets posted is the stable
+/// media path (which the inline renderer also produces for incoming links).
+fn parse_giphy_search(body: &str) -> Vec<crate::domain::GiphyHit> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    let Some(data) = v.get("data").and_then(serde_json::Value::as_array) else {
+        return Vec::new();
+    };
+    data.iter()
+        .filter_map(|d| {
+            let url = d
+                .pointer("/images/original/url")
+                .and_then(serde_json::Value::as_str)?;
+            let clean = url.split(['?', '#']).next()?.to_string();
+            if !clean.ends_with(".gif") {
+                return None;
+            }
+            let title = d
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            Some(crate::domain::GiphyHit {
+                title: if title.is_empty() {
+                    "(untitled)".to_string()
+                } else {
+                    title
+                },
+                url: clean,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn giphy_search_parse_is_tolerant_and_cleans_urls() {
+        let body = r#"{"data":[
+            {"title":"Cat GIF","images":{"original":{"url":"https://media0.giphy.com/media/abc/giphy.gif?cid=xyz&rid=1"}}},
+            {"title":"","images":{"original":{"url":"https://media1.giphy.com/media/def/giphy.gif"}}},
+            {"title":"broken","images":{}},
+            {"title":"not-gif","images":{"original":{"url":"https://media1.giphy.com/media/x/giphy.mp4"}}}
+        ]}"#;
+        let hits = parse_giphy_search(body);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].title, "Cat GIF");
+        assert_eq!(hits[0].url, "https://media0.giphy.com/media/abc/giphy.gif");
+        assert_eq!(hits[1].title, "(untitled)");
+        // Garbage in, empty out — never a panic.
+        assert!(parse_giphy_search("not json").is_empty());
+        assert!(parse_giphy_search("{}").is_empty());
+    }
+
+    #[test]
+    fn query_encoding_is_conservative() {
+        assert_eq!(encode_query("hola tarola"), "hola+tarola");
+        assert_eq!(encode_query("a&b=c"), "a%26b%3Dc");
+    }
 
     #[test]
     fn allowlist_matches_domain_rule() {

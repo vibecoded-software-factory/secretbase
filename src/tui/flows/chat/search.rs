@@ -203,3 +203,104 @@ pub fn conv_search_jump_selected(app: &mut App) {
     app.pending_search_jump = Some(target);
     try_jump_to_search_target(app);
 }
+
+// ── GIF search (giphy, user API key) ─────────────────────────────────
+
+/// Opens the GIF-search popup (the compose bar's `GIF` chip / `Alt+G`).
+/// Needs an open conversation and a configured `giphy_api_key` — without a
+/// key the toast points at Settings instead of opening a dead popup.
+pub fn open_giphy_search(app: &mut App) {
+    if app.open_conv_id.is_none() {
+        return;
+    }
+    if app.settings_cache.giphy_api_key.trim().is_empty() {
+        app.set_action(ActionState::Error(
+            "GIF search needs a Giphy API key — Settings → Images (free at developers.giphy.com)"
+                .into(),
+        ));
+        return;
+    }
+    app.giphy_input.clear();
+    app.giphy_results.clear();
+    app.giphy_selected = 0;
+    app.screen = crate::tui::screens::Screen::GiphySearch;
+}
+
+pub fn close_giphy_search(app: &mut App) {
+    app.giphy_input.clear();
+    app.giphy_results.clear();
+    app.giphy_selected = 0;
+    app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+/// Runs the search for the typed query (Enter with no results yet, or F5).
+pub fn request_giphy_search(app: &mut App) {
+    let query = app.giphy_input.text().trim().to_string();
+    if query.is_empty() {
+        app.set_action(ActionState::Error("Type something to search".into()));
+        return;
+    }
+    let api_key = zeroize::Zeroizing::new(app.settings_cache.giphy_api_key.trim().to_string());
+    app.submit(
+        crate::tui::worker::InFlight::GiphySearch,
+        "Searching giphy…",
+        WorkerRequest::GiphySearch { api_key, query },
+    );
+}
+
+pub fn handle_giphy_search_response(
+    app: &mut App,
+    result: Result<Vec<crate::domain::GiphyHit>, KeybaseError>,
+) {
+    match result {
+        Ok(hits) => {
+            app.set_action(ActionState::Done(format!("{} GIFs", hits.len())));
+            // The key never reaches the log — only the outcome.
+            app.push_cmd("giphy search", true, format!("{} hits", hits.len()));
+            app.giphy_selected = 0;
+            app.giphy_results = hits;
+        }
+        Err(e) => {
+            app.set_action(ActionState::Error(e.to_string()));
+            app.push_cmd("giphy search", false, e.to_string());
+        }
+    }
+}
+
+/// Enter on a hit: sends its media URL to the open conversation as a text
+/// message — the GUI unfurls it, this TUI renders it inline. Goes through
+/// the same optimistic outbox as a normal send, but **never touches the
+/// compose draft** (typed text is sacred).
+pub fn giphy_send_selected(app: &mut App) {
+    let Some(hit) = app.giphy_results.get(app.giphy_selected).cloned() else {
+        return;
+    };
+    let Some((conv_id, channel)) = super::open_channel(app) else {
+        return;
+    };
+    if !app.begin(crate::tui::worker::InFlight::SendMessage {
+        body_len: hit.url.len(),
+        was_reply: false,
+    }) {
+        return;
+    }
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    app.outbox.push(crate::tui::app::PendingSend {
+        conv_id,
+        body: hit.url.clone(),
+        reply_to: None,
+        sent_at_ms: now_ms,
+        state: crate::tui::app::SendState::Pending,
+    });
+    app.messages_scroll = 0;
+    close_giphy_search(app);
+    app.set_action(ActionState::Running("Sending GIF…".into()));
+    let _ = app.worker_tx.send(WorkerRequest::SendMessage {
+        channel,
+        body: hit.url,
+        reply_to: None,
+    });
+}

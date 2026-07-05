@@ -170,6 +170,7 @@ impl SettingsPort for TomlSettingsAdapter {
             emoji_style: "glyph".to_string(),
             icon_style: "unicode".to_string(),
             web_previews: true,
+            giphy_api_key: String::new(),
             favorites: Vec::new(),
             muted: Vec::new(),
             pins: Vec::new(),
@@ -236,6 +237,9 @@ impl SettingsPort for TomlSettingsAdapter {
                 }
                 "web_previews" => {
                     cfg.web_previews = value != "false";
+                }
+                "giphy_api_key" => {
+                    cfg.giphy_api_key = value.to_string();
                 }
                 "cmdlog_rows" => {
                     if let Ok(n) = value.parse::<u64>() {
@@ -374,6 +378,7 @@ impl UpdateBuffer {
         "emoji_style",
         "icon_style",
         "web_previews",
+        "giphy_api_key",
         "favorites",
         "muted",
         "pins",

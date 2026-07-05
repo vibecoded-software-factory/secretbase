@@ -210,6 +210,34 @@ pub fn react(app: &mut App, key: KeyEvent) {
 
 // ── In-conversation search modal (Ctrl+F → searchregexp) ──────────────
 
+/// GIF-search popup: type a query → Enter searches; with results, ↑↓ pick
+/// and Enter sends the selected GIF; editing the query invalidates results
+/// (next Enter re-searches) — the same contract as the conversation search.
+pub fn giphy_search(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => chat::close_giphy_search(app),
+        KeyCode::Enter => {
+            if app.giphy_results.is_empty() {
+                chat::request_giphy_search(app);
+            } else {
+                chat::giphy_send_selected(app);
+            }
+        }
+        KeyCode::F(5) => chat::request_giphy_search(app),
+        _ if common::list_nav_arrows(&key, app.giphy_results.len(), app.giphy_selected, |i| {
+            app.giphy_selected = i
+        }) => {}
+        _ => {
+            let before = app.giphy_input.text().to_string();
+            common::route_line_editor(&mut app.giphy_input, key);
+            if app.giphy_input.text() != before {
+                app.giphy_results.clear();
+                app.giphy_selected = 0;
+            }
+        }
+    }
+}
+
 pub fn conv_search(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => chat::close_conv_search(app),

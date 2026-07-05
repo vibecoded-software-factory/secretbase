@@ -22,6 +22,15 @@ pub fn extract_urls(text: &str) -> Vec<String> {
     urls
 }
 
+/// One hit from the TUI's giphy search (`adapters::web_fetch::giphy_search`)
+/// — the picker shows `title`, sending posts `url` (a clean
+/// `media.giphy.com/...&/giphy.gif` rendition, no tracking params).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GiphyHit {
+    pub title: String,
+    pub url: String,
+}
+
 /// Finds a **giphy media** URL in a message body and returns its `.gif`
 /// rendition, or `None`. Giphy serves the same media path under several
 /// renditions (`giphy.mp4`, `giphy.gif`, `giphy.webp`); the GUI posts the

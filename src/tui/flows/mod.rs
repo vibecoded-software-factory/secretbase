@@ -167,6 +167,9 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
         (InFlight::ConvSearch, WorkerResponse::SearchRegexp(r)) => {
             chat::handle_conv_search_response(app, r);
         }
+        (InFlight::GiphySearch, WorkerResponse::GiphySearch(r)) => {
+            chat::handle_giphy_search_response(app, r);
+        }
         // ── Send / edit / delete / react ──────────────────────────
         (
             InFlight::SendMessage {

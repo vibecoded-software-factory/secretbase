@@ -71,7 +71,7 @@ impl SettingsSection {
             SettingsSection::Emoji => &[EmojiStyle, IconStyle],
             SettingsSection::Clipboard => &[ClipboardClear],
             SettingsSection::Network => &[ListTimeout, DownloadTimeout],
-            SettingsSection::Images => &[ImageProtocol, ImageSymbols, WebPreviews],
+            SettingsSection::Images => &[ImageProtocol, ImageSymbols, WebPreviews, GiphyApiKey],
         }
     }
 }
@@ -93,6 +93,7 @@ pub enum SettingId {
     ImageProtocol,
     ImageSymbols,
     WebPreviews,
+    GiphyApiKey,
     EmojiStyle,
     IconStyle,
 }
@@ -125,6 +126,9 @@ pub enum SettingKind {
     Number { step: u64, min: u64, max: u64 },
     /// Cycle through a fixed option list.
     Choice(&'static [&'static str]),
+    /// Free-text secret (API key): rendered masked, edited via an input
+    /// popup (`Enter` opens, `Enter` saves, `Esc` cancels).
+    Secret,
 }
 
 impl SettingId {
@@ -143,6 +147,7 @@ impl SettingId {
             SettingId::ImageProtocol => "Image protocol",
             SettingId::ImageSymbols => "Symbol set",
             SettingId::WebPreviews => "Web media (giphy)",
+            SettingId::GiphyApiKey => "Giphy API key",
             SettingId::EmojiStyle => "Display",
             SettingId::IconStyle => "Icons",
         }
@@ -153,6 +158,7 @@ impl SettingId {
         match self {
             SettingId::Username | SettingId::Device | SettingId::DeviceType => SettingKind::Info,
             SettingId::AutoMarkRead | SettingId::WebPreviews => SettingKind::Toggle,
+            SettingId::GiphyApiKey => SettingKind::Secret,
             SettingId::CmdlogRows => SettingKind::Number {
                 step: 1,
                 min: 0,
@@ -192,6 +198,7 @@ impl SettingId {
             SettingKind::Toggle => "←/→ or Enter to toggle",
             SettingKind::Number { .. } => "←/→ to adjust",
             SettingKind::Choice(_) => "←/→ to choose",
+            SettingKind::Secret => "Enter to edit (stored in config.toml, never logged)",
         }
     }
 }

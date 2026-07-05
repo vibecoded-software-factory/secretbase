@@ -360,6 +360,17 @@ pub struct App {
     /// `(conv, msg_id)` pin-body fetches already issued — one attempt per
     /// target, so a failing `get` can't loop on every reload.
     pub pin_fetch_attempted: std::collections::HashSet<(String, u64)>,
+    /// Secret setting being edited in the input popup (`SettingKind::
+    /// Secret`), if any — with [`Self::settings_input`] as its editor.
+    pub settings_editing: Option<SettingId>,
+    /// Editor for the secret-setting popup. `ZeroizeOnDrop` like every
+    /// other input — it holds an API key while open.
+    pub settings_input: crate::domain::LineEditor,
+    /// GIF-search popup state: the query editor, the fetched hits and the
+    /// picker cursor. Reset when the popup closes.
+    pub giphy_input: crate::domain::LineEditor,
+    pub giphy_results: Vec<crate::domain::GiphyHit>,
+    pub giphy_selected: usize,
     /// `cache path → source URL` for **web media** previews (giphy GIFs
     /// linked in messages). Filled by the view when it reserves image rows;
     /// `ensure_visible_images` routes these to the web fetcher instead of a
@@ -903,6 +914,11 @@ impl App {
             pinned_local,
             pin_bodies: HashMap::new(),
             pin_fetch_attempted: std::collections::HashSet::new(),
+            giphy_input: crate::domain::LineEditor::default(),
+            giphy_results: Vec::new(),
+            giphy_selected: 0,
+            settings_editing: None,
+            settings_input: crate::domain::LineEditor::default(),
             web_image_urls: HashMap::new(),
             react_to_compose: false,
             pin_envelope_id: None,
@@ -1223,6 +1239,14 @@ impl App {
             SettingId::DeviceType => or_dash(&self.identity.device_type),
             SettingId::AutoMarkRead => if s.auto_mark_read { "on" } else { "off" }.to_string(),
             SettingId::WebPreviews => if s.web_previews { "on" } else { "off" }.to_string(),
+            // Never render the key itself — presence only.
+            SettingId::GiphyApiKey => {
+                if s.giphy_api_key.is_empty() {
+                    "not set".to_string()
+                } else {
+                    "set ••••".to_string()
+                }
+            }
             SettingId::InboxRefresh => secs_off(s.inbox_refresh_secs),
             SettingId::CmdlogRows => {
                 if s.cmdlog_rows == 0 {
@@ -1259,6 +1283,13 @@ impl App {
                 let v = !self.settings_cache.web_previews;
                 self.settings_cache.web_previews = v;
                 ("web_previews", if v { "true" } else { "false" }.to_string())
+            }
+            // Secrets aren't stepped — adjust opens the input editor.
+            SettingId::GiphyApiKey => {
+                self.settings_editing = Some(id);
+                self.settings_input =
+                    crate::domain::LineEditor::from_text(self.settings_cache.giphy_api_key.clone());
+                return;
             }
             SettingId::InboxRefresh => {
                 let n = step_clamp(self.settings_cache.inbox_refresh_secs, delta, 30, 0, 3600);
@@ -1433,6 +1464,30 @@ impl App {
         }
     }
 
+    /// Saves the secret-setting editor (`Enter` in its popup): writes the
+    /// value to the cache + config and closes the editor. The value never
+    /// reaches the command log.
+    pub fn settings_secret_save(&mut self) {
+        let Some(id) = self.settings_editing.take() else {
+            return;
+        };
+        let value = self.settings_input.text().trim().to_string();
+        #[allow(clippy::single_match_else)]
+        let key = match id {
+            SettingId::GiphyApiKey => {
+                self.settings_cache.giphy_api_key = value.clone();
+                "giphy_api_key"
+            }
+            _ => return,
+        };
+        self.settings_input = crate::domain::LineEditor::default();
+        if !self.settings.write_setting(key, &toml_quoted(&value)) {
+            self.set_action(ActionState::Error(
+                "setting applied but not saved (config not writable)".into(),
+            ));
+        }
+    }
+
     /// Records a locally-dismissed pin banner (conv → the pin *envelope* id)
     /// and **persists** it — the GUI-parity ✕ (`IgnorePinnedMessage` is local
     /// there too, so there is nothing to sync). One entry per conversation:
@@ -1467,6 +1522,7 @@ impl App {
             | Screen::UnhideConversation
             | Screen::SearchGlobal
             | Screen::ConvSearch
+            | Screen::GiphySearch
             | Screen::React
             | Screen::QuickSwitcher => UiMode::Search,
             // Modal browsers: Search while an inline text mode is open, else Normal.
@@ -1670,6 +1726,7 @@ impl App {
                     | Screen::QuickSwitcher
                     | Screen::CommandPalette
                     | Screen::ConvSearch
+                    | Screen::GiphySearch
             )
     }
 

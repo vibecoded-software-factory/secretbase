@@ -116,6 +116,13 @@ pub enum WorkerRequest {
         query: String,
         max_hits: u32,
     },
+    /// GIF search against giphy with the **user's own API key** (no
+    /// keybase call — the service's giphy proxy key isn't reachable over
+    /// the JSON API). The key rides in the request and is dropped with it.
+    GiphySearch {
+        api_key: zeroize::Zeroizing<String>,
+        query: String,
+    },
     SearchRegexp {
         channel: ReadChannel,
         query: String,
@@ -264,6 +271,7 @@ pub enum WorkerResponse {
     ReadMessages(Result<(Vec<Message>, Option<String>), KeybaseError>),
     MarkRead(Result<(), KeybaseError>),
     SearchInboxHits(Result<Vec<InboxHit>, KeybaseError>),
+    GiphySearch(Result<Vec<crate::domain::GiphyHit>, KeybaseError>),
     SearchRegexp(Result<Vec<InboxHit>, KeybaseError>),
     SendMessage(Result<(), KeybaseError>),
     EditMessage(Result<(), KeybaseError>),
@@ -324,6 +332,7 @@ pub enum InFlight {
     },
     SearchInboxRemote,
     ConvSearch,
+    GiphySearch,
     SendMessage {
         body_len: usize,
         was_reply: bool,
@@ -727,6 +736,7 @@ mod tests {
                 Self::ReadMessages(_) => f.write_str("ReadMessages(..)"),
                 Self::MarkRead(r) => write!(f, "MarkRead({r:?})"),
                 Self::SearchInboxHits(_) => f.write_str("SearchInboxHits(..)"),
+                Self::GiphySearch(_) => f.write_str("GiphySearch(..)"),
                 Self::SearchRegexp(_) => f.write_str("SearchRegexp(..)"),
                 Self::SendMessage(r) => write!(f, "SendMessage({r:?})"),
                 Self::EditMessage(r) => write!(f, "EditMessage({r:?})"),
@@ -801,6 +811,11 @@ fn run_worker(
             WorkerRequest::SearchInboxHits { query, max_hits } => {
                 WorkerResponse::SearchInboxHits(run_caught(|| {
                     keybase.search_inbox_hits(&query, max_hits)
+                }))
+            }
+            WorkerRequest::GiphySearch { api_key, query } => {
+                WorkerResponse::GiphySearch(run_caught(|| {
+                    crate::adapters::web_fetch::giphy_search(&api_key, &query)
                 }))
             }
             WorkerRequest::SearchRegexp {

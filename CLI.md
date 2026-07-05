@@ -351,8 +351,11 @@ knowable for pins set by this session) · `getdeviceinfo` ·
   the service intercepts them (`AttemptBuiltinCommand`) and the interactive
   ones need the GUI's preview UI — verified live: `send {"body":"/giphy"}`
   returns `{"message":"message sent","id":0}` and **nothing posts**. The
-  GUI's GIF flow can't be reproduced over the JSON API; send a GIF as an
-  `attach` upload instead.
+  GUI's GIF flow can't be reproduced over the JSON API; secretbase's own
+  GIF search (`Alt+G`) instead hits `api.giphy.com` directly with a
+  **user-provided** key (`giphy_api_key` — Keybase's key is server-vended
+  and unreachable) and posts the chosen media URL via `send` — clients
+  unfurl it. A GIF file can also go as an `attach` upload.
 - `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
   read), `unread_only`.
 - `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented

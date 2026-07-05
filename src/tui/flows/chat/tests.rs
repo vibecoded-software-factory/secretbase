@@ -1997,6 +1997,45 @@ fn select_activate_jumps_to_reply_parent_or_exits() {
 }
 
 #[test]
+fn giphy_search_gates_on_key_and_send_preserves_draft() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    // Without a key: no popup, a toast pointing at Settings.
+    open_giphy_search(&mut rig.app);
+    assert!(!matches!(rig.app.screen, Screen::GiphySearch));
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+    // With a key: opens; a response fills the picker.
+    rig.app.settings_cache.giphy_api_key = "k".into();
+    open_giphy_search(&mut rig.app);
+    assert!(matches!(rig.app.screen, Screen::GiphySearch));
+    handle_giphy_search_response(
+        &mut rig.app,
+        Ok(vec![crate::domain::GiphyHit {
+            title: "Cat".into(),
+            url: "https://media0.giphy.com/media/abc/giphy.gif".into(),
+        }]),
+    );
+    assert_eq!(rig.app.giphy_results.len(), 1);
+    // Enter sends the media URL — through the normal outbox, without
+    // touching the user's draft.
+    rig.app.compose.insert_str("mi borrador");
+    giphy_send_selected(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.compose.text(), "mi borrador");
+    assert!(!matches!(rig.app.screen, Screen::GiphySearch));
+    let sent = rig.mock.st().sent.clone();
+    assert!(
+        sent.iter()
+            .any(|(_, body, _)| body == "https://media0.giphy.com/media/abc/giphy.gif")
+    );
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

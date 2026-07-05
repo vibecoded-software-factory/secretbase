@@ -13,6 +13,20 @@ use crate::tui::app::{SettingId, SettingsFocus, SettingsSection};
 use crate::tui::theme;
 
 pub fn handle(app: &mut App, key: KeyEvent) {
+    // A secret's input popup owns the keys while open.
+    if app.settings_editing.is_some() {
+        match key.code {
+            KeyCode::Esc => {
+                app.settings_editing = None;
+                app.settings_input = crate::domain::LineEditor::default();
+            }
+            KeyCode::Enter => app.settings_secret_save(),
+            _ => {
+                crate::tui::input::common::route_line_editor(&mut app.settings_input, key);
+            }
+        }
+        return;
+    }
     match app.settings_focus {
         SettingsFocus::Sidebar => handle_sidebar(app, key),
         SettingsFocus::Panel => handle_panel(app, key),
