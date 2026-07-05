@@ -707,7 +707,7 @@ fn load_messages_reverses_to_chronological_and_pins_to_bottom() {
     assert_eq!(rig.app.messages.len(), 3);
     assert_eq!(rig.app.messages[0].id, 1);
     assert_eq!(rig.app.messages[2].id, 3);
-    assert_eq!(rig.app.messages_scroll, 0);
+    assert_eq!(rig.app.pagination.scroll, 0);
 }
 
 #[test]
@@ -723,7 +723,7 @@ fn load_messages_remembers_next_cursor() {
     );
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.messages_next.as_deref(), Some("WX=="));
+    assert_eq!(rig.app.pagination.next.as_deref(), Some("WX=="));
 }
 
 #[test]
@@ -737,12 +737,12 @@ fn control_op_reread_keeps_scroll_position() {
         "c1",
     );
     // Reader has scrolled up; a delete/edit/react re-read sets the flag.
-    rig.app.messages_scroll = 7;
-    rig.app.preserve_msg_scroll = true;
+    rig.app.pagination.scroll = 7;
+    rig.app.pagination.preserve_scroll = true;
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.messages_scroll, 7, "scroll preserved");
-    assert!(!rig.app.preserve_msg_scroll, "flag consumed");
+    assert_eq!(rig.app.pagination.scroll, 7, "scroll preserved");
+    assert!(!rig.app.pagination.preserve_scroll, "flag consumed");
 }
 
 #[test]
@@ -755,11 +755,11 @@ fn fresh_read_snaps_to_latest() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages_scroll = 7;
+    rig.app.pagination.scroll = 7;
     // No preserve flag → a plain read snaps to the bottom.
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.messages_scroll, 0);
+    assert_eq!(rig.app.pagination.scroll, 0);
 }
 
 #[test]
@@ -783,7 +783,7 @@ fn load_older_messages_prepends_in_chronological_order() {
         "c1",
     );
     rig.app.messages = vec![text_msg(4, "me", "fourth"), text_msg(5, "me", "fifth")];
-    rig.app.messages_next = Some("CURSOR-A".into());
+    rig.app.pagination.next = Some("CURSOR-A".into());
 
     rig.mock.st().messages = vec![
         text_msg(3, "me", "third"),
@@ -797,8 +797,8 @@ fn load_older_messages_prepends_in_chronological_order() {
 
     let ids: Vec<u64> = rig.app.messages.iter().map(|m| m.id).collect();
     assert_eq!(ids, vec![1, 2, 3, 4, 5], "got {ids:?}");
-    assert_eq!(rig.app.messages_next.as_deref(), Some("CURSOR-B"));
-    assert!(!rig.app.messages_loading_older);
+    assert_eq!(rig.app.pagination.next.as_deref(), Some("CURSOR-B"));
+    assert!(!rig.app.pagination.loading_older);
     // The adapter must have been called with the original cursor.
     assert_eq!(
         rig.mock.st().read_calls.last().cloned(),
@@ -816,7 +816,7 @@ fn load_older_messages_no_op_when_cursor_is_none() {
         "c1",
     );
     rig.app.messages = vec![text_msg(1, "me", "x")];
-    rig.app.messages_next = None;
+    rig.app.pagination.next = None;
     request_load_older_messages(&mut rig.app);
     // No worker request queued — pump must not block.
     assert!(rig.app.in_flight.is_none());
@@ -1133,7 +1133,7 @@ fn marks_survive_a_reprojecting_reload_by_id() {
     // every index shifted down by one (mock stores newest-first; the read
     // handler reverses).
     rig.mock.st().messages = vec![text_msg(3, "me", "keep-b"), text_msg(2, "me", "keep-a")];
-    rig.app.preserve_msg_scroll = true;
+    rig.app.pagination.preserve_scroll = true;
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // Marks still denote the same messages (ids, not the shifted indices)…
@@ -1144,7 +1144,7 @@ fn marks_survive_a_reprojecting_reload_by_id() {
 
     // A mark whose message vanished is pruned on the next reload.
     rig.mock.st().messages = vec![text_msg(2, "me", "keep-a")];
-    rig.app.preserve_msg_scroll = true;
+    rig.app.pagination.preserve_scroll = true;
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let want: std::collections::HashSet<u64> = [2u64].into_iter().collect();
@@ -1800,7 +1800,7 @@ fn select_cursor_at_top_paginates_and_stays_on_its_message() {
     );
     rig.app.messages = vec![text_msg(100, "alice", "top"), text_msg(101, "alice", "hi")];
     rig.app.rebuild_msg_meta();
-    rig.app.messages_next = Some("cursor".into());
+    rig.app.pagination.next = Some("cursor".into());
     rig.app.select.cursor = Some(0);
     rig.app.select.anchor = Some(1);
     // The older page the server will return — newest-first, as `read` does.
@@ -1811,7 +1811,7 @@ fn select_cursor_at_top_paginates_and_stays_on_its_message() {
     rig.mock.st().messages_next = None;
     // `k` at the top of the loaded window pulls an older page…
     select_move_up(&mut rig.app);
-    assert!(rig.app.messages_loading_older);
+    assert!(rig.app.pagination.loading_older);
     pump_until_idle(&mut rig.app);
     // …and the cursor + anchor (indices) shifted with the prepend, so they
     // still point at the same messages.
@@ -1843,11 +1843,11 @@ fn select_move_up_at_top_without_cursor_does_nothing() {
     );
     rig.app.messages = vec![text_msg(100, "alice", "top")];
     rig.app.rebuild_msg_meta();
-    rig.app.messages_next = None; // beginning of history reached
+    rig.app.pagination.next = None; // beginning of history reached
     rig.app.select.cursor = Some(0);
     select_move_up(&mut rig.app);
     // No cursor movement, no request — the true beginning is just the edge.
-    assert!(!rig.app.messages_loading_older);
+    assert!(!rig.app.pagination.loading_older);
     assert_eq!(rig.app.select.cursor, Some(0));
 }
 
@@ -2169,7 +2169,7 @@ fn attention_motions_jump_to_divider_and_mentions() {
     ];
     rig.app.rebuild_msg_meta();
     // Boundary at #10 → Alt+N lands on the first newer message (#11).
-    rig.app.unread_boundary = Some(10);
+    rig.app.pagination.unread_boundary = Some(10);
     jump_to_new_messages(&mut rig.app);
     assert_eq!(
         rig.app.select.cursor.map(|i| rig.app.messages[i].id),
@@ -2239,11 +2239,11 @@ fn up_on_empty_compose_edits_last_own_message() {
     cancel_edit(&mut rig.app);
     rig.app.compose.clear();
     rig.app.compose.insert_str("borrador");
-    rig.app.messages_max_back = 5; // as if the render measured scrollback
+    rig.app.pagination.max_back = 5; // as if the render measured scrollback
     press(&mut rig.app, KeyCode::Up, KeyModifiers::NONE);
     assert_eq!(rig.app.edit_target_id, None);
     assert_eq!(rig.app.compose.text(), "borrador");
-    assert_eq!(rig.app.messages_scroll, 1);
+    assert_eq!(rig.app.pagination.scroll, 1);
 }
 
 #[test]
@@ -2391,7 +2391,7 @@ fn projection_collapse_triggers_bounded_backfill() {
     // 1 first page + BACKFILL_MAX_PAGES chained older pages, then it stops
     // (budget exhausted) — bounded, no infinite loop.
     assert_eq!(rig.mock.st().read_calls.len(), 1 + 8);
-    assert!(!rig.app.messages_loading_older);
+    assert!(!rig.app.pagination.loading_older);
     // Everything folded away — the empty-history UI is honest here.
     assert!(rig.app.messages.is_empty());
 }

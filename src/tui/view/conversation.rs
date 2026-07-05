@@ -481,7 +481,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             Paragraph::new(lines).block(titled_block(&title, app.focus == Focus::Chat, app)),
             area,
         );
-        app.messages_max_back = 0;
+        app.pagination.max_back = 0;
         return;
     }
 
@@ -502,7 +502,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         let mut off = 0usize;
 
         if !app.messages.is_empty() {
-            let head = if app.messages_next.is_some() {
+            let head = if app.pagination.next.is_some() {
                 "  ↑ press Up to load older messages"
             } else {
                 "  · beginning of conversation"
@@ -548,7 +548,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // `spans_map` / image range and stay non-selectable.
         let mut prev: Option<(&str, u64, bool)> = None;
         let mut prev_day_ts: Option<u64> = None;
-        let unread_boundary = app.unread_boundary;
+        let unread_boundary = app.pagination.unread_boundary;
         let mut marker_done = false;
         for (idx, m) in app.messages.iter().enumerate() {
             let m_is_system = is_system_content(&m.content);
@@ -697,12 +697,12 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         let total_lines = off;
         let viewport = area.height.saturating_sub(2).max(1) as usize;
         let max_back = total_lines.saturating_sub(viewport);
-        let effective_back = app.messages_scroll.min(max_back);
+        let effective_back = app.pagination.scroll.min(max_back);
         // Persist the clamped offset: a stale-high `messages_scroll` (e.g. after a
         // re-read shrinks the loaded list — a reaction/edit control event replaces
         // 60 messages with the 27-message first page) would otherwise leave the
         // mouse/keyboard scrolling in a dead zone above the real maximum.
-        app.messages_scroll = effective_back;
+        app.pagination.scroll = effective_back;
         let mut scroll_y = max_back.saturating_sub(effective_back);
 
         // In Select mode, keep the highlighted message inside the viewport —
@@ -726,7 +726,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             }
             // Persist the follow — otherwise `messages_scroll` and the view
             // drift apart in Select mode and leaving it jumps the viewport.
-            app.messages_scroll = max_back.saturating_sub(scroll_y);
+            app.pagination.scroll = max_back.saturating_sub(scroll_y);
         }
 
         // Inline images. Symbols are already rendered in-buffer (pushed as lines by
@@ -781,7 +781,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // says *where*, this says *how much*.
         crate::tui::view::widgets::draw_scrollbar(frame, &t, area, total_lines, viewport, scroll_y);
         let n = app.messages.len();
-        let counter = if app.messages_loading_older {
+        let counter = if app.pagination.loading_older {
             format!("{n} msgs · loading older…")
         } else if max_back == 0 {
             // Everything fits — no scrollback.
@@ -792,7 +792,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         } else if effective_back == max_back {
             // Top of what's loaded: more history on the server, or the very
             // start of the conversation.
-            if app.messages_next.is_some() {
+            if app.pagination.next.is_some() {
                 format!("{n} msgs · ↑ more above")
             } else {
                 format!("{n} msgs · oldest")
@@ -856,9 +856,9 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // while the reader is scrolled up, a `▼ N new` cue (accent) is appended
         // there — in the border, never overlaying the message rows.
         let mut counter_spans = vec![Span::styled(counter, Style::default().fg(dim))];
-        if effective_back > 0 && app.new_since_scroll > 0 {
+        if effective_back > 0 && app.pagination.new_since > 0 {
             counter_spans.push(Span::styled(
-                format!(" · ▼ {} new · End", app.new_since_scroll),
+                format!(" · ▼ {} new · End", app.pagination.new_since),
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ));
         }
@@ -866,10 +866,10 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             .title_bottom(Line::from(counter_spans).right_aligned());
         frame.render_widget(Paragraph::new(visible).block(block), area);
 
-        app.messages_max_back = max_back;
+        app.pagination.max_back = max_back;
         // Back at the latest → clear the new-arrival counter.
         if effective_back == 0 {
-            app.new_since_scroll = 0;
+            app.pagination.new_since = 0;
         }
 
         // Mouse hit-testing: the viewport (for scroll) + a screen rect per

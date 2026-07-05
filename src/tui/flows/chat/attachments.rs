@@ -342,7 +342,7 @@ pub fn handle_upload_response(app: &mut App, result: Result<(), KeybaseError>, f
             app.set_action(ActionState::Done(format!("Uploaded {filename}")));
             app.push_cmd("keybase chat api attach", true, filename);
             // Re-read so the new attachment message appears.
-            app.messages_scroll = 0;
+            app.pagination.scroll = 0;
             request_load_messages(app);
         }
         Err(e) => {

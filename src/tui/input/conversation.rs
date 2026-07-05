@@ -18,15 +18,15 @@ use crate::tui::input::common;
 /// Queues a pagination fetch when the user has scrolled past the top
 /// of the currently-loaded history and more is available.
 pub(crate) fn maybe_queue_older(app: &mut App) {
-    if app.messages_scroll <= app.messages_max_back {
+    if app.pagination.scroll <= app.pagination.max_back {
         return;
     }
-    if app.messages_next.is_none() || app.messages_loading_older {
-        app.messages_scroll = app.messages_max_back;
+    if app.pagination.next.is_none() || app.pagination.loading_older {
+        app.pagination.scroll = app.pagination.max_back;
         return;
     }
-    app.messages_scroll = app.messages_max_back;
-    app.messages_loading_older = true;
+    app.pagination.scroll = app.pagination.max_back;
+    app.pagination.loading_older = true;
     chat::request_load_older_messages(app);
 }
 
@@ -115,27 +115,27 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         // history edits your last own message. With draft text (or while
         // scrolled up) Up keeps being a history scroll — nothing typed is
         // ever at risk.
-        KeyCode::Up if app.compose.is_empty() && app.messages_scroll == 0 => {
+        KeyCode::Up if app.compose.is_empty() && app.pagination.scroll == 0 => {
             chat::edit_last_own_message(app);
         }
         KeyCode::Up => {
-            app.messages_scroll = app.messages_scroll.saturating_add(1);
+            app.pagination.scroll = app.pagination.scroll.saturating_add(1);
             maybe_queue_older(app);
         }
-        KeyCode::Down => app.messages_scroll = app.messages_scroll.saturating_sub(1),
+        KeyCode::Down => app.pagination.scroll = app.pagination.scroll.saturating_sub(1),
         KeyCode::PageUp => {
-            app.messages_scroll = app.messages_scroll.saturating_add(10);
+            app.pagination.scroll = app.pagination.scroll.saturating_add(10);
             maybe_queue_older(app);
         }
-        KeyCode::PageDown => app.messages_scroll = app.messages_scroll.saturating_sub(10),
+        KeyCode::PageDown => app.pagination.scroll = app.pagination.scroll.saturating_sub(10),
         // With an empty compose, Home/End act on the **history** (jump to the
         // oldest loaded / the latest message) — this is what makes the
         // "▼ N new · End" cue true in the default mode. With draft text they
         // stay editor keys (cursor to start/end of the line), so nothing is
         // lost for typing.
-        KeyCode::End if app.compose.is_empty() => app.messages_scroll = 0,
+        KeyCode::End if app.compose.is_empty() => app.pagination.scroll = 0,
         KeyCode::Home if app.compose.is_empty() => {
-            app.messages_scroll = app.messages_max_back;
+            app.pagination.scroll = app.pagination.max_back;
             maybe_queue_older(app);
         }
 

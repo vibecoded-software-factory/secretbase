@@ -260,9 +260,9 @@ fn wheel_messages(app: &mut App, dir: isize) {
             }
         }
     } else if dir < 0 {
-        app.messages_scroll = app.messages_scroll.saturating_add(3);
+        app.pagination.scroll = app.pagination.scroll.saturating_add(3);
         conversation::maybe_queue_older(app);
     } else {
-        app.messages_scroll = app.messages_scroll.saturating_sub(3);
+        app.pagination.scroll = app.pagination.scroll.saturating_sub(3);
     }
 }

@@ -32,14 +32,14 @@ pub(crate) fn enter_conversation(app: &mut App, id: String) {
     app.open_conv_id = Some(id.clone());
     // Seed the unread boundary from what we last saw of *this* conversation this
     // session (None on a first-ever open → no divider).
-    app.unread_boundary = app.conv_last_seen.get(&id).copied();
+    app.pagination.unread_boundary = app.conv_last_seen.get(&id).copied();
     app.mentioned.remove(&id); // the mention is about to be seen
     app.messages.clear();
     // Reset the per-history projections (pin / headline / id index) so the
     // loading view can't show the previous conversation's pin or topic.
     app.rebuild_msg_meta();
-    app.messages_scroll = 0;
-    app.new_since_scroll = 0;
+    app.pagination.scroll = 0;
+    app.pagination.new_since = 0;
     app.compose_open = true;
     app.edit_target_id = None;
     app.reply_to_id = None;
@@ -109,13 +109,13 @@ pub fn close_conversation(app: &mut App) {
     app.pending_search_jump = None;
     close_conv_search(app);
     app.open_conv_id = None;
-    app.unread_boundary = None;
+    app.pagination.unread_boundary = None;
     app.pane_zoomed = false;
     app.messages.clear();
     app.rebuild_msg_meta();
-    app.messages_scroll = 0;
-    app.messages_next = None;
-    app.messages_loading_older = false;
+    app.pagination.scroll = 0;
+    app.pagination.next = None;
+    app.pagination.loading_older = false;
     app.compose_clear();
     app.screen = crate::tui::screens::Screen::Inbox;
     app.focus = crate::tui::screens::Focus::Tree;
@@ -281,14 +281,14 @@ const BACKFILL_MAX_PAGES: u8 = 8;
 /// both read handlers after they merge + reproject.
 fn maybe_backfill(app: &mut App) {
     if app.messages.len() >= BACKFILL_VISIBLE_FLOOR
-        || app.messages_next.is_none()
-        || app.backfill_pages == 0
-        || app.messages_loading_older
+        || app.pagination.next.is_none()
+        || app.pagination.backfill_pages == 0
+        || app.pagination.loading_older
     {
         return;
     }
-    app.backfill_pages -= 1;
-    app.messages_loading_older = true;
+    app.pagination.backfill_pages -= 1;
+    app.pagination.loading_older = true;
     request_load_older_messages(app);
 }
 
@@ -311,9 +311,9 @@ fn request_load_messages_num(app: &mut App, num: u32) {
     // from a previously-open conversation can never be reused (e.g. if
     // this load fails, `messages_next` must not still point at the prior
     // conversation's history).
-    app.messages_next = None;
-    app.messages_loading_older = false;
-    app.backfill_pages = BACKFILL_MAX_PAGES;
+    app.pagination.next = None;
+    app.pagination.loading_older = false;
+    app.pagination.backfill_pages = BACKFILL_MAX_PAGES;
     let peek = !app.settings_cache.auto_mark_read;
     app.submit(
         InFlight::LoadMessages,
@@ -335,7 +335,7 @@ pub fn handle_load_messages_response(
     // while busy) before this response landed — drop the orphan so we
     // don't write a closed conversation's messages over the inbox state.
     if app.open_conv_id.is_none() {
-        app.messages_loading_older = false;
+        app.pagination.loading_older = false;
         return;
     }
     match result {
@@ -351,13 +351,13 @@ pub fn handle_load_messages_response(
             app.messages = project_messages(msgs, app.settings_cache.smart_joins);
             app.rebuild_conv_members(); // add the people who've spoken
             let n = app.messages.len();
-            app.messages_next = next;
-            app.messages_loading_older = false;
+            app.pagination.next = next;
+            app.pagination.loading_older = false;
             app.rebuild_msg_meta();
             // A control-op re-read (delete/edit/react) keeps the reader where
             // they were; a fresh open/refresh snaps to the latest message.
-            if !std::mem::take(&mut app.preserve_msg_scroll) {
-                app.messages_scroll = 0;
+            if !std::mem::take(&mut app.pagination.preserve_scroll) {
+                app.pagination.scroll = 0;
             }
             // Re-anchor Select mode across the reprojection. Marks are ids:
             // prune any whose message is gone (batch- or remote-deleted).
@@ -408,7 +408,7 @@ pub fn handle_load_messages_response(
             maybe_fetch_pin_body(app);
         }
         Err(e) => {
-            app.messages_loading_older = false;
+            app.pagination.loading_older = false;
             app.pending_search_jump = None;
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api read", false, e.to_string());
@@ -473,7 +473,7 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
             ) {
                 // A live edit/delete/reaction reprojects in place — don't
                 // yank the reader to the bottom, and keep the loaded depth.
-                app.preserve_msg_scroll = true;
+                app.pagination.preserve_scroll = true;
                 request_reload_messages(app);
             }
         } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
@@ -481,9 +481,9 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
             app.rebuild_msg_meta();
             // If the reader is scrolled up in history, a new arrival lands below
             // the fold — count it for the floating "▼ N new · End" jump cue.
-            if app.messages_scroll > 0 && !from_me {
-                app.new_since_scroll += 1;
-            } else if app.messages_scroll == 0 && app.settings_cache.auto_mark_read {
+            if app.pagination.scroll > 0 && !from_me {
+                app.pagination.new_since += 1;
+            } else if app.pagination.scroll == 0 && app.settings_cache.auto_mark_read {
                 // Reading at the bottom: the message is seen the moment it
                 // renders, but only a server-side `mark` moves the read
                 // pointer — without it the next inbox resync re-marks the
@@ -541,8 +541,8 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
 // ── Load older messages (pagination) ────────────────────────────────
 
 pub fn request_load_older_messages(app: &mut App) {
-    let Some(cursor) = app.messages_next.clone() else {
-        app.messages_loading_older = false;
+    let Some(cursor) = app.pagination.next.clone() else {
+        app.pagination.loading_older = false;
         app.set_action(ActionState::Done("No more history".into()));
         return;
     };
@@ -550,7 +550,7 @@ pub fn request_load_older_messages(app: &mut App) {
         // No open conversation, it left the inbox, or its type is
         // unsupported — clear the in-progress flag so the viewport
         // doesn't get stuck showing "loading older…".
-        app.messages_loading_older = false;
+        app.pagination.loading_older = false;
         return;
     };
     let peek = !app.settings_cache.auto_mark_read;
@@ -566,7 +566,7 @@ pub fn request_load_older_messages(app: &mut App) {
     ) {
         // Refused (another request in flight): clear the in-progress flag or
         // the wheel's auto-pagination stays dead for the whole session.
-        app.messages_loading_older = false;
+        app.pagination.loading_older = false;
     }
 }
 
@@ -576,7 +576,7 @@ pub fn handle_load_older_messages_response(
 ) {
     // Drop the orphan if the conversation was closed mid-flight.
     if app.open_conv_id.is_none() {
-        app.messages_loading_older = false;
+        app.pagination.loading_older = false;
         return;
     }
     match result {
@@ -586,8 +586,8 @@ pub fn handle_load_older_messages_response(
             let n = older.len();
             older.extend(std::mem::take(&mut app.messages));
             app.messages = older;
-            app.messages_next = next;
-            app.messages_loading_older = false;
+            app.pagination.next = next;
+            app.pagination.loading_older = false;
             // The Select-mode cursor and the `v` anchor are **indices** (the
             // marks are ids) — prepending n rows shifts every index, so both
             // must shift with them to stay on the same messages.
@@ -609,7 +609,7 @@ pub fn handle_load_older_messages_response(
             maybe_fetch_pin_body(app);
         }
         Err(e) => {
-            app.messages_loading_older = false;
+            app.pagination.loading_older = false;
             app.pending_search_jump = None;
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api read (older)", false, e.to_string());
@@ -895,7 +895,7 @@ pub fn select_activate(app: &mut App) {
 /// render then scrolls it into view. Honest fallbacks when there's no
 /// boundary or nothing newer.
 pub fn jump_to_new_messages(app: &mut App) {
-    let Some(boundary) = app.unread_boundary else {
+    let Some(boundary) = app.pagination.unread_boundary else {
         app.set_action(ActionState::Done("No new-messages marker here".into()));
         return;
     };
@@ -964,8 +964,8 @@ pub fn select_move_up(app: &mut App) {
         // older history. The prepend handler shifts the cursor index so it
         // stays on the same message; the next `k` then moves into the
         // newly-loaded page.
-        Some(0) if app.messages_next.is_some() && !app.messages_loading_older => {
-            app.messages_loading_older = true;
+        Some(0) if app.pagination.next.is_some() && !app.pagination.loading_older => {
+            app.pagination.loading_older = true;
             request_load_older_messages(app);
         }
         Some(0) => {}
@@ -1121,7 +1121,7 @@ pub fn handle_save_edit_response(app: &mut App, result: Result<(), KeybaseError>
             app.edit_target_id = None;
             app.set_action(ActionState::Done("Edit saved".into()));
             app.push_cmd("keybase chat api edit", true, format!("msg #{target_id}"));
-            app.preserve_msg_scroll = true; // stay where the reader was
+            app.pagination.preserve_scroll = true; // stay where the reader was
             request_reload_messages(app);
         }
         Err(e) => {
@@ -1205,7 +1205,7 @@ fn finish_selection_batch(app: &mut App, reload: bool) {
     app.select.marks.clear();
     app.select.anchor = None;
     if reload {
-        app.preserve_msg_scroll = true; // stay put; stay in Select mode
+        app.pagination.preserve_scroll = true; // stay put; stay in Select mode
         request_reload_messages(app);
     }
 }
@@ -1565,7 +1565,7 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
             // `rebuild_msg_meta` refreshes the 📌 indicator from the new history.
             app.select.marks.clear();
             app.select.anchor = None;
-            app.preserve_msg_scroll = true;
+            app.pagination.preserve_scroll = true;
             request_reload_messages(app);
         }
         Err(e) => {
@@ -1723,7 +1723,7 @@ pub fn request_send_message(app: &mut App) {
         state: SendState::Pending,
     });
     app.compose_clear();
-    app.messages_scroll = 0;
+    app.pagination.scroll = 0;
     app.set_action(ActionState::Running("Sending…".into()));
     let _ = app.worker_tx.send(WorkerRequest::SendMessage {
         channel,
@@ -1759,7 +1759,7 @@ pub fn handle_send_message_response(
             };
             app.set_action(ActionState::Done(done));
             app.push_cmd("keybase chat api send", true, format!("{body_len} chars"));
-            app.messages_scroll = 0;
+            app.pagination.scroll = 0;
             request_load_messages(app);
         }
         Err(e) => {
