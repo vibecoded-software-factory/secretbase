@@ -174,6 +174,44 @@ pub fn list_table(
         .with_selected(sel);
     frame.render_stateful_widget(table, area, &mut state);
     *scroll = state.offset();
+    // Position cue on the right border when the list overflows — every
+    // list_table surface (tree, Teams) gets it for free.
+    let viewport = area.height.saturating_sub(3) as usize; // borders + header
+    draw_scrollbar(frame, theme, area, len, viewport, *scroll);
+}
+
+/// A dim vertical scrollbar on `area`'s right border, drawn only when
+/// `content_len` overflows `viewport` — the shared position cue for every
+/// scrollable region (lists, pickers, the message history).
+pub fn draw_scrollbar(
+    frame: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    content_len: usize,
+    viewport: usize,
+    offset: usize,
+) {
+    if content_len <= viewport || area.height <= 2 || area.width == 0 {
+        return;
+    }
+    use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+    let mut state = ScrollbarState::new(content_len.saturating_sub(viewport))
+        .position(offset.min(content_len.saturating_sub(viewport)))
+        .viewport_content_length(viewport);
+    frame.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some("│"))
+            .thumb_symbol("┃")
+            .track_style(Style::default().fg(theme.inactive))
+            .thumb_style(Style::default().fg(theme.dim)),
+        area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut state,
+    );
 }
 
 /// Truncates `s` to `max` columns with a `…` in the middle, **biased to
@@ -471,10 +509,26 @@ pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
         let sel_end = sel_start + sel_len;
         let scroll = sel_end.saturating_sub(vh);
         let visible: Vec<Line<'static>> = display.into_iter().skip(scroll).take(vh).collect();
+        let total = line_items.len();
         let visible_items: Vec<Option<usize>> =
             line_items.into_iter().skip(scroll).take(vh).collect();
         frame.render_widget(Paragraph::new(visible), chunks[2]);
         PICKER_HITS.with(|h| *h.borrow_mut() = (chunks[2], visible_items));
+        // The picker's list lives inside the modal block: hug its right
+        // edge (area is the bordered modal; chunks[2] is the inner list).
+        draw_scrollbar(
+            frame,
+            theme,
+            Rect {
+                x: area.x,
+                y: chunks[2].y.saturating_sub(1),
+                width: area.width,
+                height: chunks[2].height + 2,
+            },
+            total,
+            vh,
+            scroll,
+        );
     }
 
     match m.footer {
