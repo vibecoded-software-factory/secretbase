@@ -1957,14 +1957,15 @@ fn web_image_fetch_routes_to_web_fetcher_and_records_failure() {
     // shared image bookkeeping like any failed preview.
     let path = web_image_path_for("https://example.com/x.gif");
     rig.app
-        .web_image_urls
+        .images
+        .web_urls
         .insert(path.clone(), "https://example.com/x.gif".to_string());
-    rig.app.image_to_fetch.push((42, path.clone()));
+    rig.app.images.to_fetch.push((42, path.clone()));
     ensure_visible_images(&mut rig.app);
-    assert!(rig.app.image_pending.contains(&path));
+    assert!(rig.app.images.pending.contains(&path));
     pump_one(&mut rig.app); // the PreviewImage-variant response
-    assert!(rig.app.image_failed.contains(&path));
-    assert!(!rig.app.image_pending.contains(&path));
+    assert!(rig.app.images.failed.contains(&path));
+    assert!(!rig.app.images.pending.contains(&path));
 }
 
 #[test]
@@ -4623,7 +4624,7 @@ fn handle_decode_gif_stores_frames_and_clears_pending() {
     use crate::tui::image::GifFrames;
     let mut rig = build_rig();
     let path = "/cache/x-1.gif".to_string();
-    rig.app.gif_pending.insert(path.clone());
+    rig.app.images.decoding.insert(path.clone());
     let frames = GifFrames {
         frames: vec!["a.png".into(), "b.png".into()],
         delays_ms: vec![80, 80],
@@ -4631,9 +4632,9 @@ fn handle_decode_gif_stores_frames_and_clears_pending() {
     };
     handle_decode_gif_response(&mut rig.app, path.clone(), Some(frames));
     // Pending cleared, frames stored, a repaint flagged.
-    assert!(!rig.app.gif_pending.contains(&path));
-    assert!(matches!(rig.app.gif_anims.get(&path), Some(Some(_))));
-    assert!(rig.app.image_dirty);
+    assert!(!rig.app.images.decoding.contains(&path));
+    assert!(matches!(rig.app.images.frames.get(&path), Some(Some(_))));
+    assert!(rig.app.images.dirty);
 }
 
 #[test]

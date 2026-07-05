@@ -394,11 +394,6 @@ pub struct App {
     pub giphy_input: crate::domain::LineEditor,
     pub giphy_results: Vec<crate::domain::GiphyHit>,
     pub giphy_selected: usize,
-    /// `cache path → source URL` for **web media** previews (giphy GIFs
-    /// linked in messages). Filled by the view when it reserves image rows;
-    /// `ensure_visible_images` routes these to the web fetcher instead of a
-    /// keybase attachment download. Session-local.
-    pub web_image_urls: HashMap<String, String>,
     /// When true, the emoji picker (`Screen::React`) inserts the chosen
     /// emoji into the **compose draft** instead of reacting to a message —
     /// the compose bar's emoji button / `Alt+I`.
@@ -773,46 +768,13 @@ pub struct App {
     pub chat_rx: Option<Receiver<ChatEvent>>,
 
     // ── Inline image attachments (chafa / kitty …) ────────────────────────
-    // Keyed by the on-disk cache **path** (`{conv}-{msg}.ext`), not the message
-    // id — Keybase numbers message ids per conversation, so an id alone would
-    // collide across chats.
-    /// Resolved image protocol, or `None` when images are disabled / no
-    /// terminal support configured. Set once at boot from settings.
-    pub image_proto: Option<crate::tui::image::ImgProto>,
-    /// Cache paths that finished downloading and are ready to paint.
-    pub image_ready: HashSet<String>,
-    /// Downloads currently in flight (cache paths).
-    pub image_pending: HashSet<String>,
-    /// Downloads that failed — show the text fallback, don't retry.
-    pub image_failed: HashSet<String>,
-    /// Screen rects + cache paths of the **ready** images visible this frame
-    /// (rebuilt every render), painted by the run loop after the text draw.
-    pub image_areas: Vec<(ratatui::layout::Rect, String)>,
-    /// Visible images still needing a download `(message_id, cache path)` —
-    /// drained by the run loop, which enqueues the background fetches.
-    pub image_to_fetch: Vec<(u64, String)>,
-    /// Set when the visible image set / positions changed and the graphics
-    /// need repainting (scroll, new download, resize…).
-    pub image_dirty: bool,
-    /// Cache of chafa output bytes per `(path, cols, rows)`.
-    pub image_render_cache: crate::tui::image::RenderCache,
-    /// Animated-GIF frames by cache path: `Some` once extracted (animated),
-    /// `None` when checked and found to be a still image (don't re-extract).
-    /// Populated **off-thread** by the worker ([`crate::tui::worker::WorkerRequest::DecodeGif`])
-    /// so a large GIF never blocks the render thread while it's decoded.
-    pub gif_anims: HashMap<String, Option<crate::tui::image::GifFrames>>,
-    /// GIF cache paths whose off-thread decode is in flight (de-dupes the
-    /// request and drives the "decoding" skeleton).
-    pub gif_pending: HashSet<String>,
-    /// Visible GIFs that are downloaded but not yet decoded — drained by the
-    /// run loop, which enqueues the background decode (mirrors `image_to_fetch`).
-    pub gif_to_decode: Vec<String>,
-    /// Wall-clock milliseconds since the run loop started — drives GIF frame
-    /// selection. Stamped each iteration by the loop.
-    pub anim_ms: u64,
-    /// Set by the view when an animated GIF is on screen, so the run loop polls
-    /// at the animation cadence instead of idling.
-    pub gif_animating: bool,
+    /// All inline image / animated-GIF rendering state — the download and
+    /// GIF-decode lifecycles plus the per-frame paint flags. Extracted into
+    /// its own cohesive type (see [`crate::tui::image_pipeline`]) so this one
+    /// concern has one place to change; cache paths are keyed by the on-disk
+    /// `{conv}-{msg}.ext` (not the per-conversation message id, which would
+    /// collide across chats).
+    pub images: crate::tui::image_pipeline::ImagePipeline,
 
     // ── Injected ports (synchronous, stay on the render thread) ───────────
     pub clipboard: Box<dyn ClipboardPort>,
@@ -881,8 +843,7 @@ impl App {
         settings: Box<dyn SettingsPort>,
     ) -> Self {
         let settings_cache = settings.read();
-        let image_proto = crate::tui::image::resolve(&settings_cache.image_protocol);
-        let image_symbols = settings_cache.image_symbols.clone();
+        let images = crate::tui::image_pipeline::ImagePipeline::from_settings(&settings_cache);
         let favorites: HashSet<String> = settings_cache.favorites.iter().cloned().collect();
         // Persisted pin targets ("convid:msgid" pairs) — malformed entries
         // are skipped, same tolerance as every other config read.
@@ -972,7 +933,6 @@ impl App {
             giphy_selected: 0,
             settings_editing: None,
             settings_input: crate::domain::LineEditor::default(),
-            web_image_urls: HashMap::new(),
             react_to_compose: false,
             pin_envelope_id: None,
             pins_dismissed,
@@ -1051,19 +1011,7 @@ impl App {
             settings_cache,
             favorites,
             muted,
-            image_proto,
-            image_ready: HashSet::new(),
-            image_pending: HashSet::new(),
-            image_failed: HashSet::new(),
-            image_areas: Vec::new(),
-            image_to_fetch: Vec::new(),
-            image_dirty: false,
-            image_render_cache: crate::tui::image::RenderCache::new(image_symbols),
-            gif_anims: HashMap::new(),
-            gif_pending: HashSet::new(),
-            gif_to_decode: Vec::new(),
-            anim_ms: 0,
-            gif_animating: false,
+            images,
             theme,
             settings_focus: SettingsFocus::Sidebar,
             settings_section: 0,
@@ -1459,8 +1407,7 @@ impl App {
                 let next = cycle(&IMAGE_PROTOCOLS, &self.settings_cache.image_protocol, delta);
                 self.settings_cache.image_protocol = next.clone();
                 // Take effect immediately for the next render.
-                self.image_proto = crate::tui::image::resolve(&next);
-                self.image_dirty = true;
+                self.images.set_protocol(crate::tui::image::resolve(&next));
                 ("image_protocol", format!("\"{next}\""))
             }
             SettingId::ImageSymbols => {
@@ -1470,8 +1417,7 @@ impl App {
                     delta,
                 );
                 self.settings_cache.image_symbols = next.clone();
-                self.image_render_cache = crate::tui::image::RenderCache::new(next.clone());
-                self.image_dirty = true;
+                self.images.set_symbols(next.clone());
                 ("image_symbols", format!("\"{next}\""))
             }
             SettingId::EmojiStyle => {

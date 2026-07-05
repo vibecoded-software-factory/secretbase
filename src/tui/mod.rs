@@ -21,6 +21,7 @@ pub mod file_picker;
 pub mod flows;
 pub mod icons;
 pub mod image;
+pub mod image_pipeline;
 pub mod input;
 pub mod mouse_areas;
 pub mod screens;
@@ -191,7 +192,7 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
     let anim_clock = std::time::Instant::now();
 
     loop {
-        app.anim_ms = anim_clock.elapsed().as_millis() as u64;
+        app.images.anim_ms = anim_clock.elapsed().as_millis() as u64;
         let size = terminal.size()?;
         if size != last_size {
             last_size = size;
@@ -216,15 +217,15 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
         // to paint over the reserved region; either way, enqueue downloads.
         flows::chat::ensure_visible_images(app);
         flows::chat::ensure_pending_gif_decodes(app);
-        let graphics = matches!(app.image_proto, Some(p) if p != image::ImgProto::Symbols);
-        if let Some(proto) = app.image_proto.filter(|_| graphics) {
+        let graphics = matches!(app.images.proto, Some(p) if p != image::ImgProto::Symbols);
+        if let Some(proto) = app.images.proto.filter(|_| graphics) {
             // Don't paint while an overlay covers the chat (no bleed over popups).
             let target: Vec<(ratatui::layout::Rect, String)> = if app.has_overlay() {
                 Vec::new()
             } else {
-                app.image_areas.clone()
+                app.images.areas.clone()
             };
-            if target != last_img || app.image_dirty {
+            if target != last_img || app.images.dirty {
                 if proto == image::ImgProto::Kitty {
                     // Kitty graphics are a deletable layer.
                     let _ = image::clear();
@@ -237,12 +238,12 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
                     terminal.draw(|frame| view::draw(frame, app))?;
                 }
                 for (rect, path) in &target {
-                    let _ = image::render_into(&mut app.image_render_cache, proto, *rect, path);
+                    let _ = image::render_into(&mut app.images.render_cache, proto, *rect, path);
                 }
                 last_img = target;
             }
         }
-        app.image_dirty = false;
+        app.images.dirty = false;
 
         // Drain any worker response that arrived since the last
         // tick — non-blocking. The match in `apply_response` handles
@@ -292,11 +293,11 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
 
         // Loading images / decoding GIFs → poll fast so the skeleton gives way
         // to the picture promptly (the worker response is drained next tick).
-        let loading_images = !app.image_pending.is_empty() || !app.gif_pending.is_empty();
+        let loading_images = !app.images.pending.is_empty() || !app.images.decoding.is_empty();
         if event::poll(poll_timeout(
             &app.action_state,
             app.is_busy(),
-            app.gif_animating || loading_images,
+            app.images.animating || loading_images,
         ))? {
             // Drain ALL buffered events before redrawing. Holding a key
             // floods key-repeat events; processing one per frame lets

@@ -144,10 +144,10 @@ pub fn image_path_for(conv_id: &str, msg_id: u64, filename: &str) -> String {
 /// cached, in flight, or known-failed. Called from the run loop after each
 /// draw (the view fills `image_to_fetch` with `(message_id, cache path)`).
 pub fn ensure_visible_images(app: &mut App) {
-    if app.image_to_fetch.is_empty() {
+    if app.images.to_fetch.is_empty() {
         return;
     }
-    let to_fetch = std::mem::take(&mut app.image_to_fetch);
+    let to_fetch = std::mem::take(&mut app.images.to_fetch);
     let Some(conv_id) = app.open_conv_id.clone() else {
         return;
     };
@@ -159,23 +159,19 @@ pub fn ensure_visible_images(app: &mut App) {
     };
     let _ = std::fs::create_dir_all(image_cache_dir());
     for (msg_id, output) in to_fetch {
-        if app.image_ready.contains(&output)
-            || app.image_pending.contains(&output)
-            || app.image_failed.contains(&output)
-        {
+        if !app.images.needs_download(&output) {
             continue;
         }
         // Reuse a file fetched in an earlier session rather than re-downloading.
         if std::path::Path::new(&output).exists() {
-            app.image_ready.insert(output);
-            app.image_dirty = true;
+            app.images.adopt_cached_file(output);
             continue;
         }
-        app.image_pending.insert(output.clone());
+        app.images.pending.insert(output.clone());
         // Web media (giphy) goes to the web fetcher on the background lane
         // — a slow CDN must never queue ahead of user ops; attachments use
         // the keybase download as before.
-        if let Some(url) = app.web_image_urls.get(&output).cloned() {
+        if let Some(url) = app.images.web_urls.get(&output).cloned() {
             let _ = app
                 .bg_worker_tx
                 .send(WorkerRequest::FetchWebImage { url, output });
@@ -217,7 +213,7 @@ fn selected_ready_image(app: &App) -> Option<(String, String)> {
     }
     let conv_id = app.open_conv_id.as_deref()?;
     let path = image_path_for(conv_id, m.id, &att.filename);
-    if app.image_ready.contains(&path) || std::path::Path::new(&path).exists() {
+    if app.images.ready.contains(&path) || std::path::Path::new(&path).exists() {
         let mime = if att.mime_type.is_empty() {
             "image/png".to_string()
         } else {
@@ -257,16 +253,7 @@ pub fn handle_preview_image_response(
     path: String,
     result: Result<(), KeybaseError>,
 ) {
-    app.image_pending.remove(&path);
-    match result {
-        Ok(()) => {
-            app.image_ready.insert(path);
-        }
-        Err(_) => {
-            app.image_failed.insert(path);
-        }
-    }
-    app.image_dirty = true;
+    app.images.on_download_finished(path, result.is_ok());
 }
 
 /// Enqueues background GIF decodes for every visible GIF that's downloaded but
@@ -275,15 +262,15 @@ pub fn handle_preview_image_response(
 /// background lane so a multi-second decode never stalls the user's keybase
 /// calls on the main worker.
 pub fn ensure_pending_gif_decodes(app: &mut App) {
-    if app.gif_to_decode.is_empty() {
+    if app.images.to_decode.is_empty() {
         return;
     }
-    let to_decode = std::mem::take(&mut app.gif_to_decode);
+    let to_decode = std::mem::take(&mut app.images.to_decode);
     for path in to_decode {
-        if app.gif_pending.contains(&path) || app.gif_anims.contains_key(&path) {
+        if !app.images.needs_decode(&path) {
             continue;
         }
-        app.gif_pending.insert(path.clone());
+        app.images.decoding.insert(path.clone());
         let _ = app.bg_worker_tx.send(WorkerRequest::DecodeGif { path });
     }
 }
@@ -296,9 +283,7 @@ pub fn handle_decode_gif_response(
     path: String,
     frames: Option<crate::tui::image::GifFrames>,
 ) {
-    app.gif_pending.remove(&path);
-    app.gif_anims.insert(path, frames);
-    app.image_dirty = true;
+    app.images.on_decode_finished(path, frames);
 }
 
 pub fn handle_download_attachment_response(

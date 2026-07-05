@@ -520,7 +520,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         let img_w = body_width.saturating_sub(6).clamp(10, 72) as u16;
         // Recomputed each frame; `symbol_image_lines` / `image_render_path` set it
         // true when an animated GIF is on screen.
-        app.gif_animating = false;
+        app.images.animating = false;
         // Register the giphy URLs of the loaded history so the fetch queue
         // (`ensure_visible_images`) can route their cache paths to the web
         // fetcher. Cheap (bounded by the loaded page) and idempotent.
@@ -532,7 +532,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             })
             .collect();
         for (path, url) in web_urls {
-            app.web_image_urls.entry(path).or_insert(url);
+            app.images.web_urls.entry(path).or_insert(url);
         }
         let symbol_imgs = symbol_image_lines(app, img_w);
         // Grouping / day-divider / unread-marker state (F3). Dividers are pushed
@@ -719,24 +719,24 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // images remains: queue a fetch when not ready, else (true graphics)
         // record a paint rect for the run loop — but only when the whole thumbnail
         // fits the viewport so it can't overflow the panel.
-        app.image_areas.clear();
-        app.image_to_fetch.clear();
-        app.gif_to_decode.clear();
+        app.images.areas.clear();
+        app.images.to_fetch.clear();
+        app.images.to_decode.clear();
         let graphics =
-            matches!(app.image_proto, Some(p) if p != crate::tui::image::ImgProto::Symbols);
+            matches!(app.images.proto, Some(p) if p != crate::tui::image::ImgProto::Symbols);
         let img_x = area.x + 1 + 4;
         for (abs, rows, msg_id, path) in img_reservations {
             match img_state(app, &path) {
                 // Still downloading → queue the fetch (skeleton shown meanwhile).
                 ImgState::Loading => {
-                    if !app.image_pending.contains(&path) && !app.image_failed.contains(&path) {
-                        app.image_to_fetch.push((msg_id, path));
+                    if app.images.needs_download(&path) {
+                        app.images.to_fetch.push((msg_id, path));
                     }
                 }
                 // Downloaded GIF, not decoded yet → queue the off-thread decode.
                 ImgState::Decoding => {
-                    if !app.gif_pending.contains(&path) {
-                        app.gif_to_decode.push(path);
+                    if app.images.needs_decode(&path) {
+                        app.images.to_decode.push(path);
                     }
                 }
                 // Ready → graphics protocols paint the current frame / the file.
@@ -749,7 +749,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                             height: rows,
                         };
                         let render_path = image_render_path(app, &path);
-                        app.image_areas.push((rect, render_path));
+                        app.images.areas.push((rect, render_path));
                     }
                 }
             }
@@ -1000,10 +1000,10 @@ enum ImgState {
 /// populated `gif_anims` for it (the decode runs off the render thread), so the
 /// view shows a skeleton instead of blocking on ImageMagick.
 fn img_state(app: &App, path: &str) -> ImgState {
-    if !app.image_ready.contains(path) {
+    if !app.images.ready.contains(path) {
         return ImgState::Loading;
     }
-    if path.to_ascii_lowercase().ends_with(".gif") && !app.gif_anims.contains_key(path) {
+    if path.to_ascii_lowercase().ends_with(".gif") && !app.images.frames.contains_key(path) {
         return ImgState::Decoding;
     }
     ImgState::Ready
@@ -1079,9 +1079,9 @@ fn image_skeleton_lines(
 /// runs on the worker ([`crate::tui::flows::chat::handle_decode_gif_response`]),
 /// never here, so this never blocks the render thread.
 fn image_render_path(app: &mut App, path: &str) -> String {
-    if let Some(Some(g)) = app.gif_anims.get(path) {
-        app.gif_animating = true;
-        return g.frame_at(app.anim_ms).to_string();
+    if let Some(Some(g)) = app.images.frames.get(path) {
+        app.images.animating = true;
+        return g.frame_at(app.images.anim_ms).to_string();
     }
     path.to_string()
 }
@@ -1095,7 +1095,7 @@ fn symbol_image_lines(
     img_w: u16,
 ) -> std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>> {
     let mut map = std::collections::HashMap::new();
-    let Some(proto) = app.image_proto else {
+    let Some(proto) = app.images.proto else {
         return map;
     };
     if proto != crate::tui::image::ImgProto::Symbols {
@@ -1125,7 +1125,8 @@ fn symbol_image_lines(
         // The cache runs chafa + ANSI-parse once per (frame,size); steady-state
         // GIF animation is then a pure cache hit — no per-tick subprocess.
         let lines = app
-            .image_render_cache
+            .images
+            .render_cache
             .symbol_lines(proto, &render_path, img_w, IMAGE_ROWS, 4);
         if !lines.is_empty() {
             map.insert(id, lines);
@@ -1249,13 +1250,13 @@ fn message_lines(
     // normal attachment text when images are off or the download failed.
     let mut rendered_image = false;
     if let MessageContent::Attachment(att) = &m.content
-        && app.image_proto.is_some()
+        && app.images.proto.is_some()
         && crate::tui::image::is_image(&att.mime_type, &att.filename)
     {
         let conv_id = app.open_conv_id.as_deref().unwrap_or("");
         let path = crate::tui::flows::chat::image_path_for(conv_id, m.id, &att.filename);
         // A failed download drops through to the normal attachment text.
-        if !app.image_failed.contains(&path) {
+        if !app.images.failed.contains(&path) {
             // Name above the photo, size + type on a dim line below.
             lines.push(Line::from(Span::styled(
                 format!("    🖼 {}", att.filename),
@@ -1290,7 +1291,7 @@ fn message_lines(
                 // skeleton fills the reserved rows while it downloads / decodes.
                 let block_offset = lines.len();
                 let thumb_w = (width.saturating_sub(6)).clamp(10, 72) as u16;
-                let spin = spinner_frame_ms(app.anim_ms);
+                let spin = spinner_frame_ms(app.images.anim_ms);
                 match img_state(app, &path) {
                     ImgState::Loading => lines.extend(image_skeleton_lines(
                         t,
@@ -1326,7 +1327,7 @@ fn message_lines(
     // fetch drops through to the plain URL text.
     if !rendered_image && let Some(gif_url) = giphy_url_for(app, m) {
         let path = crate::tui::flows::chat::web_image_path_for(&gif_url);
-        if !app.image_failed.contains(&path) {
+        if !app.images.failed.contains(&path) {
             lines.push(Line::from(Span::styled(
                 "    🎞 GIPHY".to_string(),
                 Style::default()
@@ -1345,7 +1346,7 @@ fn message_lines(
             } else {
                 let block_offset = lines.len();
                 let thumb_w = (width.saturating_sub(6)).clamp(10, 72) as u16;
-                let spin = spinner_frame_ms(app.anim_ms);
+                let spin = spinner_frame_ms(app.images.anim_ms);
                 match img_state(app, &path) {
                     ImgState::Loading => lines.extend(image_skeleton_lines(
                         t,
@@ -1674,7 +1675,7 @@ fn reaction_display(app: &App, key: &str) -> String {
 /// and the body links giphy media (`domain::giphy_gif_url`). Edits fold
 /// into `Text`, so checking `Text` covers the visible history.
 fn giphy_url_for(app: &App, m: &Message) -> Option<String> {
-    if !app.settings_cache.web_previews || app.image_proto.is_none() {
+    if !app.settings_cache.web_previews || app.images.proto.is_none() {
         return None;
     }
     match &m.content {
