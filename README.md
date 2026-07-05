@@ -107,6 +107,7 @@ stays in sync with these tables.
 | `/`                     | Focus the chat **F**ilter (or `Alt+F`) |
 | `Tab` / `Shift+Tab`     | Cycle focus (search · tree · chat · log) |
 | `Ctrl+W` then `h`/`j`/`k`/`l` (or arrows) | Move between panels **positionally** (vim window-nav); stays armed so two keys do a diagonal (`Esc` exits) |
+| `Ctrl+W` then `z`       | Zoom the chat column (tmux-style toggle; tree + command log hidden) |
 | `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Messages (works mid-compose) |
 | `Alt+F` / `Alt+L`       | Go to `[Alt+F]` Filter / `[Alt+L]` Command log |
 | `Ctrl+F`                | In-chat search — modal (open conversation) |

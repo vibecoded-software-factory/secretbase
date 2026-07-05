@@ -850,6 +850,10 @@ weight of the action before you press it. Every screen follows the same tiers:
   `Ctrl+C` quit (the **only** quit), `Ctrl+F` in-chat find, `Ctrl+G` global
   search, `Ctrl+K` quick switcher, `Ctrl+P` command palette (both from the
   inbox *and* Teams), `Ctrl+W` positional pane nav (non-typing surfaces only —
+  while armed, a helix-style **which-key popup** (bottom-right,
+  `widgets::draw_which_key`) lists the continuations, and **`z` zooms the
+  chat column** tmux-style: tree + command log hidden until `Ctrl+W z`
+  again, auto-cleared when the conversation closes —
   in an input it deletes a word), `Ctrl+D`/`Ctrl+U` half-page in every list
   and viewer, `Ctrl+J`/`Ctrl+K` selection moves inside every picker popup.
   **`:`** opens the command palette from any non-typing surface (the vim

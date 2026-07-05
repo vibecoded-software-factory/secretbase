@@ -28,6 +28,27 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     .split(area);
     let (topbody, cmdlog, status) = (main[0], main[1], main[2]);
 
+    // Zoomed (`Ctrl+W z`): the chat column takes everything above the
+    // status strip — no tree, no command log — until toggled back.
+    if app.pane_zoomed && app.open_conv_id.is_some() {
+        let full = Layout::vertical([Constraint::Min(8), Constraint::Length(1)]).split(area);
+        crate::tui::view::conversation::draw_chat(frame, app, full[0]);
+        let hint = if app.pending_pane_nav {
+            "Ctrl+W move: h/j/k/l or arrows · z unzoom · Esc exit"
+        } else {
+            "zoomed — Ctrl+W z restore … "
+        };
+        draw_status_strip(frame, app, full[1], hint);
+        if app.pending_pane_nav {
+            crate::tui::view::widgets::draw_which_key(
+                frame,
+                &app.theme,
+                &[("h/j/k/l", "move focus"), ("z", "unzoom"), ("Esc", "exit")],
+            );
+        }
+        return;
+    }
+
     // Two columns: the tree pane (width-responsive) on the left, the chat on the
     // right. The **chat column spans the full height** — its own optional
     // adaptive header (a pin / topic, or nothing) + messages + compose — so no
@@ -50,13 +71,24 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let cmdlog_focused = app.focus == Focus::CmdLog;
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+L");
     let hint = if app.pending_pane_nav {
-        "Ctrl+W move: h/j/k/l or arrows · two keys = diagonal · Esc exit"
+        "Ctrl+W move: h/j/k/l or arrows · z zoom · two keys = diagonal · Esc exit"
     } else if app.focus == Focus::Chat && app.open_conv_id.is_some() {
         crate::tui::view::conversation::chat_hint(app)
     } else {
         footer_hint(app)
     };
     draw_status_strip(frame, app, status, hint);
+    if app.pending_pane_nav {
+        crate::tui::view::widgets::draw_which_key(
+            frame,
+            &app.theme,
+            &[
+                ("h/j/k/l", "move focus (two keys = diagonal)"),
+                ("z", "zoom the chat"),
+                ("Esc", "exit"),
+            ],
+        );
+    }
 
     app.mouse_areas.search = search_area;
     app.mouse_areas.source = tree_area;
