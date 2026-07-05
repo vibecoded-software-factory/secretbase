@@ -1767,6 +1767,81 @@ fn search_hits_are_retained_and_cycled_with_n() {
 }
 
 #[test]
+fn ctrl_n_cycles_unread_conversations_by_recency() {
+    let mut rig = build_rig();
+    let mut a = conv("a", "alice", MembersType::ImpTeamNative);
+    a.unread = true;
+    a.active_at_ms = 100;
+    let mut b = conv("b", "bob", MembersType::ImpTeamNative);
+    b.unread = true;
+    b.active_at_ms = 300; // most recent unread
+    let c = conv("c", "carol", MembersType::ImpTeamNative);
+    preload_inbox(&mut rig.app, &rig.mock, vec![a, b, c], "c");
+    rig.app.open_conv_id = None;
+    // Most recent unread first…
+    open_next_unread(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.open_conv_id.as_deref(), Some("b"));
+    // Keybase would clear unread on open; simulate and advance: wraps to a.
+    // (b stays unread here → Ctrl+N advances *past* the open one.)
+    open_next_unread(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.open_conv_id.as_deref(), Some("a"));
+    // Muted unread is skipped entirely.
+    rig.app
+        .conversations
+        .iter_mut()
+        .for_each(|c| c.unread = false);
+    open_next_unread(&mut rig.app);
+    assert!(matches!(rig.app.action_state, ActionState::Done(_)));
+}
+
+#[test]
+fn ctrl_o_toggles_to_the_previous_conversation() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("a", "alice", MembersType::ImpTeamNative),
+            conv("b", "bob", MembersType::ImpTeamNative),
+        ],
+        "a",
+    );
+    // preload leaves "a" open; switching to b stamps the register.
+    open_conversation_by_id(&mut rig.app, "b".into());
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.prev_conv_id.as_deref(), Some("a"));
+    open_previous_conversation(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.app.open_conv_id.as_deref(), Some("a"));
+    // …and the register now points back at b (true toggle).
+    assert_eq!(rig.app.prev_conv_id.as_deref(), Some("b"));
+}
+
+#[test]
+fn alt_e_edits_the_last_own_text_message() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.identity.username = "me".into();
+    rig.app.messages = vec![
+        text_msg(1, "me", "old own"),
+        text_msg(2, "me", "fix me"),
+        text_msg(3, "alice", "latest but not mine"),
+    ];
+    rig.app.rebuild_msg_meta();
+    edit_last_own_message(&mut rig.app);
+    // Edit open on the newest own message, body loaded into the compose.
+    assert_eq!(rig.app.edit_target_id, Some(2));
+    assert_eq!(rig.app.compose.text(), "fix me");
+}
+
+#[test]
 fn visual_anchor_extends_with_plain_motions() {
     let mut rig = build_rig();
     preload_inbox(

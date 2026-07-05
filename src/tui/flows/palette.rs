@@ -40,6 +40,9 @@ pub enum PaletteAction {
     DeleteMessage,
     QuickSwitcher,
     GlobalSearch,
+    NextUnread,
+    PrevConversation,
+    EditLastOwn,
     Teams,
     Settings,
     Help,
@@ -187,6 +190,13 @@ fn palette_commands(app: &App) -> Vec<Command> {
             "upload image file",
             "Conversation",
         ));
+        v.push(cmd(
+            EditLastOwn,
+            "Edit my last message",
+            "Alt+E",
+            "fix typo previous own",
+            "Conversation",
+        ));
         // Offer "Select messages" only when not already selecting — the Message
         // group below covers the per-message actions in that mode.
         if app.selected_msg_idx.is_none() {
@@ -274,6 +284,20 @@ fn palette_commands(app: &App) -> Vec<Command> {
         "Global search",
         "Ctrl+G",
         "find messages inbox",
+        "Navigate",
+    ));
+    v.push(cmd(
+        NextUnread,
+        "Next unread conversation",
+        "Ctrl+N",
+        "triage jump unread",
+        "Navigate",
+    ));
+    v.push(cmd(
+        PrevConversation,
+        "Previous conversation",
+        "Ctrl+O",
+        "back alternate toggle",
         "Navigate",
     ));
     v.push(cmd(Teams, "Teams", "t", "memberships roles", "Navigate"));
@@ -382,6 +406,9 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         DeleteMessage => chat::open_delete_for_selected(app),
         QuickSwitcher => chat::open_quick_switcher(app),
         GlobalSearch => chat::open_search_global(app),
+        NextUnread => chat::open_next_unread(app),
+        PrevConversation => chat::open_previous_conversation(app),
+        EditLastOwn => chat::edit_last_own_message(app),
         Teams => teams::open_teams(app),
         Settings => app.open_settings(),
         Help => {

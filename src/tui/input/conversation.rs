@@ -98,6 +98,9 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         // Per-message actions (edit / delete / react / pin / reply) live in
         // Select mode (Alt+V) — Compose stays for composing only.
         KeyCode::Char('u') | KeyCode::Char('U') if alt => chat::request_unpin_conversation(app),
+        // Slack's up-to-edit fast path: jump straight to editing your most
+        // recent own message.
+        KeyCode::Char('e') | KeyCode::Char('E') if alt => chat::edit_last_own_message(app),
         KeyCode::Char('v') | KeyCode::Char('V') if alt => chat::enter_select_mode(app),
         KeyCode::Char('r') | KeyCode::Char('R') if alt => chat::request_resend_message(app),
         KeyCode::Char('a') | KeyCode::Char('A') if alt => open_attach_picker(app),

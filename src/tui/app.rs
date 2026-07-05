@@ -605,6 +605,9 @@ pub struct App {
     /// Set once the worker response channel reports `Disconnected` (every
     /// worker thread gone) so the failure is surfaced a single time.
     pub worker_dead: bool,
+    /// The conversation open before the current one — `Ctrl+O` toggles back
+    /// to it (vim's `Ctrl+^` alternate buffer). Session-local.
+    pub prev_conv_id: Option<String>,
     pub last_activity: Instant,
     /// Wall-clock timestamp of the last inbox load — used by the run
     /// loop's auto-refresh hook.
@@ -902,6 +905,7 @@ impl App {
             settings_from: Screen::Inbox,
             should_quit: false,
             worker_dead: false,
+            prev_conv_id: None,
             last_activity: Instant::now(),
             last_inbox_load: Instant::now(),
             mouse_areas: MouseAreas::default(),
