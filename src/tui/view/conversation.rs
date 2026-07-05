@@ -28,7 +28,7 @@ use crate::tui::view::widgets::{editor_lines, trim_end_ellipsis};
 /// no chrome is reserved for nothing (the name lives on the Messages panel
 /// title either way).
 fn has_adaptive_header(app: &App) -> bool {
-    app.pin_present || app.conv_headline.is_some()
+    app.pins.present || app.conv_headline.is_some()
 }
 
 /// The adaptive header: a proper bordered **section** (the same rounded
@@ -40,7 +40,7 @@ fn has_adaptive_header(app: &App) -> bool {
 /// [`has_adaptive_header`] is true.
 fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let title = if app.pin_present {
+    let title = if app.pins.present {
         "📌 Pinned"
     } else {
         "~ Topic"
@@ -51,12 +51,12 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let w = inner.width as usize;
-    let spans: Vec<Span<'static>> = if app.pin_present {
+    let spans: Vec<Span<'static>> = if app.pins.present {
         let mut s = vec![Span::styled(" ", Style::default())];
         // Resolve the pinned message: from the loaded window when present,
         // else from the background-fetched body cache (targets older than
         // the window, `maybe_fetch_pin_body`).
-        let resolved = app.pinned_msg_id.and_then(|pid| {
+        let resolved = app.pins.msg_id.and_then(|pid| {
             app.msg_index
                 .get(&pid)
                 .copied()
@@ -64,7 +64,7 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
                 .or_else(|| {
                     app.open_conv_id
                         .as_ref()
-                        .and_then(|c| app.pin_bodies.get(c))
+                        .and_then(|c| app.pins.bodies.get(c))
                         .filter(|m| m.id == pid)
                 })
         });
@@ -98,8 +98,8 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
             // Target unknown (the JSON API strips the pin payload) or older
             // than the loaded window — say who pinned, honestly.
             None => {
-                let who = app.pin_sender.clone().unwrap_or_default();
-                let label = match app.pinned_msg_id {
+                let who = app.pins.sender.clone().unwrap_or_default();
+                let label = match app.pins.msg_id {
                     Some(pid) => format!("#{pid}"),
                     None if !who.is_empty() => format!("{who} pinned a message"),
                     None => "a message is pinned".to_string(),
@@ -580,7 +580,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             }
             push_fresh(&mut chunks, &mut off, pre);
             // Hide the header when this message continues the previous one's run.
-            let needs_header = m.reply_to.is_some() || m.edited || app.pinned_msg_id == Some(m.id);
+            let needs_header = m.reply_to.is_some() || m.edited || app.pins.msg_id == Some(m.id);
             let grouped = group_continues(
                 prev,
                 &m.sender,
@@ -608,7 +608,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             let cacheable = !matches!(m.content, MessageContent::Attachment(_))
                 && giphy_url_for(app, m).is_none();
             if cacheable {
-                let pinned = app.pinned_msg_id == Some(m.id);
+                let pinned = app.pins.msg_id == Some(m.id);
                 // See `MsgBlock::reply_resolved`: fingerprint whether this
                 // reply's parent is in the loaded window, so a parent paged in
                 // by a later prepend (which skips the epoch bump) still
@@ -1247,7 +1247,7 @@ fn message_lines(
                 Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
             ));
         }
-        if app.pinned_msg_id == Some(m.id) {
+        if app.pins.msg_id == Some(m.id) {
             header_spans.push(Span::styled(
                 "  📌 pinned",
                 Style::default().fg(t.conv_unread),

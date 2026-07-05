@@ -306,33 +306,12 @@ pub struct App {
     /// floating "▼ N new · End" jump-to-latest pill. Reset to 0 once the reader
     /// is back at the bottom (or on open/close).
     pub new_since_scroll: usize,
-    /// Message id pinned in the open conversation, derived from the
-    /// most recent `Pin` system message in `messages`. `None` when
-    /// the conversation has no pin (or the pin event is older than
-    /// the loaded history).
-    pub pinned_msg_id: Option<u64>,
-    /// Whether the loaded history contains an (undeleted) `pin` message —
-    /// i.e. the conversation **has** an active pin. The JSON API strips the
-    /// pin payload (`convertMsgBody` omits `Pin__`), so presence is often
-    /// all we can know; see [`Self::pinned_msg_id`] for the target.
-    pub pin_present: bool,
-    /// Sender of the newest pin message — the adaptive header's fallback
-    /// text when the pinned *target* isn't known.
-    pub pin_sender: Option<String>,
-    /// Pin targets **we** set, per conversation — the only way to know
-    /// *which* message is pinned, since the API doesn't carry the pin
-    /// payload. Persisted to config (`pins` key, `"convid:msgid"` pairs)
-    /// so our own pins survive a restart — same local-only pattern as
-    /// [`Self::favorites`]. See [`Self::set_local_pin`].
-    pub pinned_local: HashMap<String, u64>,
-    /// Pinned-message bodies fetched on demand (`{"method":"get"}`, the
-    /// background lane) when the known pin target is older than the loaded
-    /// window — the 📌 header shows a real snippet instead of just the id.
-    /// Keyed by conversation id; the `Message` zeroizes on drop.
-    pub pin_bodies: HashMap<String, crate::domain::Message>,
-    /// `(conv, msg_id)` pin-body fetches already issued — one attempt per
-    /// target, so a failing `get` can't loop on every reload.
-    pub pin_fetch_attempted: std::collections::HashSet<(String, u64)>,
+    /// The pinned-message subsystem's state — the open conversation's pin
+    /// banner projection plus the local/persisted bookkeeping the JSON API
+    /// can't give us — extracted into its own cohesive type (see
+    /// [`crate::tui::pin_state`]). The persisting `set_local_pin` /
+    /// `set_pin_dismissed` and the background pin-body fetch stay outside it.
+    pub pins: crate::tui::pin_state::PinState,
     /// Secret setting being edited in the input popup (`SettingKind::
     /// Secret`), if any — with [`Self::settings_input`] as its editor.
     pub settings_editing: Option<SettingId>,
@@ -348,14 +327,6 @@ pub struct App {
     /// emoji into the **compose draft** instead of reacting to a message —
     /// the compose bar's emoji button / `Alt+I`.
     pub react_to_compose: bool,
-    /// Id of the newest pin **envelope** in the loaded history (the `pin`
-    /// message itself, not its target) — what a local dismiss records.
-    pub pin_envelope_id: Option<u64>,
-    /// **Local-only** dismissed pin banners (conv → dismissed envelope id),
-    /// persisted as the `pins_dismissed` config key. The GUI-parity ✕:
-    /// hiding the banner without unpinning for anyone. A newer pin gets a
-    /// new envelope id, so the banner revives automatically.
-    pub pins_dismissed: HashMap<String, u64>,
     /// Latest channel topic/headline in the loaded history — the chat's
     /// adaptive header line, cached by [`Self::rebuild_msg_meta`] so the
     /// render doesn't rescan the history per frame. Zeroized on drop
@@ -789,6 +760,13 @@ impl App {
                 Some((conv.to_string(), msg.trim().parse().ok()?))
             })
             .collect();
+        // The two persisted maps seed the pin subsystem; the rest is derived
+        // from the loaded history at runtime.
+        let pins = crate::tui::pin_state::PinState {
+            local: pinned_local,
+            dismissed: pins_dismissed,
+            ..Default::default()
+        };
         let muted: HashSet<String> = settings_cache.muted.iter().cloned().collect();
         let theme = theme::load(&settings.config_dir());
         // Preselect the picker on the configured preset, else the shared
@@ -824,20 +802,13 @@ impl App {
             messages_loading_older: false,
             messages_max_back: 0,
             new_since_scroll: 0,
-            pinned_msg_id: None,
-            pin_present: false,
-            pin_sender: None,
-            pinned_local,
-            pin_bodies: HashMap::new(),
-            pin_fetch_attempted: std::collections::HashSet::new(),
+            pins,
             giphy_input: crate::domain::LineEditor::default(),
             giphy_results: Vec::new(),
             giphy_selected: 0,
             settings_editing: None,
             settings_input: crate::domain::LineEditor::default(),
             react_to_compose: false,
-            pin_envelope_id: None,
-            pins_dismissed,
             conv_headline: None,
             msg_index: HashMap::new(),
             msg_cache_epoch: 0,
@@ -1335,18 +1306,19 @@ impl App {
     pub fn set_local_pin(&mut self, conv_id: String, target: Option<u64>) {
         match target {
             Some(id) => {
-                self.pinned_local.insert(conv_id.clone(), id);
+                self.pins.local.insert(conv_id.clone(), id);
             }
             None => {
-                self.pinned_local.remove(&conv_id);
+                self.pins.local.remove(&conv_id);
             }
         }
         // The cached body (and its one-shot fetch marker) belong to the old
         // target — drop them so a re-pin resolves fresh.
-        self.pin_bodies.remove(&conv_id);
-        self.pin_fetch_attempted.retain(|(c, _)| c != &conv_id);
+        self.pins.bodies.remove(&conv_id);
+        self.pins.fetch_attempted.retain(|(c, _)| c != &conv_id);
         let mut pairs: Vec<String> = self
-            .pinned_local
+            .pins
+            .local
             .iter()
             .map(|(c, m)| format!("{c}:{m}"))
             .collect();
@@ -1389,9 +1361,10 @@ impl App {
     /// there too, so there is nothing to sync). One entry per conversation:
     /// a newer dismiss overwrites, a newer pin simply no longer matches.
     pub fn set_pin_dismissed(&mut self, conv_id: String, envelope_id: u64) {
-        self.pins_dismissed.insert(conv_id, envelope_id);
+        self.pins.dismissed.insert(conv_id, envelope_id);
         let mut pairs: Vec<String> = self
-            .pins_dismissed
+            .pins
+            .dismissed
             .iter()
             .map(|(c, m)| format!("{c}:{m}"))
             .collect();
@@ -1812,10 +1785,10 @@ impl App {
         // the pin payload (`convertMsgBody` omits `Pin__`), so `target_id`
         // is 0 in practice: presence + sender are what the read gives us,
         // and the target falls back to what *we* pinned this session.
-        self.pinned_msg_id = None;
-        self.pin_present = false;
-        self.pin_sender = None;
-        self.pin_envelope_id = None;
+        self.pins.msg_id = None;
+        self.pins.present = false;
+        self.pins.sender = None;
+        self.pins.envelope_id = None;
         for m in self.messages.iter().rev() {
             if let MessageContent::Pin { target_id } = &m.content {
                 // Locally dismissed (the GUI-parity ✕)? The pin stays active
@@ -1824,20 +1797,20 @@ impl App {
                 if self
                     .open_conv_id
                     .as_ref()
-                    .and_then(|c| self.pins_dismissed.get(c))
+                    .and_then(|c| self.pins.dismissed.get(c))
                     == Some(&m.id)
                 {
                     return;
                 }
-                self.pin_envelope_id = Some(m.id);
-                self.pin_present = true;
-                self.pin_sender = Some(m.sender.clone());
-                self.pinned_msg_id = if *target_id != 0 {
+                self.pins.envelope_id = Some(m.id);
+                self.pins.present = true;
+                self.pins.sender = Some(m.sender.clone());
+                self.pins.msg_id = if *target_id != 0 {
                     Some(*target_id) // future-proof: use it if the API ever carries it
                 } else {
                     self.open_conv_id
                         .as_ref()
-                        .and_then(|id| self.pinned_local.get(id))
+                        .and_then(|id| self.pins.local.get(id))
                         .copied()
                 };
                 return;

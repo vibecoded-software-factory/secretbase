@@ -1574,7 +1574,7 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
 /// nothing, unpins for no one. A newer pin revives the banner. `Alt+U`
 /// (a real unpin) remains the loud sibling.
 pub fn dismiss_pin_banner(app: &mut App) {
-    let (Some(conv), Some(env)) = (app.open_conv_id.clone(), app.pin_envelope_id) else {
+    let (Some(conv), Some(env)) = (app.open_conv_id.clone(), app.pins.envelope_id) else {
         app.set_action(ActionState::Error("No pin banner to hide".into()));
         return;
     };
@@ -1619,10 +1619,10 @@ pub fn handle_unpin_response(app: &mut App, result: Result<(), KeybaseError>) {
 /// no `InFlight` ticket); one attempt per `(conv, target)` so a failing
 /// fetch can't loop on every reload.
 pub(crate) fn maybe_fetch_pin_body(app: &mut App) {
-    if !app.pin_present {
+    if !app.pins.present {
         return;
     }
-    let Some(pid) = app.pinned_msg_id else {
+    let Some(pid) = app.pins.msg_id else {
         return;
     };
     if app.msg_index.contains_key(&pid) {
@@ -1631,10 +1631,10 @@ pub(crate) fn maybe_fetch_pin_body(app: &mut App) {
     let Some(conv_id) = app.open_conv_id.clone() else {
         return;
     };
-    if app.pin_bodies.get(&conv_id).is_some_and(|m| m.id == pid) {
+    if app.pins.bodies.get(&conv_id).is_some_and(|m| m.id == pid) {
         return; // already fetched
     }
-    if !app.pin_fetch_attempted.insert((conv_id.clone(), pid)) {
+    if !app.pins.fetch_attempted.insert((conv_id.clone(), pid)) {
         return;
     }
     let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
@@ -1663,7 +1663,7 @@ pub fn handle_get_pinned_message_response(
                 true,
                 format!("msg #{message_id}"),
             );
-            app.pin_bodies.insert(conv_id, m);
+            app.pins.bodies.insert(conv_id, m);
         }
         // Deleted / not returned: leave the honest `#id` fallback. The
         // attempted-marker stays, so this target isn't re-fetched.
