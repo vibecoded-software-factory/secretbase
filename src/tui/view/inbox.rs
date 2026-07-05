@@ -191,10 +191,34 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         draw_tree_notice(frame, app, area, &head, &[hint]);
         return;
     }
-    // Reserve room for the age column (`format_duration` can emit up to
-    // 4 chars — "364d") + spacing; short-changing it clips the unit ("31d"
-    // rendered as "31", which reads as a bare number).
-    let budget = (area.width as usize).saturating_sub(10).max(6);
+    // Give the name column everything the age column doesn't need: measure
+    // the widest age actually shown (2–4 chars — "4d" … "364d") instead of
+    // reserving a fixed worst case, and subtract only the real chrome
+    // (2 border cols + 1 column-spacing). Short-changing the age clips the
+    // unit ("31d" → "31"), so it keeps its measured width whole.
+    let age_w = model
+        .iter()
+        .map(|r| match r {
+            TreeRow::Conv { idx } => app
+                .conversations
+                .get(*idx)
+                .filter(|c| c.active_at > 0 && now_s >= c.active_at)
+                .map(|c| {
+                    crate::domain::format_duration(std::time::Duration::from_secs(
+                        now_s - c.active_at,
+                    ))
+                    .chars()
+                    .count()
+                })
+                .unwrap_or(0),
+            _ => 0,
+        })
+        .max()
+        .unwrap_or(0)
+        .max(1); // the `#` header
+    // Chrome around the name column: 2 border cols + 2 column-spacing +
+    // 2 for the `▶ ` highlight gutter.
+    let budget = (area.width as usize).saturating_sub(age_w + 6).max(6);
 
     let rows: Vec<Row<'static>> = model
         .iter()
@@ -266,7 +290,15 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 // Local-only favourites carry a golden ★ (our own star — see
                 // `App::favorites`; never synced to Keybase).
                 let fav = app.is_favorite(&conv.id);
-                let label = middle_ellipsis(&raw, budget.saturating_sub(if fav { 6 } else { 4 }));
+                let mentioned = app.mentioned.contains(&conv.id);
+                // The label gets exactly what the row's own markers leave:
+                // a fixed worst-case subtraction wasted 2–4 columns on every
+                // clean row (most of the tree).
+                let prefix_w = 2
+                    + if fav { 2 } else { 0 }
+                    + if unread { 2 } else { 0 }
+                    + if mentioned { 2 } else { 0 };
+                let label = middle_ellipsis(&raw, budget.saturating_sub(prefix_w));
                 let mut spans = vec![Span::raw("  ")];
                 if fav {
                     spans.push(favorite_star(&t));
@@ -278,7 +310,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 }
                 // Unseen @mention of you — the strongest pull in the tree
                 // (Keybase GUI uses red for the same signal).
-                if app.mentioned.contains(&conv.id) {
+                if mentioned {
                     spans.push(Span::styled("@ ", t.danger_title()));
                 }
                 spans.push(Span::styled(label, style));
