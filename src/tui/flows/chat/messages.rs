@@ -681,22 +681,89 @@ pub fn do_copy_url(app: &mut App) {
 }
 
 pub fn select_move_up(app: &mut App) {
-    app.select_anchor = None; // a plain move re-anchors the next shift-range
     if let Some(i) = app.selected_msg_idx
         && i > 0
     {
         app.selected_msg_idx = Some(i - 1);
+        select_resync_anchor_marks(app);
     }
 }
 
 pub fn select_move_down(app: &mut App) {
-    app.select_anchor = None;
     let max = app.messages.len().saturating_sub(1);
     if let Some(i) = app.selected_msg_idx
         && i < max
     {
         app.selected_msg_idx = Some(i + 1);
+        select_resync_anchor_marks(app);
     }
+}
+
+/// Re-marks the anchored range after a Select-mode cursor move: while a `v`
+/// anchor is set, **every motion extends the visual range** (vim's visual
+/// mode) — plain `j`/`k`, paging, `g`/`G`, `{`/`}`. Without an anchor this
+/// is a no-op, so Space-marked scatter selections are untouched by motion.
+pub(crate) fn select_resync_anchor_marks(app: &mut App) {
+    let (Some(anchor), Some(cur)) = (app.select_anchor, app.selected_msg_idx) else {
+        return;
+    };
+    let (lo, hi) = (anchor.min(cur), anchor.max(cur));
+    app.msg_marks = (lo..=hi)
+        .filter_map(|i| app.messages.get(i))
+        .map(|m| m.id)
+        .collect();
+}
+
+/// `v` — toggle the visual anchor at the cursor. On: the cursor row is
+/// marked and every motion extends the range. Off: anchor + marks clear
+/// (vim's `v` exit). The Alt+Shift range chords remain as aliases that
+/// implicitly anchor.
+pub fn select_toggle_anchor(app: &mut App) {
+    if app.select_anchor.take().is_some() {
+        app.msg_marks.clear();
+    } else if app.selected_msg_idx.is_some() {
+        app.select_anchor = app.selected_msg_idx;
+        select_resync_anchor_marks(app);
+    }
+}
+
+/// `{` / `}` — jump to the head of the previous / next **speaker run**
+/// (consecutive messages from one sender), vim's paragraph motion mapped
+/// onto the chat stream. Extends the range while anchored.
+pub fn select_jump_run(app: &mut App, dir: isize) {
+    let Some(cur) = app.selected_msg_idx else {
+        return;
+    };
+    let n = app.messages.len();
+    if n == 0 {
+        return;
+    }
+    let sender_of = |i: usize| app.messages[i].sender.clone();
+    let run_head = |mut i: usize| {
+        while i > 0 && app.messages[i - 1].sender == app.messages[i].sender {
+            i -= 1;
+        }
+        i
+    };
+    let new = if dir < 0 {
+        let h = run_head(cur);
+        if h < cur {
+            h
+        } else if h == 0 {
+            0
+        } else {
+            run_head(h - 1)
+        }
+    } else {
+        let mut i = cur;
+        let s = sender_of(cur);
+        while i + 1 < n && app.messages[i + 1].sender == s {
+            i += 1;
+        }
+        (i + 1).min(n - 1)
+    };
+    app.selected_msg_idx = Some(new);
+    select_resync_anchor_marks(app);
 }
 
 // ── Edit ─────────────────────────────────────────────────────────────
