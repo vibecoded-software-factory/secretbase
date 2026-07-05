@@ -95,15 +95,18 @@ pub fn draw(frame: &mut Frame, app: &App) {
         ));
         Line::from(spans)
     } else if let Some(topic) = &app.channel_confirm_delete {
+        // Same navigable button pair as every confirm overlay (default =
+        // cancel), rendered inline on the browser's bottom row.
         Line::from(vec![
             Span::styled(
                 format!(" Delete #{topic}? "),
                 Style::default().fg(t.error).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                "irreversible — y: delete · n/Esc: cancel",
-                Style::default().fg(t.dim),
-            ),
+            Span::styled("irreversible  ", Style::default().fg(t.dim)),
+            crate::tui::view::widgets::button("delete", app.channel_delete_yes, t),
+            Span::raw(" "),
+            crate::tui::view::widgets::button("cancel", !app.channel_delete_yes, t),
+            Span::styled("   (←/→ · Enter · y/n · Esc)", Style::default().fg(t.muted)),
         ])
     } else {
         Line::from(Span::styled(

@@ -57,15 +57,17 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
         }
         return;
     }
-    // Inline delete confirm (destructive): y confirms, n / Esc cancels.
+    // Inline delete confirm (destructive): the same navigable y/n mechanics
+    // as every confirm overlay (←/→/Tab move, Enter activates, default =
+    // cancel), via the shared driver.
     if app.channel_confirm_delete.is_some() {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => chat::confirm_channel_delete(app),
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                chat::cancel_channel_delete(app)
-            }
-            _ => {}
-        }
+        common::run_confirm(
+            app,
+            key,
+            |a| &mut a.channel_delete_yes,
+            chat::confirm_channel_delete,
+            chat::cancel_channel_delete,
+        );
         return;
     }
     match key.code {
@@ -105,15 +107,15 @@ pub fn members(app: &mut App, key: KeyEvent) {
         }
         return;
     }
-    // Inline remove confirm.
+    // Inline remove confirm — same navigable mechanics as every confirm.
     if app.member_confirm_remove.is_some() {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => chat::confirm_remove_member(app),
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                chat::cancel_member_remove(app)
-            }
-            _ => {}
-        }
+        common::run_confirm(
+            app,
+            key,
+            |a| &mut a.member_remove_yes,
+            chat::confirm_remove_member,
+            chat::cancel_member_remove,
+        );
         return;
     }
     match key.code {

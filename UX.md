@@ -564,7 +564,9 @@ under react/delete/download).
   input → `newconv` on a team channel, reusing the `NewConversation` request
   routed by an `InFlight::CreateChannel` slot), `r` an inline **rename** mode
   (pre-filled → `rename-channel`), `Shift+X` an inline **delete** confirm
-  (destructive + irreversible → `y`/`n`, error-red → `delete-channel`), `t` toggles the
+  (destructive + irreversible — the same navigable confirm mechanics as the
+  overlays: `widgets::button` pair, default = cancel, `←/→`/Tab/Enter/`y`/`n`,
+  error-red → `delete-channel`), `t` toggles the
   channel as a team **default** (new members auto-join; a `★ default` badge,
   `#general` always), `F5` refreshes, `Esc` closes. The inline modes share one
   bottom row + the `channel_new_name` editor; `rename-channel`/`delete-channel`/
@@ -580,7 +582,8 @@ under react/delete/download).
   `ChatMembersDetails` role buckets flattened to `domain::ChatMember`, sorted
   higher-privilege-role first then by name, with the role label dimmed). `a`
   enters an inline **add** mode (comma/space-separated usernames, validated →
-  `addtochannel`), `Shift+X` an inline **remove** confirm (→ `removefromchannel`),
+  `addtochannel`), `Shift+X` an inline **remove** confirm (navigable, default =
+  cancel → `removefromchannel`),
   `F5` reloads, `Esc` returns to wherever it was opened from (`members_return`).
   Add/remove reload the list on success. DMs/non-team convs are refused (fixed
   membership). Flows in `chat::*member*`; input in `input::popups::members`.

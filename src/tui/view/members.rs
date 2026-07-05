@@ -72,12 +72,17 @@ pub fn draw(frame: &mut Frame, app: &App) {
         ));
         Line::from(spans)
     } else if let Some(username) = &app.member_confirm_remove {
+        // Same navigable button pair as every confirm overlay (default =
+        // cancel), rendered inline on the panel's bottom row.
         Line::from(vec![
             Span::styled(
                 format!(" Remove {username}? "),
                 Style::default().fg(t.error).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("y: remove · n/Esc: cancel", Style::default().fg(t.dim)),
+            crate::tui::view::widgets::button("remove", app.member_remove_yes, t),
+            Span::raw(" "),
+            crate::tui::view::widgets::button("cancel", !app.member_remove_yes, t),
+            Span::styled("   (←/→ · Enter · y/n · Esc)", Style::default().fg(t.muted)),
         ])
     } else {
         Line::from(Span::styled(

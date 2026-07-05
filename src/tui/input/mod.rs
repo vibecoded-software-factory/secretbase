@@ -132,50 +132,27 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::Teams => teams::handle(app, key),
         Screen::Help => handle_help(app, key),
         Screen::Settings => settings::handle(app, key),
-        Screen::ConfirmLogout => {
-            use common::ConfirmInput;
-            let commit = |app: &mut App| {
+        Screen::ConfirmLogout => common::run_confirm(
+            app,
+            key,
+            |a| &mut a.logout_yes,
+            |a| {
                 // Don't switch to Login optimistically: return to the
                 // inbox and let `handle_logout_response` move to Login
                 // only on success. A failed logout (still signed in)
                 // must not strand the user on the Login screen.
-                app.screen = Screen::Inbox;
-                flows::auth::request_logout(app);
-            };
-            match common::confirm_key(key) {
-                ConfirmInput::Commit => commit(app),
-                ConfirmInput::Cancel => app.screen = Screen::Inbox,
-                ConfirmInput::Activate => {
-                    if app.logout_yes {
-                        commit(app);
-                    } else {
-                        app.screen = Screen::Inbox;
-                    }
-                }
-                ConfirmInput::Yes => app.logout_yes = true,
-                ConfirmInput::No => app.logout_yes = false,
-                ConfirmInput::Toggle => app.logout_yes = !app.logout_yes,
-                ConfirmInput::Ignore => {}
-            }
-        }
-        Screen::ConfirmConvAction => {
-            use common::ConfirmInput;
-            match common::confirm_key(key) {
-                ConfirmInput::Commit => flows::chat::confirm_conv_action(app),
-                ConfirmInput::Cancel => flows::chat::cancel_conv_action(app),
-                ConfirmInput::Activate => {
-                    if app.conv_action_yes {
-                        flows::chat::confirm_conv_action(app);
-                    } else {
-                        flows::chat::cancel_conv_action(app);
-                    }
-                }
-                ConfirmInput::Yes => app.conv_action_yes = true,
-                ConfirmInput::No => app.conv_action_yes = false,
-                ConfirmInput::Toggle => app.conv_action_yes = !app.conv_action_yes,
-                ConfirmInput::Ignore => {}
-            }
-        }
+                a.screen = Screen::Inbox;
+                flows::auth::request_logout(a);
+            },
+            |a| a.screen = Screen::Inbox,
+        ),
+        Screen::ConfirmConvAction => common::run_confirm(
+            app,
+            key,
+            |a| &mut a.conv_action_yes,
+            flows::chat::confirm_conv_action,
+            flows::chat::cancel_conv_action,
+        ),
         Screen::NewConversation => popups::new_conversation(app, key),
         Screen::UnhideConversation => popups::unhide_conversation(app, key),
         Screen::ChannelBrowser => popups::channel_browser(app, key),

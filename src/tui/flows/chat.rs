@@ -1060,6 +1060,7 @@ pub fn open_channel_delete_confirm(app: &mut App) {
     let topic = channel_topic(c);
     clear_channel_input(app);
     app.channel_confirm_delete = Some(topic);
+    app.channel_delete_yes = false; // destructive → default highlight = cancel
 }
 
 pub fn cancel_channel_delete(app: &mut App) {
@@ -1403,6 +1404,7 @@ pub fn open_member_remove_confirm(app: &mut App) {
     let username = m.username.clone();
     clear_member_input(app);
     app.member_confirm_remove = Some(username);
+    app.member_remove_yes = false; // destructive → default highlight = cancel
 }
 
 pub fn cancel_member_remove(app: &mut App) {
@@ -2425,6 +2427,9 @@ pub fn do_copy_content(app: &mut App) {
             app.set_action(ActionState::Done("Image copied to clipboard".into()));
         }
         Err(e) => {
+            // Log the failure too — the toast expires in seconds, and every
+            // other op records both outcomes in the command log.
+            app.push_cmd("copy image", false, e.to_string());
             app.set_action(ActionState::Error(format!("Copy failed: {e}")));
         }
     }
