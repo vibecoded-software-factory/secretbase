@@ -581,60 +581,33 @@ pub fn favorite_star(theme: &Theme) -> Span<'static> {
     Span::styled("★", unread_style(theme))
 }
 
-/// The shared y/n confirmation overlay — a centered, double-bordered
-/// popup with `title`, the caller's `body` lines, and the
-/// confirm/cancel buttons (the highlighted one follows `confirmed`).
+/// The shared y/n confirmation overlay — **the picker-modal skeleton**,
+/// not a bespoke strip: same geometry (`MODAL_*` band, full height), same
+/// title treatment, same bottom action row (`inline_confirm_line` — the
+/// exact confirm the channel browser / members footers show). The caller's
+/// `body` lines render as non-selectable content; the highlighted button
+/// follows `confirmed`. One confirm look everywhere, popup or inline.
 pub fn draw_confirm_popup(
     frame: &mut Frame,
-    area: Rect,
     theme: &Theme,
     title: &str,
     body: Vec<Line<'static>>,
     confirmed: bool,
 ) {
-    // Align with the modal family: same horizontal band and same top edge
-    // as every `MODAL_*` overlay (Settings, the pickers), so the confirm
-    // reads as part of the system instead of a free-floating strip. Height
-    // stays compact (body + chrome), clamped to the band.
-    let band = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, area);
-    let h = (body.len() as u16 + 4).min(band.height.max(4));
-    let popup = Rect {
-        x: band.x,
-        y: band.y,
-        width: band.width,
-        height: h,
-    };
-    frame.render_widget(Clear, popup);
-    let inner = Rect {
-        x: popup.x + 2,
-        y: popup.y + 1,
-        width: popup.width.saturating_sub(4),
-        height: popup.height.saturating_sub(2),
-    };
-    let block = Block::default()
-        .title(Span::styled(
-            title.to_string(),
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.accent));
-    frame.render_widget(block, popup);
-
-    let mut lines = body;
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![
-        button("confirm", confirmed, theme),
-        Span::raw("   "),
-        button("cancel", !confirmed, theme),
-        Span::styled(
-            "   (←/→ · Enter · y/n · Esc)",
-            Style::default().fg(theme.muted),
-        ),
-    ]));
-    frame.render_widget(Paragraph::new(lines), inner);
+    let rows: Vec<PickerRow> = body.into_iter().map(PickerRow::Header).collect();
+    draw_picker_modal(
+        frame,
+        theme,
+        PickerModal {
+            title: title.trim().to_string(),
+            query: None,
+            selected: 0,
+            rows,
+            empty: Vec::new(),
+            legend: &[],
+            footer: Some(inline_confirm_line("", "", "confirm", confirmed, theme)),
+        },
+    );
 }
 
 /// Shared single-line search/filter box: a titled block holding the live
