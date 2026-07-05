@@ -1778,6 +1778,68 @@ fn search_hits_are_retained_and_cycled_with_n() {
 }
 
 #[test]
+fn select_cursor_at_top_paginates_and_stays_on_its_message() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(100, "alice", "top"), text_msg(101, "alice", "hi")];
+    rig.app.rebuild_msg_meta();
+    rig.app.messages_next = Some("cursor".into());
+    rig.app.selected_msg_idx = Some(0);
+    rig.app.select_anchor = Some(1);
+    // The older page the server will return — newest-first, as `read` does.
+    rig.mock.st().messages = (90..=99)
+        .rev()
+        .map(|i| text_msg(i, "alice", "old"))
+        .collect();
+    rig.mock.st().messages_next = None;
+    // `k` at the top of the loaded window pulls an older page…
+    select_move_up(&mut rig.app);
+    assert!(rig.app.messages_loading_older);
+    pump_until_idle(&mut rig.app);
+    // …and the cursor + anchor (indices) shifted with the prepend, so they
+    // still point at the same messages.
+    assert_eq!(rig.app.messages.len(), 12);
+    assert_eq!(
+        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        Some(100)
+    );
+    assert_eq!(
+        rig.app.select_anchor.map(|i| rig.app.messages[i].id),
+        Some(101)
+    );
+    // A further `k` now walks into the newly-loaded page.
+    select_move_up(&mut rig.app);
+    assert_eq!(
+        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        Some(99)
+    );
+}
+
+#[test]
+fn select_move_up_at_top_without_cursor_does_nothing() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(100, "alice", "top")];
+    rig.app.rebuild_msg_meta();
+    rig.app.messages_next = None; // beginning of history reached
+    rig.app.selected_msg_idx = Some(0);
+    select_move_up(&mut rig.app);
+    // No cursor movement, no request — the true beginning is just the edge.
+    assert!(!rig.app.messages_loading_older);
+    assert_eq!(rig.app.selected_msg_idx, Some(0));
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

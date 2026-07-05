@@ -189,6 +189,13 @@ messages · compose · status) because the message stream is a *viewer*, not
 a grid. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row) and scroll the wheel to page history
 (`mouse_areas` carries the messages viewport rect + a per-message row map).
+**In Select mode the wheel moves the cursor** (3 rows per notch), exactly
+like it does on the tree and the command log — the render follows the
+highlighted message, so a raw viewport scroll there would be a dead control
+that silently desyncs `messages_scroll` from the view. The cursor path (and
+`k` at the top row) **paginates at the edge**: older pages load and the
+cursor/anchor indices shift with the prepend so they stay on the same
+messages.
 The compose box is **multi-line**: `Alt+Enter` inserts a newline (`Enter`
 sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row

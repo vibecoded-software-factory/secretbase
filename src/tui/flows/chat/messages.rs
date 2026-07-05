@@ -563,6 +563,15 @@ pub fn handle_load_older_messages_response(
             app.messages = older;
             app.messages_next = next;
             app.messages_loading_older = false;
+            // The Select-mode cursor and the `v` anchor are **indices** (the
+            // marks are ids) — prepending n rows shifts every index, so both
+            // must shift with them to stay on the same messages.
+            if let Some(i) = app.selected_msg_idx {
+                app.selected_msg_idx = Some(i + n);
+            }
+            if let Some(a) = app.select_anchor {
+                app.select_anchor = Some(a + n);
+            }
             app.rebuild_msg_meta_after_prepend();
             app.set_action(ActionState::Done(format!("Loaded {n} older messages")));
             app.push_cmd(
@@ -812,11 +821,22 @@ pub fn do_copy_url(app: &mut App) {
 }
 
 pub fn select_move_up(app: &mut App) {
-    if let Some(i) = app.selected_msg_idx
-        && i > 0
-    {
-        app.selected_msg_idx = Some(i - 1);
-        select_resync_anchor_marks(app);
+    match app.selected_msg_idx {
+        // At the top of the loaded window — pull an older page instead of
+        // going dead: Select mode was the one surface that couldn't reach
+        // older history. The prepend handler shifts the cursor index so it
+        // stays on the same message; the next `k` then moves into the
+        // newly-loaded page.
+        Some(0) if app.messages_next.is_some() && !app.messages_loading_older => {
+            app.messages_loading_older = true;
+            request_load_older_messages(app);
+        }
+        Some(0) => {}
+        Some(i) => {
+            app.selected_msg_idx = Some(i - 1);
+            select_resync_anchor_marks(app);
+        }
+        None => {}
     }
 }
 

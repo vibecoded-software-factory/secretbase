@@ -134,30 +134,54 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
             app.cmdlog_move(1);
         }
         MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.messages) => {
-            app.messages_scroll = app.messages_scroll.saturating_add(3);
-            conversation::maybe_queue_older(app);
+            wheel_messages(app, -1);
         }
         MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.messages) => {
-            app.messages_scroll = app.messages_scroll.saturating_sub(3);
+            wheel_messages(app, 1);
         }
         // Column fallback — the wheel must not die on borders, the compose
         // box, the header row or the status strip: anywhere in the chat
         // column scrolls the history, anywhere else scrolls the tree.
         MouseEventKind::ScrollUp => {
             if app.mouse_areas.messages.width > 0 && c >= app.mouse_areas.messages.x {
-                app.messages_scroll = app.messages_scroll.saturating_add(3);
-                conversation::maybe_queue_older(app);
+                wheel_messages(app, -1);
             } else {
                 chat::tree_move(app, -1);
             }
         }
         MouseEventKind::ScrollDown => {
             if app.mouse_areas.messages.width > 0 && c >= app.mouse_areas.messages.x {
-                app.messages_scroll = app.messages_scroll.saturating_sub(3);
+                wheel_messages(app, 1);
             } else {
                 chat::tree_move(app, 1);
             }
         }
         _ => {}
+    }
+}
+
+/// One wheel notch over the message history (`dir` −1 = up / 1 = down).
+///
+/// In **Select mode the wheel moves the cursor** — the render follows the
+/// highlighted message, so mutating the raw viewport offset there was a
+/// dead control: the view stayed pinned to the cursor while
+/// `messages_scroll` silently accumulated (triggering invisible pagination
+/// and a jump on exit). Moving the selection matches what the wheel does on
+/// the tree and the command log, and the cursor path paginates at the top
+/// edge. In Compose mode it stays a viewport scroll.
+fn wheel_messages(app: &mut App, dir: isize) {
+    if app.selected_msg_idx.is_some() {
+        for _ in 0..3 {
+            if dir < 0 {
+                chat::select_move_up(app);
+            } else {
+                chat::select_move_down(app);
+            }
+        }
+    } else if dir < 0 {
+        app.messages_scroll = app.messages_scroll.saturating_add(3);
+        conversation::maybe_queue_older(app);
+    } else {
+        app.messages_scroll = app.messages_scroll.saturating_sub(3);
     }
 }
