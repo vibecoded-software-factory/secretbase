@@ -10,7 +10,6 @@ crossterm = "0.29.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 color-eyre = "0.6"
-figlet-rs = "0.1"
 zeroize = { version = "1", features = ["derive"] }
 # Local timezone-aware timestamps for the chat (clock only — no default
 # features, so no oldtime/serde bloat).

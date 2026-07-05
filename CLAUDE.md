@@ -176,8 +176,9 @@ and the `view/help.rs` popup in sync when shortcuts change.
   no `unsafe`, ever.
 - **Ratatui 0.30** + **Crossterm 0.29** for the TUI and terminal events.
 - **Serde / serde_json** to parse `keybase … api` JSON output.
-- **color-eyre** for error reports, **figlet-rs** for the splash wordmark
-  (bundled `src/tui/assets/slant.flf`, no system `figlet` needed),
+- **color-eyre** for error reports; the splash wordmark is a
+  **pre-rendered** (embedded) FIGlet-style block in `view/logo.rs` — no
+  font asset or FIGlet dependency,
   **zeroize** to wipe chat/credential-bearing buffers, **chrono**
   (`clock`, no default features) for local-timezone chat timestamps,
   **emojis** for the full standard Unicode emoji set (reaction picker),
