@@ -286,8 +286,13 @@ giphy_api_key = ""                 # your own Giphy API key (free at
                                     # Editable in-app: Settings → Images
 
 [theme]
-name         = "nord"              # bundled preset: nord (default),
-                                    # catppuccin-mocha, dracula, catppuccin-latte (light)
+name         = "nord"              # bundled preset (dark): nord (default),
+                                    # catppuccin-mocha / -frappe / -macchiato,
+                                    # dracula, tokyonight, tokyonight-storm,
+                                    # gruvbox-dark, rose-pine, everforest,
+                                    # kanagawa, one-dark, solarized-dark,
+                                    # monokai-pro; (light): solarized-light,
+                                    # rose-pine-dawn, catppuccin-latte
 accent       = "#cba6f7"           # optional per-key overrides on top of the preset
 inactive     = "#6c7086"
 selected_bg  = "#313244"

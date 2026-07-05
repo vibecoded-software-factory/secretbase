@@ -2369,8 +2369,12 @@ mod tests {
         let mut app = fresh_app();
         app.screen = Screen::Teams;
         app.open_settings();
-        app.apply_theme_idx(1); // dracula
-        assert_eq!(app.settings_theme_idx, 1);
+        let dracula = theme::Preset::ALL
+            .iter()
+            .position(|p| *p == theme::Preset::Dracula)
+            .unwrap();
+        app.apply_theme_idx(dracula);
+        assert_eq!(app.settings_theme_idx, dracula);
         assert_eq!(
             app.theme.accent,
             Theme::from_palette(&theme::Preset::Dracula.palette()).accent
