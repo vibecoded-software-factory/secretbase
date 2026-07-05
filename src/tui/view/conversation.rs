@@ -258,7 +258,7 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
 /// grammar as every legend. Skipped when the bar is too narrow.
 fn draw_compose_chips(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = &app.theme;
-    let chips: [(&str, &str); 2] = [("Alt+I", "emoji"), ("Alt+A", "attach")];
+    let chips: [(&str, &str); 3] = [("Alt+G", "GIF"), ("Alt+I", "emoji"), ("Alt+A", "attach")];
     let text_w: usize = chips
         .iter()
         .map(|(k, l)| k.chars().count() + 1 + l.chars().count())
@@ -303,8 +303,9 @@ fn draw_compose_chips(frame: &mut Frame, app: &mut App, area: Rect) {
         height: 1,
     };
     frame.render_widget(Paragraph::new(Line::from(spans)), rect);
-    app.mouse_areas.compose_emoji = rects[0];
-    app.mouse_areas.compose_attach = rects[1];
+    app.mouse_areas.compose_gif = rects[0];
+    app.mouse_areas.compose_emoji = rects[1];
+    app.mouse_areas.compose_attach = rects[2];
 }
 
 /// The Messages-panel title — the `─[Alt+M]-` go-to tag + the conversation name.

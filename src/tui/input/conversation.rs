@@ -112,6 +112,8 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         // Emoji into the draft — the picker in insert mode (also the compose
         // bar's clickable chip).
         KeyCode::Char('i') | KeyCode::Char('I') if alt => chat::open_emoji_for_compose(app),
+        // GIF search (giphy, user API key) — also a compose-bar chip.
+        KeyCode::Char('g') | KeyCode::Char('G') if alt => chat::open_giphy_search(app),
         // Members of the open conversation (team channels only).
         KeyCode::Char('p') | KeyCode::Char('P') if alt => chat::open_members_from_conversation(app),
 

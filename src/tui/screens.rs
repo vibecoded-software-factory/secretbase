@@ -49,6 +49,9 @@ pub enum Screen {
     /// In-conversation search (Ctrl+F) — a modal `searchregexp` box + results,
     /// jumping to the picked match (sibling of the global-search modal).
     ConvSearch,
+    /// GIF search popup (giphy, user API key) — query + results; Enter
+    /// sends the selected GIF's media URL to the open conversation.
+    GiphySearch,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.

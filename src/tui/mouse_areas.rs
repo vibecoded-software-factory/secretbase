@@ -31,6 +31,8 @@ pub struct MouseAreas {
     /// One screen rect per visible message line, paired with its index in
     /// `App::messages` — for click-to-select. Built fresh each render.
     pub message_rows: Vec<(Rect, usize)>,
+    /// The compose bar's clickable `GIF` chip (opens the giphy search).
+    pub compose_gif: Rect,
     /// The compose bar's clickable `emoji` chip (opens the insert picker).
     pub compose_emoji: Rect,
     /// The compose bar's clickable `attach` chip (opens the file picker).

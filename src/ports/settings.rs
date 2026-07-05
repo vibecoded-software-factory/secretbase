@@ -59,6 +59,13 @@ pub struct UserSettings {
     /// your IP to the media host (exactly like any link-preview client).
     /// `false` renders the plain URL instead.
     pub web_previews: bool,
+    /// User-provided **Giphy API key** for the TUI's GIF search (Settings →
+    /// Images, or the `giphy_api_key` config key). Keybase's own giphy
+    /// search runs through a server-vended key the JSON API doesn't expose,
+    /// so each user brings their own (free at developers.giphy.com). Empty
+    /// = the GIF search is disabled; everything else giphy (inline render)
+    /// works without it. Never logged.
+    pub giphy_api_key: String,
     /// **Local-only** favourited conversation ids. secretbase deliberately does
     /// *not* use Keybase's `favorite` status (the CLI can't read it back, so it
     /// would drift). This is our own star, owned and persisted entirely
@@ -99,6 +106,7 @@ impl Default for UserSettings {
             emoji_style: "glyph".to_string(),
             icon_style: "unicode".to_string(),
             web_previews: true,
+            giphy_api_key: String::new(),
             favorites: Vec::new(),
             muted: Vec::new(),
             pins: Vec::new(),

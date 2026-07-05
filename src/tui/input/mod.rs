@@ -188,6 +188,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::QuickSwitcher => popups::quick_switcher(app, key),
         Screen::CommandPalette => popups::command_palette(app, key),
         Screen::ConvSearch => popups::conv_search(app, key),
+        Screen::GiphySearch => popups::giphy_search(app, key),
     }
 }
 

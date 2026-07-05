@@ -38,6 +38,7 @@ pub enum PaletteAction {
     HidePinBanner,
     InsertEmoji,
     GoToReply,
+    SearchGif,
     DownloadAttachment,
     CopyMessage,
     DeleteMessage,
@@ -274,6 +275,13 @@ fn palette_commands(app: &App) -> Vec<Command> {
             "Message",
         ));
         v.push(cmd(
+            SearchGif,
+            "Search GIFs (giphy)",
+            "Alt+G",
+            "send gif",
+            "Compose",
+        ));
+        v.push(cmd(
             DownloadAttachment,
             "Download attachment",
             "s",
@@ -428,6 +436,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         HidePinBanner => chat::dismiss_pin_banner(app),
         InsertEmoji => chat::open_emoji_for_compose(app),
         GoToReply => chat::select_activate(app),
+        SearchGif => chat::open_giphy_search(app),
         DownloadAttachment => chat::open_download_for_selected(app),
         CopyMessage => chat::do_copy_messages(app, true),
         DeleteMessage => chat::open_delete_for_selected(app),

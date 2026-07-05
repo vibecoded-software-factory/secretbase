@@ -338,4 +338,17 @@ fn draw_theme_panel(frame: &mut Frame, app: &App, area: Rect) {
         ))),
         hint_area,
     );
+
+    // A secret setting being edited floats the standard input popup on top
+    // (the one small-single-input component every popup input uses).
+    if let Some(id) = app.settings_editing {
+        crate::tui::view::widgets::draw_input_popup(
+            frame,
+            t,
+            id.label(),
+            "key: ",
+            &app.settings_input,
+            &[("Enter", "save"), ("Esc", "cancel")],
+        );
+    }
 }

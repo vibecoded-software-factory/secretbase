@@ -232,15 +232,24 @@ The compose box is **multi-line**: `Alt+Enter` inserts a newline — as does
 keyboard protocol (legacy terminals can't distinguish it from Enter, so
 `Alt+Enter` is the always-works binding) — (`Enter` sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
-cursor. Its bottom border carries the **compose chips** — `Alt+I emoji ·
-Alt+A attach`, right-aligned in the legend grammar (key accent + dim label)
-and **clickable** (`mouse_areas.compose_emoji/attach`): emoji opens the
-shared picker in **insert mode** (`App::react_to_compose` — Enter drops the
-glyph, or `:alias:` for a custom emoji, into the draft at the cursor),
-attach opens the file picker. There is deliberately **no GIF chip**: the
-GUI's `/giphy` is an interactive builtin the JSON API intercepts and drops
-(verified live: `send` returns `id:0` and nothing posts), so the honest
-path for a GIF is attaching the file. Single-line inputs (search, react, new-conversation) keep
+cursor. Its bottom border carries the **compose chips** — `Alt+G GIF · Alt+I emoji
+· Alt+A attach`, right-aligned in the legend grammar (key accent + dim
+label) and **clickable** (`mouse_areas.compose_gif/emoji/attach`): emoji
+opens the shared picker in **insert mode** (`App::react_to_compose` — Enter
+drops the glyph, or `:alias:` for a custom emoji, into the draft at the
+cursor), attach opens the file picker, and GIF opens the **giphy search**
+(`Screen::GiphySearch`, the shared picker-modal skeleton: query → Enter
+searches, ↑↓ pick, Enter sends the hit's clean media URL — the GUI unfurls
+it, this TUI renders it inline; the send goes through the normal optimistic
+outbox and **never touches the compose draft**). The search needs the
+user's own Giphy API key (`giphy_api_key`, Settings → Images — a
+`SettingKind::Secret` row: value rendered masked, edited via the standard
+input popup, never logged): Keybase's own giphy key is server-vended to its
+GUI and unreachable over the JSON API, and shipping a shared key in a
+public binary is not viable, so each user brings a free one
+(developers.giphy.com). Without a key the chip toasts a pointer to
+Settings. (The GUI's `/giphy` builtin remains unusable over the API —
+verified live: `send` returns `id:0` and nothing posts.) Single-line inputs (search, react, new-conversation) keep
 `widgets::editor_spans`. The chat column is **full-height** with an **adaptive
 header** (`has_adaptive_header` / `draw_adaptive_header`) — a bordered
 section on the standard `titled_block` chrome: `📌 Pinned` with

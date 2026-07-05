@@ -153,6 +153,7 @@ collapse a group); the header search fuzzy-filters it.
 | mouse                   | Click a message to select, scroll to page history |
 | `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
 | `Alt+I`                 | Insert an emoji into the draft |
+| `Alt+G`                 | GIF search — pick a giphy GIF and send it |
 | `Alt+U`                 | Unpin channel |
 | `Alt+H`                 | Hide the pin banner (local only) |
 | `Alt+R`                 | Resend failed message |
@@ -272,6 +273,11 @@ web_previews = true                # fetch giphy GIFs linked in messages directl
                                     # from giphy for inline playback (needs `curl`;
                                     # reveals your IP to giphy, like any link
                                     # preview — false renders the plain URL)
+giphy_api_key = ""                 # your own Giphy API key (free at
+                                    # developers.giphy.com) enables the Alt+G GIF
+                                    # search; Keybase's own giphy key is server-
+                                    # vended and unreachable outside its GUI.
+                                    # Editable in-app: Settings → Images
 
 [theme]
 name         = "nord"              # bundled preset: nord (default),
