@@ -35,6 +35,7 @@ pub enum PaletteAction {
     ReplyMessage,
     ReactMessage,
     PinMessage,
+    HidePinBanner,
     DownloadAttachment,
     CopyMessage,
     DeleteMessage,
@@ -250,6 +251,13 @@ fn palette_commands(app: &App) -> Vec<Command> {
         ));
         v.push(cmd(PinMessage, "Pin message", "p", "unpin", "Message"));
         v.push(cmd(
+            HidePinBanner,
+            "Hide pin banner",
+            "Alt+H",
+            "local dismiss",
+            "Message",
+        ));
+        v.push(cmd(
             DownloadAttachment,
             "Download attachment",
             "s",
@@ -401,6 +409,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         ReplyMessage => chat::start_reply_for_selected(app),
         ReactMessage => chat::open_react_for_selected(app),
         PinMessage => chat::request_pin_selected_message(app),
+        HidePinBanner => chat::dismiss_pin_banner(app),
         DownloadAttachment => chat::open_download_for_selected(app),
         CopyMessage => chat::do_copy_messages(app, true),
         DeleteMessage => chat::open_delete_for_selected(app),

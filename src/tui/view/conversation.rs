@@ -81,7 +81,7 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
                 let suffix_w = 1
                     + " · ".chars().count()
                     + 2 // the “” quotes
-                    + "  ·  Alt+U unpin".chars().count();
+                    + "  ·  Alt+U unpin · Alt+H hide".chars().count();
                 let budget = w.saturating_sub(m.sender.chars().count() + suffix_w).max(8);
                 let snippet = trim_end_ellipsis(body.lines().next().unwrap_or(""), budget);
                 s.push(Span::styled(
@@ -114,6 +114,12 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
             crate::tui::view::widgets::key_style(t),
         ));
         s.push(Span::styled(" unpin", Style::default().fg(t.dim)));
+        s.push(Span::styled(" · ", Style::default().fg(t.muted)));
+        s.push(Span::styled(
+            "Alt+H",
+            crate::tui::view::widgets::key_style(t),
+        ));
+        s.push(Span::styled(" hide", Style::default().fg(t.dim)));
         s
     } else if let Some(topic) = app.conv_headline.as_deref() {
         let topic = trim_end_ellipsis(

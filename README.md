@@ -153,6 +153,7 @@ collapse a group); the header search fuzzy-filters it.
 | mouse                   | Click a message to select, scroll to page history |
 | `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
 | `Alt+U`                 | Unpin channel |
+| `Alt+H`                 | Hide the pin banner (local only) |
 | `Alt+R`                 | Resend failed message |
 | `Alt+A`                 | Attach a file (opens the file picker) |
 | `Alt+E`                 | Edit your most recent own message (Slack's up-to-edit) |

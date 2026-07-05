@@ -98,6 +98,8 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         // Per-message actions (edit / delete / react / pin / reply) live in
         // Select mode (Alt+V) — Compose stays for composing only.
         KeyCode::Char('u') | KeyCode::Char('U') if alt => chat::request_unpin_conversation(app),
+        // Local hide of the pin banner — the quiet sibling of Alt+U.
+        KeyCode::Char('h') | KeyCode::Char('H') if alt => chat::dismiss_pin_banner(app),
         // Slack's up-to-edit fast path: jump straight to editing your most
         // recent own message.
         KeyCode::Char('e') | KeyCode::Char('E') if alt => chat::edit_last_own_message(app),
@@ -175,6 +177,8 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         // consistent because many terminals only deliver Shift+arrows with Alt.
         KeyCode::Char('K') if alt => chat::select_extend(app, -1),
         KeyCode::Char('J') if alt => chat::select_extend(app, 1),
+        // The banner is visible in Select mode too — same hide as Compose.
+        KeyCode::Char('h') | KeyCode::Char('H') if alt => chat::dismiss_pin_banner(app),
         KeyCode::Up if shift => chat::select_extend(app, -1),
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),

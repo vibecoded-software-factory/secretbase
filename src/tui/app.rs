@@ -360,6 +360,14 @@ pub struct App {
     /// `(conv, msg_id)` pin-body fetches already issued — one attempt per
     /// target, so a failing `get` can't loop on every reload.
     pub pin_fetch_attempted: std::collections::HashSet<(String, u64)>,
+    /// Id of the newest pin **envelope** in the loaded history (the `pin`
+    /// message itself, not its target) — what a local dismiss records.
+    pub pin_envelope_id: Option<u64>,
+    /// **Local-only** dismissed pin banners (conv → dismissed envelope id),
+    /// persisted as the `pins_dismissed` config key. The GUI-parity ✕:
+    /// hiding the banner without unpinning for anyone. A newer pin gets a
+    /// new envelope id, so the banner revives automatically.
+    pub pins_dismissed: HashMap<String, u64>,
     /// Latest channel topic/headline in the loaded history — the chat's
     /// adaptive header line, cached by [`Self::rebuild_msg_meta`] so the
     /// render doesn't rescan the history per frame. Zeroized on drop
@@ -820,6 +828,14 @@ impl App {
                 Some((conv.to_string(), msg.trim().parse().ok()?))
             })
             .collect();
+        let pins_dismissed: HashMap<String, u64> = settings_cache
+            .pins_dismissed
+            .iter()
+            .filter_map(|p| {
+                let (conv, msg) = p.split_once(':')?;
+                Some((conv.to_string(), msg.trim().parse().ok()?))
+            })
+            .collect();
         let muted: HashSet<String> = settings_cache.muted.iter().cloned().collect();
         let theme = theme::load(&settings.config_dir());
         // Preselect the picker on the configured preset, else the shared
@@ -878,6 +894,8 @@ impl App {
             pinned_local,
             pin_bodies: HashMap::new(),
             pin_fetch_attempted: std::collections::HashSet::new(),
+            pin_envelope_id: None,
+            pins_dismissed,
             conv_headline: None,
             msg_index: HashMap::new(),
             msg_cache_epoch: 0,
@@ -1398,6 +1416,27 @@ impl App {
         }
     }
 
+    /// Records a locally-dismissed pin banner (conv → the pin *envelope* id)
+    /// and **persists** it — the GUI-parity ✕ (`IgnorePinnedMessage` is local
+    /// there too, so there is nothing to sync). One entry per conversation:
+    /// a newer dismiss overwrites, a newer pin simply no longer matches.
+    pub fn set_pin_dismissed(&mut self, conv_id: String, envelope_id: u64) {
+        self.pins_dismissed.insert(conv_id, envelope_id);
+        let mut pairs: Vec<String> = self
+            .pins_dismissed
+            .iter()
+            .map(|(c, m)| format!("{c}:{m}"))
+            .collect();
+        pairs.sort();
+        self.settings_cache.pins_dismissed = pairs.clone();
+        if !self
+            .settings
+            .write_setting("pins_dismissed", &toml_quoted(&pairs.join(",")))
+        {
+            self.push_cmd("settings write", false, "pins_dismissed not saved");
+        }
+    }
+
     /// **Effective** unread for display: the conversation is unread **and** not
     /// locally muted. Every unread surface (the `●` dot, the bold, the unread
     /// count, the Unread filter, the switcher's Unread section) uses this so a
@@ -1821,8 +1860,21 @@ impl App {
         self.pinned_msg_id = None;
         self.pin_present = false;
         self.pin_sender = None;
+        self.pin_envelope_id = None;
         for m in self.messages.iter().rev() {
             if let MessageContent::Pin { target_id } = &m.content {
+                // Locally dismissed (the GUI-parity ✕)? The pin stays active
+                // server-side, but this client hides the banner — until a
+                // *newer* pin envelope (a different id) appears.
+                if self
+                    .open_conv_id
+                    .as_ref()
+                    .and_then(|c| self.pins_dismissed.get(c))
+                    == Some(&m.id)
+                {
+                    return;
+                }
+                self.pin_envelope_id = Some(m.id);
                 self.pin_present = true;
                 self.pin_sender = Some(m.sender.clone());
                 self.pinned_msg_id = if *target_id != 0 {

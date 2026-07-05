@@ -1412,6 +1412,20 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
     }
 }
 
+/// Hides the pin banner **locally** (the GUI-parity ✕): records the pin
+/// envelope id so this pin stays hidden across reloads and restarts, posts
+/// nothing, unpins for no one. A newer pin revives the banner. `Alt+U`
+/// (a real unpin) remains the loud sibling.
+pub fn dismiss_pin_banner(app: &mut App) {
+    let (Some(conv), Some(env)) = (app.open_conv_id.clone(), app.pin_envelope_id) else {
+        app.set_action(ActionState::Error("No pin banner to hide".into()));
+        return;
+    };
+    app.set_pin_dismissed(conv, env);
+    app.rebuild_msg_meta();
+    app.set_action(ActionState::Done("Pin hidden (local only)".into()));
+}
+
 pub fn request_unpin_conversation(app: &mut App) {
     let Some((_, channel)) = open_channel(app) else {
         return;
