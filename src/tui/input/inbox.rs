@@ -97,6 +97,16 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             }
             return; // keep the leader armed for the next direction
         }
+        // tmux's prefix+z: zoom the chat column (needs an open conversation
+        // to be worth anything). Exits the leader.
+        if matches!(key.code, KeyCode::Char('z') | KeyCode::Char('Z')) {
+            app.pending_pane_nav = false;
+            if app.open_conv_id.is_some() {
+                app.pane_zoomed = !app.pane_zoomed;
+                app.focus = Focus::Chat;
+            }
+            return;
+        }
         app.pending_pane_nav = false;
         if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
             return;

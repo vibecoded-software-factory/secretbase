@@ -41,6 +41,7 @@ pub enum PaletteAction {
     SearchGif,
     JumpNewMessages,
     EditorCompose,
+    ZoomChat,
     DownloadAttachment,
     CopyMessage,
     DeleteMessage,
@@ -298,6 +299,13 @@ fn palette_commands(app: &App) -> Vec<Command> {
             "Compose",
         ));
         v.push(cmd(
+            ZoomChat,
+            "Zoom the chat column",
+            "Ctrl+W z",
+            "maximize pane toggle",
+            "Message",
+        ));
+        v.push(cmd(
             DownloadAttachment,
             "Download attachment",
             "s",
@@ -455,6 +463,12 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         SearchGif => chat::open_giphy_search(app),
         JumpNewMessages => chat::jump_to_new_messages(app),
         EditorCompose => app.pending_editor_compose = true,
+        ZoomChat => {
+            if app.open_conv_id.is_some() {
+                app.pane_zoomed = !app.pane_zoomed;
+                app.focus = crate::tui::screens::Focus::Chat;
+            }
+        }
         DownloadAttachment => chat::open_download_for_selected(app),
         CopyMessage => chat::do_copy_messages(app, true),
         DeleteMessage => chat::open_delete_for_selected(app),

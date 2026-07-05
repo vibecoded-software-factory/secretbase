@@ -259,6 +259,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                     ("/", "filter chats (or Alt+F)"),
                     ("Tab / Shift+Tab", "cycle focus"),
                     ("Ctrl+W then h/j/k/l", "move between panels (or arrows)"),
+                    (
+                        "Ctrl+W then z",
+                        "zoom the chat (toggle — tree + log hidden)",
+                    ),
                 ] {
                     lines.push(help_line(k, d, t));
                 }

@@ -650,6 +650,9 @@ pub struct App {
     /// `Ctrl+W` window-nav leader is armed — the next key is read as a
     /// direction (`h/j/k/l` or an arrow) to move between panels positionally.
     pub pending_pane_nav: bool,
+    /// `Ctrl+W z` — the chat column takes the whole Home (tree + command
+    /// log hidden) until toggled back. tmux's prefix+z, on our pane leader.
+    pub pane_zoomed: bool,
 
     // ── Settings / theme ──────────────────────────────────────────────────
     pub settings_cache: UserSettings,
@@ -1025,6 +1028,7 @@ impl App {
             cmdlog_marks: HashSet::new(),
             cmdlog_anchor: None,
             pending_pane_nav: false,
+            pane_zoomed: false,
             settings_cache,
             favorites,
             muted,

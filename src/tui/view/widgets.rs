@@ -180,6 +180,50 @@ pub fn list_table(
     draw_scrollbar(frame, theme, area, len, viewport, *scroll);
 }
 
+/// helix-style **which-key** popup for an armed leader: a small
+/// bottom-right overlay listing every continuation. Rendered per frame
+/// while the leader is pending — the footer hint says the same thing in
+/// one line, this makes it glanceable without reading.
+pub fn draw_which_key(frame: &mut Frame, theme: &Theme, entries: &[(&str, &str)]) {
+    let area = frame.area();
+    let w = entries
+        .iter()
+        .map(|(k, l)| k.chars().count() + l.chars().count() + 3)
+        .max()
+        .unwrap_or(10)
+        .max("Ctrl+W …".len()) as u16
+        + 4;
+    let h = entries.len() as u16 + 2;
+    if area.width <= w + 2 || area.height <= h + 2 {
+        return;
+    }
+    let rect = Rect {
+        x: area.x + area.width - w - 1,
+        y: area.y + area.height - h - 2,
+        width: w,
+        height: h,
+    };
+    frame.render_widget(Clear, rect);
+    let block = rounded_block(Style::default().fg(theme.accent)).title(Span::styled(
+        " Ctrl+W … ",
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    ));
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+    let lines: Vec<Line<'static>> = entries
+        .iter()
+        .map(|(k, l)| {
+            Line::from(vec![
+                Span::styled(format!(" {k} "), key_style(theme)),
+                Span::styled((*l).to_string(), Style::default().fg(theme.dim)),
+            ])
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
 /// A dim vertical scrollbar on `area`'s right border, drawn only when
 /// `content_len` overflows `viewport` — the shared position cue for every
 /// scrollable region (lists, pickers, the message history).

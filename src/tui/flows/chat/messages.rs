@@ -110,6 +110,7 @@ pub fn close_conversation(app: &mut App) {
     close_conv_search(app);
     app.open_conv_id = None;
     app.unread_boundary = None;
+    app.pane_zoomed = false;
     app.messages.clear();
     app.rebuild_msg_meta();
     app.messages_scroll = 0;
