@@ -72,7 +72,7 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
         }
         Screen::QuickSwitcher => {
             let len = app.switcher_selectable().len();
-            app.switcher_selected = clamp_move(app.switcher_selected, delta, len);
+            app.switcher.selected = clamp_move(app.switcher.selected, delta, len);
         }
         Screen::CommandPalette => {
             let len = crate::tui::flows::palette::filtered_commands(app).len();
@@ -112,7 +112,7 @@ fn picker_screen(s: Screen) -> bool {
 fn picker_click(app: &mut App, item: usize) {
     let (sel, activate): (&mut usize, fn(&mut App)) = match app.screen {
         Screen::QuickSwitcher => (
-            &mut app.switcher_selected,
+            &mut app.switcher.selected,
             chat::quick_switcher_open_selected,
         ),
         Screen::CommandPalette => (

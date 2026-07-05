@@ -317,12 +317,10 @@ pub struct App {
     /// `:token` whose emoji popup was Esc-dismissed (same contract as
     /// [`Self::mention_dismissed_token`]).
     pub emoji_ac_dismissed_token: Option<String>,
-    /// Fuzzy query in the Ctrl+K quick switcher.
-    pub switcher: LineEditor,
-    /// Selected row in the switcher (indexes [`Self::switcher_results`]).
-    pub switcher_selected: usize,
-    /// Screen the switcher was opened from, restored on cancel.
-    pub switcher_from: Screen,
+    /// The `Ctrl+K` quick-switcher overlay's state — the fuzzy query, the
+    /// selected row and the return screen — extracted into its own type (see
+    /// [`crate::tui::switcher_state`]). The row projections stay `App` methods.
+    pub switcher: crate::tui::switcher_state::SwitcherState,
     /// Per-conversation unsent draft text (in memory only — not persisted
     /// across restarts). Keyed by conversation id.
     pub drafts: HashMap<String, String>,
@@ -659,9 +657,7 @@ impl App {
             mention_dismissed_token: None,
             emoji_ac_selected: 0,
             emoji_ac_dismissed_token: None,
-            switcher: LineEditor::default(),
-            switcher_selected: 0,
-            switcher_from: Screen::Inbox,
+            switcher: crate::tui::switcher_state::SwitcherState::default(),
             drafts: HashMap::new(),
             palette: LineEditor::default(),
             palette_selected: 0,
@@ -739,7 +735,7 @@ impl App {
     /// `conversations`. Empty query → all, most-recent first; otherwise
     /// fuzzy-ranked over the lowered projection (same scorer as the inbox).
     pub fn switcher_results(&self) -> Vec<usize> {
-        let q = self.switcher.text().trim().to_lowercase();
+        let q = self.switcher.query.text().trim().to_lowercase();
         if q.is_empty() {
             let mut idx: Vec<usize> = (0..self.conversations.len()).collect();
             idx.sort_by_key(|&i| std::cmp::Reverse(self.conversations[i].active_at_ms));
@@ -761,7 +757,7 @@ impl App {
     /// empty, it's Discord-style sections: Drafts, Unread, then Recent
     /// (each by recency, no conversation repeated across sections).
     pub fn switcher_rows(&self) -> Vec<SwitcherRow> {
-        if !self.switcher.text().trim().is_empty() {
+        if !self.switcher.query.text().trim().is_empty() {
             return self
                 .switcher_results()
                 .into_iter()

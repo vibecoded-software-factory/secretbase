@@ -2071,7 +2071,7 @@ fn paste_multiline_lands_in_compose_without_sending() {
     rig.app.compose.clear();
     rig.app.screen = Screen::QuickSwitcher;
     handle_paste(&mut rig.app, "a\nb");
-    assert_eq!(rig.app.switcher.text(), "a b");
+    assert_eq!(rig.app.switcher.query.text(), "a b");
 }
 
 #[test]
@@ -3340,10 +3340,10 @@ fn quick_switcher_lists_all_then_filters_by_name() {
         "a",
     );
     // Empty query → every conversation is a candidate.
-    rig.app.switcher.clear();
+    rig.app.switcher.query.clear();
     assert_eq!(rig.app.switcher_results().len(), 3);
     // A query narrows + ranks; the matching conversation comes first.
-    rig.app.switcher.set("bob");
+    rig.app.switcher.query.set("bob");
     let r = rig.app.switcher_results();
     assert!(!r.is_empty());
     assert_eq!(rig.app.conversations[r[0]].id, "b");
@@ -3458,7 +3458,7 @@ fn switcher_sections_group_drafts_unread_recent_without_repeats() {
         "a",
     );
     rig.app.drafts.insert("a".into(), "wip".into());
-    rig.app.switcher.clear();
+    rig.app.switcher.query.clear();
     let rows = rig.app.switcher_rows();
     let headers: Vec<&str> = rows
         .iter()

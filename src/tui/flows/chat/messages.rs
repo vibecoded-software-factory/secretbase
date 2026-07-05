@@ -224,26 +224,26 @@ pub fn edit_last_own_message(app: &mut App) {
 // ── Quick switcher (Ctrl+K) ──────────────────────────────────────────
 
 pub fn open_quick_switcher(app: &mut App) {
-    app.switcher_from = app.screen;
-    app.switcher.clear();
-    app.switcher_selected = 0;
+    app.switcher.from = app.screen;
+    app.switcher.query.clear();
+    app.switcher.selected = 0;
     app.screen = crate::tui::screens::Screen::QuickSwitcher;
 }
 
 pub fn close_quick_switcher(app: &mut App) {
-    app.switcher.clear();
-    app.screen = app.switcher_from;
+    app.switcher.query.clear();
+    app.screen = app.switcher.from;
 }
 
 /// Jumps to the highlighted conversation in the switcher.
 pub fn quick_switcher_open_selected(app: &mut App) {
     let selectable = app.switcher_selectable();
-    let Some(&i) = selectable.get(app.switcher_selected) else {
+    let Some(&i) = selectable.get(app.switcher.selected) else {
         close_quick_switcher(app);
         return;
     };
     let id = app.conversations[i].id.clone();
-    app.switcher.clear();
+    app.switcher.query.clear();
     open_conversation_by_id(app, id);
 }
 
