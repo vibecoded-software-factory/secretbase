@@ -2137,6 +2137,50 @@ fn resend_walks_failed_queue_oldest_first_with_count() {
 }
 
 #[test]
+fn attention_motions_jump_to_divider_and_mentions() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.identity.username = "me".into();
+    let mut with_mention = text_msg(12, "alice", "oye @me");
+    with_mention.mentions = vec!["me".into()];
+    rig.app.messages = vec![
+        text_msg(10, "alice", "viejo"),
+        text_msg(11, "alice", "nuevo"),
+        with_mention,
+        text_msg(13, "alice", "otro"),
+    ];
+    rig.app.rebuild_msg_meta();
+    // Boundary at #10 → Alt+N lands on the first newer message (#11).
+    rig.app.unread_boundary = Some(10);
+    jump_to_new_messages(&mut rig.app);
+    assert_eq!(
+        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        Some(11)
+    );
+    // `]` finds the next @mention; at the end it stays put, honestly.
+    select_jump_mention(&mut rig.app, 1);
+    assert_eq!(
+        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        Some(12)
+    );
+    select_jump_mention(&mut rig.app, 1);
+    assert_eq!(
+        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        Some(12)
+    );
+    select_jump_mention(&mut rig.app, -1);
+    assert_eq!(
+        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        Some(12)
+    );
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

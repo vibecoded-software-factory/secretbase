@@ -129,6 +129,8 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Char('i') | KeyCode::Char('I') if alt => chat::open_emoji_for_compose(app),
         // GIF search (giphy, user API key) — also a compose-bar chip.
         KeyCode::Char('g') | KeyCode::Char('G') if alt => chat::open_giphy_search(app),
+        // Jump to the `new messages` divider (catch-up entry point).
+        KeyCode::Char('n') | KeyCode::Char('N') if alt => chat::jump_to_new_messages(app),
         // Members of the open conversation (team channels only).
         KeyCode::Char('p') | KeyCode::Char('P') if alt => chat::open_members_from_conversation(app),
 
@@ -197,6 +199,9 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         // vim buffer search: `/` in Select opens the in-conversation search;
         // `n` / `N` cycle the retained hits (wrapping) without reopening it.
         KeyCode::Char('/') => chat::open_conv_search(app),
+        // Alt+N must precede the bare `n`/`N` arms: an unguarded
+        // `Char('n')` pattern matches regardless of modifiers.
+        KeyCode::Char('n') | KeyCode::Char('N') if alt => chat::jump_to_new_messages(app),
         KeyCode::Char('n') => chat::conv_search_cycle(app, 1),
         KeyCode::Char('N') => chat::conv_search_cycle(app, -1),
         // Shade a contiguous range with Alt+Shift+↑/↓ or Alt+Shift+K/J — kept
@@ -205,6 +210,9 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Char('J') if alt => chat::select_extend(app, 1),
         // The banner is visible in Select mode too — same hide as Compose.
         KeyCode::Char('h') | KeyCode::Char('H') if alt => chat::dismiss_pin_banner(app),
+        // Mention motions: the messages you owe a response to.
+        KeyCode::Char('[') => chat::select_jump_mention(app, -1),
+        KeyCode::Char(']') => chat::select_jump_mention(app, 1),
         KeyCode::Up if shift => chat::select_extend(app, -1),
         KeyCode::Down if shift => chat::select_extend(app, 1),
         KeyCode::Up | KeyCode::Char('k') => chat::select_move_up(app),

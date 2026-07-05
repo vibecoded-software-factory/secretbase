@@ -39,6 +39,7 @@ pub enum PaletteAction {
     InsertEmoji,
     GoToReply,
     SearchGif,
+    JumpNewMessages,
     DownloadAttachment,
     CopyMessage,
     DeleteMessage,
@@ -282,6 +283,13 @@ fn palette_commands(app: &App) -> Vec<Command> {
             "Compose",
         ));
         v.push(cmd(
+            JumpNewMessages,
+            "Jump to new messages",
+            "Alt+N",
+            "unread divider catch up",
+            "Message",
+        ));
+        v.push(cmd(
             DownloadAttachment,
             "Download attachment",
             "s",
@@ -437,6 +445,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         InsertEmoji => chat::open_emoji_for_compose(app),
         GoToReply => chat::select_activate(app),
         SearchGif => chat::open_giphy_search(app),
+        JumpNewMessages => chat::jump_to_new_messages(app),
         DownloadAttachment => chat::open_download_for_selected(app),
         CopyMessage => chat::do_copy_messages(app, true),
         DeleteMessage => chat::open_delete_for_selected(app),
