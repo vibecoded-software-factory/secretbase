@@ -1157,21 +1157,10 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
         return;
     }
 
-    // Right side: a dim `@username` (who am I — work vs personal account)
-    // ahead of the help anchor; dropped first when width is tight.
+    // Right side: just the help anchor. The signed-in `@username` now lives in
+    // the identity chip atop the conversation tree, not the footer.
     const HELP_ANCHOR: &str = "F1 help · F10 settings";
-    let user = if app.identity.logged_in && !app.identity.username.is_empty() {
-        format!("@{} · ", app.identity.username)
-    } else {
-        String::new()
-    };
-    let anchor_block = HELP_ANCHOR.chars().count() + user.chars().count() + 2;
-    let show_user = anchor_block <= area.width as usize;
-    let anchor_block = if show_user {
-        anchor_block
-    } else {
-        HELP_ANCHOR.chars().count() + 2
-    };
+    let anchor_block = HELP_ANCHOR.chars().count() + 2;
     let avail = (area.width as usize).saturating_sub(anchor_block);
     // Show only the hint segments that fully fit — the rest lives in F1 (don't
     // cut a keybinding in half).
@@ -1183,17 +1172,18 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
         ))),
         area,
     );
-    let mut right = Vec::new();
-    if show_user && !user.is_empty() {
-        right.push(Span::styled(user, Style::default().fg(app.theme.dim)));
-    }
-    right.push(Span::styled(
-        HELP_ANCHOR,
-        Style::default()
-            .fg(app.theme.accent)
-            .add_modifier(Modifier::BOLD),
-    ));
-    frame.render_widget(Paragraph::new(Line::from(right).right_aligned()), area);
+    frame.render_widget(
+        Paragraph::new(
+            Line::from(Span::styled(
+                HELP_ANCHOR,
+                Style::default()
+                    .fg(app.theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .right_aligned(),
+        ),
+        area,
+    );
 }
 
 /// A minimal bottom hint bar — `footer_hint` fit to the width (whole `·`
