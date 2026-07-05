@@ -502,6 +502,9 @@ pub struct App {
     pub emoji_uses: HashMap<String, u32>,
 
     // ── Quick switcher (Ctrl+K) ──────────────────────────────────────────
+    /// `@`-token whose mention popup was Esc-dismissed — the popup stays
+    /// closed while the token under the cursor still matches it.
+    pub mention_dismissed_token: Option<String>,
     /// Fuzzy query in the Ctrl+K quick switcher.
     pub switcher: LineEditor,
     /// Selected row in the switcher (indexes [`Self::switcher_results`]).
@@ -948,6 +951,7 @@ impl App {
             emoji_index: HashMap::new(),
             emoji_filtered: Vec::new(),
             emoji_uses: HashMap::new(),
+            mention_dismissed_token: None,
             switcher: LineEditor::default(),
             switcher_selected: 0,
             switcher_from: Screen::Inbox,
@@ -1852,6 +1856,28 @@ impl App {
             && self.open_conv_id.is_some()
             && self.selected_msg_idx.is_none()
             && self.edit_target_id.is_none()
+            && !self.mention_popup_dismissed()
+    }
+
+    /// Whether the popup was Esc-dismissed **for the token currently under
+    /// the cursor** — editing to a different token re-arms it.
+    fn mention_popup_dismissed(&self) -> bool {
+        match (
+            &self.mention_dismissed_token,
+            crate::domain::active_mention(self.compose.text(), self.compose.cursor()),
+        ) {
+            (Some(dismissed), Some((_, prefix))) => *dismissed == prefix,
+            _ => false,
+        }
+    }
+
+    /// Esc on the open popup: remember the token so the popup stays closed
+    /// while it's unchanged (typing on re-arms naturally, since the token
+    /// text differs).
+    pub fn dismiss_mention_popup(&mut self) {
+        self.mention_dismissed_token =
+            crate::domain::active_mention(self.compose.text(), self.compose.cursor())
+                .map(|(_, prefix)| prefix.to_string());
     }
 
     /// Whether the `@`-mention popup should be shown / capture keys — only in

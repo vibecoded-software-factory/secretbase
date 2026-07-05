@@ -366,8 +366,13 @@ on their own:
   (highlighted by `domain::parse_inline`), matching the GUI. **Typing `@…`** in the
   compose box opens an **autocomplete popup** (`draw_mention_popup`, floated
   above the compose) of conversation members + people who've spoken
-  (`App::conv_members`); `↑/↓` pick and `Tab` inserts `@username `
-  (`domain::active_mention` detects the token, `chat::accept_mention` inserts).
+  (`App::conv_members`); `↑/↓` pick and `Tab` **or `Enter`** insert
+  `@username ` (`domain::active_mention` detects the token,
+  `chat::accept_mention` inserts) — Enter never sends mid-completion.
+  `Esc` dismisses the popup for the current token only
+  (`App::mention_dismissed_token` — a different token re-arms it) and does
+  **not** fall through to the conversation escape chain, so a completion on
+  screen can't eat the draft-preserving Esc.
   **Adding** a reaction (`+` in select mode) opens a searchable
   **reaction picker** (`Screen::React`): a `/`-style search over the emoji
   catalogue — the **full standard Unicode set** (`domain::emoji::standard`,
