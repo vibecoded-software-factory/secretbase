@@ -171,17 +171,14 @@ fn wrap_chars(s: &str, width: usize) -> Vec<String> {
 /// One bordered block whose title + border go accent+bold when focused,
 /// else inactive — the same focus affordance as the main screens.
 fn focus_block(app: &App, title: &str, focused: bool) -> Block<'static> {
-    let t = &app.theme;
-    let color = if focused { t.accent } else { t.inactive };
-    let mut title_style = Style::default().fg(color);
-    if focused {
-        title_style = title_style.add_modifier(Modifier::BOLD);
-    }
+    let style = crate::tui::view::widgets::focus_style(&app.theme, focused);
     Block::default()
-        .title(Span::styled(format!(" {title} "), title_style))
+        .title(Span::styled(format!(" {title} "), style))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(color))
+        // The border keeps the colour but not the bold (a full bold border
+        // reads heavier than the shared chrome).
+        .border_style(Style::default().fg(style.fg.unwrap_or(app.theme.inactive)))
 }
 
 fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect) {

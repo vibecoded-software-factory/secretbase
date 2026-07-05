@@ -38,10 +38,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
             spans
         }),
         Line::from(""),
-        Line::from(Span::styled(
-            "Enter: restore   |   Esc: cancel   |   (the other user's name)",
-            Style::default().fg(t.dim),
-        ))
+        crate::tui::view::widgets::legend_line(
+            &[
+                ("Enter", "restore"),
+                ("Esc", "cancel"),
+                ("", "(the other user's name)"),
+            ],
+            area.width.saturating_sub(2) as usize,
+            t,
+        )
         .alignment(Alignment::Center),
     ];
 

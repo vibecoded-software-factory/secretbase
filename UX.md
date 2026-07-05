@@ -533,6 +533,18 @@ decision.
   single "unread / attention" emphasis (`conv_unread` + bold) and its `●` / `★`
   marker spans. Every unread affordance (the tree's dot + count, the ★
   favourite) draws through these so the emphasis is identical everywhere.
+- `widgets::focus_style(theme, focused)` — the single focused/unfocused
+  chrome style (accent+bold vs `inactive`); `titled_block`, the Settings
+  block and the Login inputs all consume it, so "what focus looks like" is
+  decided once.
+- `widgets::legend_line(&[(key, label)], width, theme)` — **the** hint/legend
+  builder: keys through `key_style`, labels dim, ` · ` separators, fitted to
+  the width by whole segments (never a clipped key). Every modal bottom-hint
+  and inline legend routes here.
+- `widgets::empty_state_lines(head, hints, theme)` — the shared empty-state
+  body (bold headline + dim hints), the pattern the tree notices established.
+- `Theme::emphasis()` / `Theme::danger_title()` — the semantic styles behind
+  accent+bold and error+bold, instead of inline assemblies.
 - `widgets::key_style(theme)` — the **keybind-letter** style (`accent` + bold).
   Every place that shows a shortcut glyph — the `F1` help popup (`help_line`),
   the select-mode action bar (`select_actions_lines`), the `Ctrl+P` command

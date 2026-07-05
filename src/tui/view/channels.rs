@@ -109,10 +109,21 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Span::styled("   (←/→ · Enter · y/n · Esc)", Style::default().fg(t.muted)),
         ])
     } else {
-        Line::from(Span::styled(
-            " Enter open/join · n new · r rename · t default · m members · Shift+L leave · Shift+X del · F5 · Esc ",
-            Style::default().fg(t.dim),
-        ))
+        crate::tui::view::widgets::legend_line(
+            &[
+                ("Enter", "open/join"),
+                ("n", "new"),
+                ("r", "rename"),
+                ("t", "default"),
+                ("m", "members"),
+                ("Shift+L", "leave"),
+                ("Shift+X", "del"),
+                ("F5", "refresh"),
+                ("Esc", "close"),
+            ],
+            layout[1].width as usize,
+            t,
+        )
     };
     frame.render_widget(Paragraph::new(bottom), layout[1]);
 }
