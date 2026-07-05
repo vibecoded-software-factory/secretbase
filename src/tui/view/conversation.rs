@@ -155,8 +155,63 @@ pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
         let matches = app.mention_matches();
         if !matches.is_empty() {
             draw_mention_popup(frame, app, layout[2], &matches);
+        } else if app.emoji_ac_active() {
+            draw_emoji_ac_popup(frame, app, layout[2]);
         }
     }
+}
+
+/// The `:emoji:` autocomplete popup — the mention popup's sibling, floated
+/// above the compose: glyph + `:alias:` per row, `Tab`/`Enter` accept.
+fn draw_emoji_ac_popup(frame: &mut Frame, app: &App, compose_area: Rect) {
+    let t = &app.theme;
+    let matches = app.emoji_ac_matches();
+    if matches.is_empty() {
+        return;
+    }
+    let sel = app.emoji_ac_selected.min(matches.len() - 1);
+    let h = (matches.len() as u16 + 2).min(8);
+    let longest = matches
+        .iter()
+        .filter_map(|&ci| app.emojis.get(ci))
+        .map(|e| e.alias.chars().count() + e.display.chars().count() + 5)
+        .max()
+        .unwrap_or(12) as u16;
+    let w = (longest + 6).clamp(18, compose_area.width.max(18));
+    let rect = Rect {
+        x: compose_area.x,
+        y: compose_area.y.saturating_sub(h),
+        width: w,
+        height: h,
+    };
+    frame.render_widget(Clear, rect);
+    let block = titled_block(":emoji:", true, app);
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+    let rows = inner.height as usize;
+    let lines: Vec<Line<'static>> = matches
+        .iter()
+        .enumerate()
+        .take(rows)
+        .filter_map(|(i, &ci)| {
+            let e = app.emojis.get(ci)?;
+            let selected = i == sel;
+            let prefix = if selected { "▶ " } else { "  " };
+            let style = if selected {
+                Style::default()
+                    .fg(t.accent)
+                    .add_modifier(Modifier::BOLD)
+                    .bg(t.selected_bg)
+            } else {
+                Style::default().fg(t.foreground)
+            };
+            Some(Line::from(Span::styled(
+                format!("{prefix}{}  :{}:", e.display, e.alias),
+                style,
+            )))
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// The `@`-mention autocomplete popup, floated just above the compose box.
