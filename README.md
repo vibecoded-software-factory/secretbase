@@ -154,7 +154,7 @@ collapse a group); the header search fuzzy-filters it.
 | `Alt+P`                 | Members (team channels only) — add / remove |
 | `F5` / `Ctrl+R`         | Refresh |
 | `Ctrl+Y`                | Copy label |
-| `Esc`                   | Cancel / back |
+| `Esc`                   | vim chain: cancel edit → cancel reply → **Select mode** → close (drafts are never destroyed) |
 
 In **Select** mode: `↑` / `↓` (·`PgUp`/`PgDn`) move the cursor · `g`/`G`
 (`Home`/`End`) jump to the first / latest message · `Shift+↑/↓`
@@ -163,7 +163,8 @@ the whole marked set** (or the cursor if nothing's marked) — a multi-message
 action runs one at a time and you stay in Select mode with the shading cleared.
 `y` copy selection (author + time + body) · `c` copy bodies only · `o` / `l`
 open / copy the first link · `e` / `p` edit / pin the cursor message · `r` / `s`
-reply / download · `i` / `Enter` / `Esc` return to Compose.
+reply / download · `/` search this conversation · `i` / `a` / `Enter` return to
+Compose · `Esc` clears the selection, then closes the conversation.
 
 The **command log** (Tab to focus it) has the same visual multi-select:
 `↑/↓` move (·`PgUp`/`PgDn` page · `g`/`G` oldest / newest) · `Shift+↑/↓` range ·

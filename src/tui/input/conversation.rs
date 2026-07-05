@@ -141,7 +141,21 @@ fn handle_select(app: &mut App, key: KeyEvent) {
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     match key.code {
-        KeyCode::Esc | KeyCode::Char('i') | KeyCode::Enter => chat::leave_select_mode(app),
+        // vim exits: `i` / `a` (and Enter) return to insert — the compose.
+        KeyCode::Char('i') | KeyCode::Char('a') | KeyCode::Enter => chat::leave_select_mode(app),
+        // Esc is layered like the cmdlog: clear the selection first; with
+        // nothing selected it closes the conversation (normal → out), never
+        // silently dropping marks *and* the conversation in one press.
+        KeyCode::Esc => {
+            if !app.msg_marks.is_empty() || app.select_anchor.is_some() {
+                app.msg_marks.clear();
+                app.select_anchor = None;
+            } else {
+                chat::close_conversation(app);
+            }
+        }
+        // vim buffer search: `/` in Select opens the in-conversation search.
+        KeyCode::Char('/') => chat::open_conv_search(app),
         // Shade a contiguous range with Alt+Shift+↑/↓ or Alt+Shift+K/J — kept
         // consistent because many terminals only deliver Shift+arrows with Alt.
         KeyCode::Char('K') if alt => chat::select_extend(app, -1),

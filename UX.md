@@ -81,7 +81,9 @@ status strip at the bottom.
   - the right pane is `conversation::draw_chat` (messages + compose; the header
     name/search are on the shared top row) when a conversation is open, else a
     placeholder. `Focus::Chat` routes keys to `input::conversation::handle`
-    (compose / select / in-conv search); `Esc` on an empty compose closes the
+    (compose / select / in-conv search); `Esc` follows the vim chain — cancel
+    edit → cancel reply → **Select mode** (the draft stays put; Esc never
+    destroys typed text) → close the
     conversation (focus back to `Tree`). Message bodies render **inline
     markdown** (Keybase's set: `*bold*`, `_italic_`, `~strike~`, `` `code` ``;
     `domain::parse_inline` → styled runs, markers hidden, `code` verbatim) plus

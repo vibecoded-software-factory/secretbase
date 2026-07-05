@@ -454,16 +454,22 @@ pub fn handle_load_older_messages_response(
 
 // ── Escape semantics on the conversation screen ─────────────────────
 
-/// Esc in the compose pane: cancel an in-progress edit first, else clear a
-/// non-empty draft, else close the conversation (focus back to the tree).
+/// Esc in the compose pane — the vim chain, one layer per press:
+/// cancel an in-progress **edit**, else cancel a **reply** target (the typed
+/// text survives, matching Slack), else leave insert for **Select mode**
+/// (the draft stays in the compose buffer — Esc never destroys typed text;
+/// closing later stashes it via [`close_conversation`]). An empty
+/// conversation has nothing to select, so Esc closes it directly.
 /// The single Esc path — the input handler routes here.
 pub fn escape_conversation(app: &mut App) {
     if app.edit_target_id.is_some() {
         cancel_edit(app);
-    } else if app.compose.is_empty() {
-        close_conversation(app);
+    } else if app.reply_to_id.is_some() {
+        app.reply_to_id = None;
+    } else if !app.messages.is_empty() {
+        enter_select_mode(app);
     } else {
-        app.compose_clear();
+        close_conversation(app);
     }
 }
 
