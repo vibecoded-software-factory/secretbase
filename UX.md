@@ -573,7 +573,12 @@ Conventions:
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
 its panels `─[Alt+F]-Search`, `─[Alt+C]-Chats`, `─[Alt+M]-Messages`, `─[Alt+L]-Command log`; Teams
-shows plain `Teams` / `Command log` titles (nothing there is Tab-focusable,
+shows plain `Teams` / `Command log` titles (nothing there is Tab-focusable —
+the list has a `/` **name filter** (tree-search contract: Enter keeps it,
+Esc clears then leaves; the border count reads `shown of total` and the
+title carries the live `/query`), a **persisted scroll offset**
+(`App::teams_scroll` — it used to reset every frame) and the teaching
+empty state,
 and a tag must never advertise a key that doesn't work). `draw_search_box`
 adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the

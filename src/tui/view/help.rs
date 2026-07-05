@@ -168,9 +168,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 lines.push(section("Teams", t));
                 for (k, d) in [
                     ("↑/↓ k/j", "navigate"),
+                    ("/", "filter by name (Enter keeps it, Esc clears)"),
                     ("Enter / → / l", "browse the team's channels"),
                     ("r / F5", "refresh"),
-                    ("Esc", "back to inbox"),
+                    ("Esc", "clear the filter · then back to inbox"),
                 ] {
                     lines.push(help_line(k, d, t));
                 }
