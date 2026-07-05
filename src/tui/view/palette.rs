@@ -27,7 +27,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 Style::default().fg(t.dim).add_modifier(Modifier::BOLD),
             ))),
             PaletteRow::Cmd(c) => {
-                let selected = cmd_idx == app.palette_selected;
+                let selected = cmd_idx == app.palette.selected;
                 cmd_idx += 1;
                 let label_style = if selected {
                     Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
@@ -55,8 +55,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 "Command palette · {}",
                 crate::tui::flows::palette::filtered_commands(app).len()
             ),
-            query: Some((&app.palette, "type a command…")),
-            selected: app.palette_selected,
+            query: Some((&app.palette.query, "type a command…")),
+            selected: app.palette.selected,
             rows,
             empty: crate::tui::view::widgets::empty_state_lines(
                 "No matching command",

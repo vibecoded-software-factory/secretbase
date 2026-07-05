@@ -381,7 +381,7 @@ fn palette_commands(app: &App) -> Vec<Command> {
 /// substring over label + keywords), in canonical order. This is exactly what
 /// `App::palette_selected` indexes.
 pub fn filtered_commands(app: &App) -> Vec<Command> {
-    let q = app.palette.text().trim().to_lowercase();
+    let q = app.palette.query.text().trim().to_lowercase();
     palette_commands(app)
         .into_iter()
         .filter(|c| {
@@ -397,7 +397,7 @@ pub fn filtered_commands(app: &App) -> Vec<Command> {
 /// with a query, a flat filtered list.
 pub fn palette_rows(app: &App) -> Vec<PaletteRow> {
     let cmds = filtered_commands(app);
-    if !app.palette.text().trim().is_empty() {
+    if !app.palette.query.text().trim().is_empty() {
         return cmds.into_iter().map(PaletteRow::Cmd).collect();
     }
     let mut rows = Vec::new();
@@ -413,23 +413,23 @@ pub fn palette_rows(app: &App) -> Vec<PaletteRow> {
 }
 
 pub fn open_command_palette(app: &mut App) {
-    app.palette_from = app.screen;
-    app.palette.clear();
-    app.palette_selected = 0;
+    app.palette.from = app.screen;
+    app.palette.query.clear();
+    app.palette.selected = 0;
     app.screen = Screen::CommandPalette;
 }
 
 pub fn close_command_palette(app: &mut App) {
-    app.palette.clear();
-    app.screen = app.palette_from;
+    app.palette.query.clear();
+    app.screen = app.palette.from;
 }
 
 /// Runs the highlighted command (or closes if the filtered list is empty).
 pub fn palette_run_selected(app: &mut App) {
     let cmds = filtered_commands(app);
-    match cmds.get(app.palette_selected).copied() {
+    match cmds.get(app.palette.selected).copied() {
         Some(c) => {
-            app.palette.clear();
+            app.palette.query.clear();
             run_palette_action(app, c.action);
         }
         None => close_command_palette(app),
@@ -441,7 +441,7 @@ pub fn palette_run_selected(app: &mut App) {
 /// switch screen, …), exactly as its keybinding would.
 pub fn run_palette_action(app: &mut App, action: PaletteAction) {
     use PaletteAction::*;
-    app.screen = app.palette_from;
+    app.screen = app.palette.from;
     match action {
         NewConversation => chat::open_new_conversation(app),
         RefreshInbox => chat::request_load_inbox(app),
@@ -489,7 +489,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         Teams => teams::open_teams(app),
         Settings => app.open_settings(),
         Help => {
-            app.help_from = app.palette_from;
+            app.help_from = app.palette.from;
             app.help_scroll = 0;
             app.screen = Screen::Help;
         }
@@ -651,15 +651,15 @@ mod tests {
     #[test]
     fn query_filters_by_label_and_keywords() {
         let mut app = fresh_app();
-        app.palette.set("teams");
+        app.palette.query.set("teams");
         let a = actions(&app);
         assert!(a.contains(&PaletteAction::Teams));
         assert!(!a.contains(&PaletteAction::Settings));
         // Match by keyword, not just label: "preferences" is a Settings keyword.
-        app.palette.set("preferences");
+        app.palette.query.set("preferences");
         assert!(actions(&app).contains(&PaletteAction::Settings));
         // A no-match query yields nothing.
-        app.palette.set("zzzzz");
+        app.palette.query.set("zzzzz");
         assert!(actions(&app).is_empty());
     }
 }
