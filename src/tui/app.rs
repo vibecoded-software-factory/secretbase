@@ -1324,7 +1324,10 @@ impl App {
             return;
         };
         self.settings_theme_idx = idx;
-        self.theme = Theme::from_palette(&p.palette());
+        self.theme = theme::adapt(
+            Theme::from_palette(&p.palette()),
+            theme::ColorCaps::detect(),
+        );
         if !self.settings.write_theme_name(p.name()) {
             self.set_action(ActionState::Error(
                 "theme applied but not saved (config not writable)".into(),
