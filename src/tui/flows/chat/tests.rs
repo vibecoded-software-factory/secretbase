@@ -3884,8 +3884,8 @@ fn login_form_renders_at_every_supported_width() {
     use ratatui::backend::TestBackend;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    rig.app.login_username = LineEditor::from_text("alice");
-    rig.app.login_device = LineEditor::from_text("secretbase");
+    rig.app.login.username = LineEditor::from_text("alice");
+    rig.app.login.device = LineEditor::from_text("secretbase");
 
     for (w, h) in [(70u16, 18u16), (80, 24), (120, 40)] {
         let mut terminal = Terminal::new(TestBackend::new(w, h)).expect("backend");
@@ -4523,11 +4523,11 @@ fn input_login_esc_clears_field_never_quits() {
     use crate::tui::app::LoginField;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    rig.app.login_focus = LoginField::Username;
-    rig.app.login_username.set("typo-user");
+    rig.app.login.focus = LoginField::Username;
+    rig.app.login.username.set("typo-user");
     press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
     assert!(!rig.app.should_quit);
-    assert!(rig.app.login_username.text().is_empty());
+    assert!(rig.app.login.username.text().is_empty());
 }
 
 #[test]
@@ -4536,11 +4536,11 @@ fn input_login_letters_type_into_focused_field() {
     use crate::tui::app::LoginField;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    rig.app.login_focus = LoginField::Username;
+    rig.app.login.focus = LoginField::Username;
     for c in "alice".chars() {
         press(&mut rig.app, KeyCode::Char(c), KeyModifiers::NONE);
     }
-    assert_eq!(rig.app.login_username.text(), "alice");
+    assert_eq!(rig.app.login.username.text(), "alice");
     assert!(!rig.app.should_quit);
 }
 
@@ -4550,9 +4550,9 @@ fn input_login_enter_submits_paperkey_and_records_call() {
     use crate::domain::LineEditor;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    rig.app.login_username = LineEditor::from_text("alice");
-    rig.app.login_device = LineEditor::from_text("secretbase");
-    rig.app.login_paperkey = LineEditor::from_text("word ".repeat(9).trim());
+    rig.app.login.username = LineEditor::from_text("alice");
+    rig.app.login.device = LineEditor::from_text("secretbase");
+    rig.app.login.paperkey = LineEditor::from_text("word ".repeat(9).trim());
     press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
     assert!(matches!(rig.app.in_flight, Some(InFlight::LoginPaperkey)));
     pump_one(&mut rig.app);
@@ -4569,12 +4569,12 @@ fn login_paperkey_requires_all_fields() {
     use crate::tui::app::LoginField;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    rig.app.login_device = LineEditor::from_text("secretbase");
-    rig.app.login_paperkey = LineEditor::from_text("word word word");
+    rig.app.login.device = LineEditor::from_text("secretbase");
+    rig.app.login.paperkey = LineEditor::from_text("word word word");
     crate::tui::flows::auth::request_login_paperkey(&mut rig.app);
     assert!(rig.app.in_flight.is_none());
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
-    assert_eq!(rig.app.login_focus, LoginField::Username);
+    assert_eq!(rig.app.login.focus, LoginField::Username);
 }
 
 #[test]
@@ -4582,9 +4582,9 @@ fn login_paperkey_failure_surfaces_error_and_stays_on_login() {
     use crate::domain::LineEditor;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    rig.app.login_username = LineEditor::from_text("alice");
-    rig.app.login_device = LineEditor::from_text("secretbase");
-    rig.app.login_paperkey = LineEditor::from_text("word word word");
+    rig.app.login.username = LineEditor::from_text("alice");
+    rig.app.login.device = LineEditor::from_text("secretbase");
+    rig.app.login.paperkey = LineEditor::from_text("word word word");
     rig.mock.st().fail_next = Some(KeybaseError::Exit {
         stderr: "already provisioned this device".into(),
         status: 1,
@@ -4594,7 +4594,7 @@ fn login_paperkey_failure_surfaces_error_and_stays_on_login() {
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
     assert_eq!(rig.app.screen, Screen::Login);
     // The paper-key field is kept so the user can switch to native login.
-    assert!(!rig.app.login_paperkey.is_empty());
+    assert!(!rig.app.login.paperkey.is_empty());
 }
 
 #[test]
@@ -4603,8 +4603,8 @@ fn input_login_native_button_sets_pending_native_login() {
     use crate::tui::app::LoginField;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
-    rig.app.login_username = LineEditor::from_text("alice");
-    rig.app.login_focus = LoginField::SubmitNative;
+    rig.app.login.username = LineEditor::from_text("alice");
+    rig.app.login.focus = LoginField::SubmitNative;
     press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
     assert_eq!(rig.app.pending_native_login.as_deref(), Some("alice"));
 }

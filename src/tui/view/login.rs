@@ -84,8 +84,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let inner = block.inner(form_area);
     frame.render_widget(block, form_area);
 
-    let focus = app.login_focus;
-    let reveal = app.login_reveal;
+    let focus = app.login.focus;
+    let reveal = app.login.reveal;
     let f = Layout::vertical([
         Constraint::Length(1), // [0] padding
         Constraint::Length(1), // [1] username label
@@ -112,7 +112,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     render_input(
         frame,
         f[2],
-        &app.login_username,
+        &app.login.username,
         focus == LoginField::Username,
         false,
         &t,
@@ -128,7 +128,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     render_input(
         frame,
         f[4],
-        &app.login_device,
+        &app.login.device,
         focus == LoginField::Device,
         false,
         &t,
@@ -144,7 +144,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     render_input(
         frame,
         f[6],
-        &app.login_paperkey,
+        &app.login.paperkey,
         focus == LoginField::PaperKey,
         !reveal,
         &t,

@@ -15,15 +15,15 @@ use crate::tui::flows;
 use crate::tui::input::common;
 
 pub fn handle(app: &mut App, key: KeyEvent) {
-    let field = app.login_focus;
+    let field = app.login.focus;
     match key.code {
         // Esc is never app-fatal ("only Ctrl+C quits") — on the login form it
         // clears the focused field instead, the closest "one level up".
         KeyCode::Esc => {
             match field {
-                LoginField::Username => app.login_username.clear(),
-                LoginField::Device => app.login_device.clear(),
-                LoginField::PaperKey => app.login_paperkey.clear(),
+                LoginField::Username => app.login.username.clear(),
+                LoginField::Device => app.login.device.clear(),
+                LoginField::PaperKey => app.login.paperkey.clear(),
                 _ => {}
             }
             return;
@@ -33,7 +33,7 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::F(2) => {
-            app.login_reveal = !app.login_reveal;
+            app.login.reveal = !app.login.reveal;
             return;
         }
         KeyCode::Tab | KeyCode::Down => {
@@ -63,9 +63,9 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 
     // Remaining keys type into the focused field (buttons ignore them).
     let editor = match field {
-        LoginField::Username => &mut app.login_username,
-        LoginField::Device => &mut app.login_device,
-        LoginField::PaperKey => &mut app.login_paperkey,
+        LoginField::Username => &mut app.login.username,
+        LoginField::Device => &mut app.login.device,
+        LoginField::PaperKey => &mut app.login.paperkey,
         LoginField::SubmitPaperkey | LoginField::SubmitNative => return,
     };
     common::route_line_editor(editor, key);
@@ -85,7 +85,7 @@ fn cycle_focus(app: &mut App, forward: bool) {
     let order = LoginField::ORDER;
     let pos = order
         .iter()
-        .position(|f| *f == app.login_focus)
+        .position(|f| *f == app.login.focus)
         .unwrap_or(0);
     let len = order.len();
     let next = if forward {
@@ -93,5 +93,5 @@ fn cycle_focus(app: &mut App, forward: bool) {
     } else {
         (pos + len - 1) % len
     };
-    app.login_focus = order[next];
+    app.login.focus = order[next];
 }

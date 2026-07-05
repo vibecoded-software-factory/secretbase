@@ -56,11 +56,11 @@ pub fn handle_paste(app: &mut App, text: &str) {
     match app.screen {
         Screen::Login => {
             use crate::tui::app::LoginField;
-            match app.login_focus {
-                LoginField::Username => app.login_username.insert_str(&flat()),
-                LoginField::Device => app.login_device.insert_str(&flat()),
+            match app.login.focus {
+                LoginField::Username => app.login.username.insert_str(&flat()),
+                LoginField::Device => app.login.device.insert_str(&flat()),
                 // The paperkey is the paste target on this screen.
-                LoginField::PaperKey => app.login_paperkey.insert_str(&flat()),
+                LoginField::PaperKey => app.login.paperkey.insert_str(&flat()),
                 _ => {}
             }
         }
