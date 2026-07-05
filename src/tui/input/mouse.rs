@@ -58,7 +58,7 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     match app.screen {
         Screen::Inbox => handle_home(app, ev), // position-aware pane scroll
         Screen::Teams => {
-            app.teams_selected = clamp_move(app.teams_selected, delta, app.teams.len());
+            app.teams.selected = clamp_move(app.teams.selected, delta, app.teams.list.len());
         }
         Screen::ChannelBrowser => chat::channel_browser_move(app, delta),
         Screen::Members => chat::members_move(app, delta),

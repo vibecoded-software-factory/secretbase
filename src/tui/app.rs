@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use crate::domain::{
     ChatEvent, ChatMember, Conversation, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
-    MemberStatus, Message, TeamMembership, fuzzy_score_lowered,
+    MemberStatus, Message, fuzzy_score_lowered,
 };
 use crate::ports::keybase::ReadChannel;
 use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
@@ -252,17 +252,11 @@ pub struct App {
     /// after a successful load.
     pub inbox_error: Option<String>,
 
-    /// Team memberships (from `keybase team api {"method":"list-self-memberships"}`).
-    pub teams: Vec<TeamMembership>,
-    /// Currently selected row inside [`Self::teams`].
-    pub teams_selected: usize,
-    /// Persisted Teams-list viewport offset (was reset every frame — the
-    /// list snapped to the top on each redraw).
-    pub teams_scroll: usize,
-    /// `/` filter over the Teams list (name substring, case-insensitive).
-    pub teams_filter: LineEditor,
-    /// Whether the Teams `/` filter input owns typing.
-    pub teams_filtering: bool,
+    /// The Teams screen's state — the loaded memberships plus the list's
+    /// cursor, scroll and `/` filter — extracted into its own cohesive type
+    /// (see [`crate::tui::teams_state`]). The `list-user-memberships` load
+    /// lives in the flow layer (it needs the worker).
+    pub teams: crate::tui::teams_state::TeamsState,
 
     // ── Channel browser (`c` on a team) ───────────────────────────────
     /// Team whose channels the browser is showing (`None` while closed).
@@ -869,11 +863,7 @@ impl App {
             tree_rows_cache: Vec::new(),
             list_scroll: 0,
             inbox_error: None,
-            teams: Vec::new(),
-            teams_selected: 0,
-            teams_scroll: 0,
-            teams_filter: LineEditor::default(),
-            teams_filtering: false,
+            teams: crate::tui::teams_state::TeamsState::default(),
             channel_browser_team: None,
             channels: Vec::new(),
             channel_selected: 0,
@@ -1158,15 +1148,6 @@ impl App {
     /// The member the cursor is on, through the filter projection.
     pub fn selected_member_idx(&self) -> Option<usize> {
         self.members_filtered().get(self.members_selected).copied()
-    }
-
-    /// Indices into [`Self::teams`] matching the `/` filter (all when the
-    /// query is empty) — what the Teams list renders and selection indexes.
-    pub fn teams_filtered(&self) -> Vec<usize> {
-        let q = self.teams_filter.text().trim().to_lowercase();
-        (0..self.teams.len())
-            .filter(|&i| q.is_empty() || self.teams[i].name.to_lowercase().contains(&q))
-            .collect()
     }
 
     /// Opens the Settings overlay over the current screen, focus on the

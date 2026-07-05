@@ -28,6 +28,7 @@ pub mod mouse_areas;
 pub mod screens;
 pub mod settings_model;
 pub mod syntax;
+pub mod teams_state;
 pub mod theme;
 pub mod view;
 pub mod worker;

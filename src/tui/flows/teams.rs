@@ -14,7 +14,7 @@ use crate::tui::worker::{InFlight, WorkerRequest};
 /// Switches to the teams screen and queues a fresh
 /// `list-self-memberships` load. Selects row 0.
 pub fn open_teams(app: &mut App) {
-    app.teams_selected = 0;
+    app.teams.selected = 0;
     app.screen = Screen::Teams;
     request_load_teams(app);
 }
@@ -56,9 +56,9 @@ pub fn handle_load_teams_response(app: &mut App, result: Result<ListTeamsOk, Key
             teams.retain(|t| seen.insert(t.name.clone()));
             teams.sort_by(|a, b| a.name.cmp(&b.name));
             let n = teams.len();
-            app.teams = teams;
-            if app.teams_selected >= app.teams.len() {
-                app.teams_selected = app.teams.len().saturating_sub(1);
+            app.teams.list = teams;
+            if app.teams.selected >= app.teams.list.len() {
+                app.teams.selected = app.teams.list.len().saturating_sub(1);
             }
             let summary = if skipped_count == 0 {
                 format!("{n} teams")
@@ -83,10 +83,10 @@ pub fn handle_load_teams_response(app: &mut App, result: Result<ListTeamsOk, Key
 }
 
 pub fn move_up(app: &mut App) {
-    app.teams_selected = app.teams_selected.saturating_sub(1);
+    app.teams.selected = app.teams.selected.saturating_sub(1);
 }
 
 pub fn move_down(app: &mut App) {
-    let max = app.teams.len().saturating_sub(1);
-    app.teams_selected = (app.teams_selected + 1).min(max);
+    let max = app.teams.list.len().saturating_sub(1);
+    app.teams.selected = (app.teams.selected + 1).min(max);
 }
