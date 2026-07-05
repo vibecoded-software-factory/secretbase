@@ -81,6 +81,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 ":emo…",
                 "emoji autocomplete popup (Tab/Enter insert, Esc dismiss)",
             ),
+            ("Ctrl+E", "edit the draft in $EDITOR (long messages)"),
             ("@… then Tab", "mention autocomplete (↑/↓ pick)"),
             (
                 "*b* _i_ ~s~ `c`",
