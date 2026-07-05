@@ -141,7 +141,8 @@ rebuild with the wrong cursor semantics is a UX regression:
 | unread/recency/mute bump | `rebuild_filter_preserving_cursor()` | keeps the tree cursor on its conversation by id |
 | new search/filter query | `rebuild_filter()` | deliberately snaps the cursor to the first match |
 | `expanded` (fold state) | `rebuild_tree_rows()` (via `toggle_collapsed`) | |
-| `messages` (any mutation) | `rebuild_msg_meta()` | rebuilds pin/headline/`msg_index` **and bumps the render-cache epoch** — an edit re-read keeps ids but changes bodies |
+| `messages` replaced/cleared/appended | `rebuild_msg_meta()` | rebuilds pin/headline/`msg_index` **and bumps the render-cache epoch** — an edit re-read keeps ids but changes bodies |
+| `messages` prepend-only (older pages) | `rebuild_msg_meta_after_prepend()` | same meta rebuild, **no** epoch bump — retained blocks stay valid (per-entry fingerprints cover the boundary); bumping here made wheel pagination quadratic |
 | theme / settings / emoji catalogue | `invalidate_msg_render_cache()` | message blocks bake colours/glyphs into spans |
 | picker query/catalogue/frecency | `rebuild_emoji_filter()` / `rebuild_emoji_index()` | |
 

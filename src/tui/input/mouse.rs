@@ -18,6 +18,21 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     if app.mouse_areas.frame_size != app.last_terminal_size {
         return;
     }
+    // The file picker floats over every screen — while it's open the wheel
+    // moves *its* selection (through the same key path as ↑/↓, so Outcome
+    // handling can't diverge), never whatever sits underneath.
+    if app.file_picker.is_some() {
+        let code = match ev.kind {
+            MouseEventKind::ScrollUp => crossterm::event::KeyCode::Up,
+            MouseEventKind::ScrollDown => crossterm::event::KeyCode::Down,
+            _ => return,
+        };
+        crate::tui::input::file_picker_key(
+            app,
+            crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE),
+        );
+        return;
+    }
     // The wheel scrolls whatever is active — position-aware across the home's
     // panes, whole-screen on a single-list overlay. Clicks only mean something
     // on the home screen for now.
@@ -124,6 +139,24 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
         }
         MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.messages) => {
             app.messages_scroll = app.messages_scroll.saturating_sub(3);
+        }
+        // Column fallback — the wheel must not die on borders, the compose
+        // box, the header row or the status strip: anywhere in the chat
+        // column scrolls the history, anywhere else scrolls the tree.
+        MouseEventKind::ScrollUp => {
+            if app.mouse_areas.messages.width > 0 && c >= app.mouse_areas.messages.x {
+                app.messages_scroll = app.messages_scroll.saturating_add(3);
+                conversation::maybe_queue_older(app);
+            } else {
+                chat::tree_move(app, -1);
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if app.mouse_areas.messages.width > 0 && c >= app.mouse_areas.messages.x {
+                app.messages_scroll = app.messages_scroll.saturating_sub(3);
+            } else {
+                chat::tree_move(app, 1);
+            }
         }
         _ => {}
     }

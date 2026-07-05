@@ -33,7 +33,7 @@ pub fn handle_events(app: &mut App, event: Event) {
 
 /// Routes a key to the open file picker and acts on its outcome: a
 /// pick fires the attachment upload, a cancel just closes it.
-fn file_picker_key(app: &mut App, key: KeyEvent) {
+pub(crate) fn file_picker_key(app: &mut App, key: KeyEvent) {
     use crate::tui::app::PickerAction;
     use crate::tui::file_picker::Outcome;
     let Some(picker) = app.file_picker.as_mut() else {
