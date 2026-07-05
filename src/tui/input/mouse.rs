@@ -118,7 +118,14 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
                     .find(|(rect, _)| hit_test(c, r, *rect))
                     .map(|(_, idx)| *idx);
                 if let Some(idx) = clicked {
-                    app.selected_msg_idx = Some(idx);
+                    // Click selects; clicking the already-selected message
+                    // *activates* it (a reply jumps to its quoted parent) —
+                    // the same select-then-activate the tree click uses.
+                    if app.selected_msg_idx == Some(idx) {
+                        chat::select_activate(app);
+                    } else {
+                        app.selected_msg_idx = Some(idx);
+                    }
                 }
                 return;
             }

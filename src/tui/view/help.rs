@@ -136,7 +136,11 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("o / u", "open / copy the first link in the message"),
             ("e / p", "edit / pin the cursor message"),
             ("r / s", "reply / download"),
-            ("i / a / Enter", "back to compose (insert)"),
+            ("i / a", "back to compose (insert)"),
+            (
+                "Enter",
+                "on a reply: jump to the quoted message · else back to compose",
+            ),
             ("/", "search this conversation"),
             (
                 "n / N",

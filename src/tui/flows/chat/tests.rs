@@ -1968,6 +1968,35 @@ fn web_image_fetch_routes_to_web_fetcher_and_records_failure() {
 }
 
 #[test]
+fn select_activate_jumps_to_reply_parent_or_exits() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let mut reply = text_msg(11, "alice", "replying");
+    reply.reply_to = Some(10);
+    rig.app.messages = vec![
+        text_msg(9, "alice", "x"),
+        text_msg(10, "alice", "orig"),
+        reply,
+    ];
+    rig.app.rebuild_msg_meta();
+    // Enter on the reply jumps the cursor to the quoted message.
+    rig.app.selected_msg_idx = Some(2);
+    select_activate(&mut rig.app);
+    assert_eq!(
+        rig.app.selected_msg_idx.map(|i| rig.app.messages[i].id),
+        Some(10)
+    );
+    // Enter on a non-reply keeps the historical exit-to-compose.
+    select_activate(&mut rig.app);
+    assert_eq!(rig.app.selected_msg_idx, None);
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers
