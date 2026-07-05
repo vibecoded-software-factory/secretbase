@@ -396,6 +396,14 @@ fn chat_title(app: &App) -> String {
 struct MsgBlock {
     grouped: bool,
     pinned: bool,
+    /// Whether this message's reply parent was resolvable in `msg_index` when
+    /// the block was built. A reply to an out-of-window parent renders `↩ …`;
+    /// once an older page brings the parent in, the quote must resolve to its
+    /// sender. That page uses `rebuild_msg_meta_after_prepend` (no epoch bump,
+    /// to keep pagination linear), so the whole cache is *not* dropped — this
+    /// per-block bit is what re-renders just the affected reply. Always `true`
+    /// for a non-reply message, so it never causes churn there.
+    reply_resolved: bool,
     lines: Vec<Line<'static>>,
 }
 
@@ -601,10 +609,16 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 && giphy_url_for(app, m).is_none();
             if cacheable {
                 let pinned = app.pinned_msg_id == Some(m.id);
-                let hit = cache
-                    .blocks
-                    .get(&m.id)
-                    .is_some_and(|e| e.grouped == grouped && e.pinned == pinned);
+                // See `MsgBlock::reply_resolved`: fingerprint whether this
+                // reply's parent is in the loaded window, so a parent paged in
+                // by a later prepend (which skips the epoch bump) still
+                // refreshes the `↩ …` quote to the resolved sender.
+                let reply_resolved = m
+                    .reply_to
+                    .is_none_or(|target| app.msg_index.contains_key(&target));
+                let hit = cache.blocks.get(&m.id).is_some_and(|e| {
+                    e.grouped == grouped && e.pinned == pinned && e.reply_resolved == reply_resolved
+                });
                 if !hit {
                     let mut no_img: Vec<ImgReservation> = Vec::new();
                     let block =
@@ -614,6 +628,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                         MsgBlock {
                             grouped,
                             pinned,
+                            reply_resolved,
                             lines: block,
                         },
                     );
@@ -2454,5 +2469,122 @@ mod tests {
         for v in variants {
             assert!(!content_icon(&v).is_empty());
         }
+    }
+
+    // ── Regression: a reply quote must refresh when its parent pages in ──
+    // A reply to an out-of-window parent renders `↩ …`; that block is cached.
+    // When an older page brings the parent in, the prepend-only meta rebuild
+    // skips the epoch bump (to keep pagination linear), so the fix relies on
+    // the per-block `reply_resolved` fingerprint to re-render just that reply.
+
+    struct NoClip;
+    impl crate::ports::ClipboardPort for NoClip {
+        fn write(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    struct NoOpen;
+    impl crate::ports::OpenerPort for NoOpen {
+        fn open(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    struct NoSettings;
+    impl crate::ports::SettingsPort for NoSettings {
+        fn read(&self) -> crate::ports::UserSettings {
+            crate::ports::UserSettings::default()
+        }
+        fn write_setting(&self, _: &str, _: &str) -> bool {
+            true
+        }
+        fn write_theme_name(&self, _: &str) -> bool {
+            true
+        }
+        fn config_dir(&self) -> std::path::PathBuf {
+            std::path::PathBuf::from(".")
+        }
+    }
+
+    fn app_for_render() -> App {
+        use std::sync::mpsc::channel;
+        let (tx, _rx1) = channel();
+        let (bg, _rx2) = channel();
+        let (_tx3, rx) = channel();
+        App::new(
+            tx,
+            bg,
+            rx,
+            None,
+            Box::new(NoClip),
+            Box::new(NoOpen),
+            Box::new(NoSettings),
+        )
+    }
+
+    fn text_msg(id: u64, sender: &str, body: &str, reply_to: Option<u64>) -> Message {
+        // `Message` implements Drop (ZeroizeOnDrop), so `..Default::default()`
+        // can't move its remaining fields out — mutate in place instead, the
+        // same pattern the domain/app tests use.
+        let mut m = Message::default();
+        m.id = id;
+        m.sender = sender.into();
+        m.sent_at = 1_000;
+        m.content = MessageContent::Text(body.into());
+        m.reply_to = reply_to;
+        m
+    }
+
+    /// Renders the message pane into an off-screen 80×24 buffer and flattens it
+    /// to text so a test can assert on what the reader would see.
+    fn render_to_text(app: &mut App) -> String {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        term.draw(|f| {
+            let area = f.area();
+            render_messages(f, app, area);
+        })
+        .unwrap();
+        let buf = term.backend().buffer();
+        let mut s = String::new();
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if let Some(c) = buf.cell((x, y)) {
+                    s.push_str(c.symbol());
+                }
+            }
+            s.push('\n');
+        }
+        s
+    }
+
+    #[test]
+    fn reply_quote_refreshes_when_parent_pages_in() {
+        let mut app = app_for_render();
+        app.open_conv_id = Some("c1".into());
+        // A reply whose parent (id 1) isn't in the loaded window yet.
+        app.messages = vec![text_msg(2, "bob", "hey", Some(1))];
+        app.rebuild_msg_meta();
+        let first = render_to_text(&mut app);
+        assert!(
+            first.contains('↩'),
+            "the reply should render a ↩ quote line:\n{first}"
+        );
+        assert!(
+            !first.contains("alice"),
+            "the parent isn't loaded yet, so its sender can't appear anywhere:\n{first}"
+        );
+
+        // An older page brings the parent in: prepend + the prepend-only meta
+        // rebuild, which deliberately does NOT bump the render epoch — the
+        // exact path that used to leave the reply stuck on `↩ …`.
+        app.messages
+            .insert(0, text_msg(1, "alice", "original", None));
+        app.rebuild_msg_meta_after_prepend();
+        let second = render_to_text(&mut app);
+        assert!(
+            second.contains("↩ alice"),
+            "the quote must resolve to the parent's sender once it pages in:\n{second}"
+        );
     }
 }
