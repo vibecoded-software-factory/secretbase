@@ -201,6 +201,9 @@ pub enum TreeRow {
         is_team: bool,
         collapsed: bool,
         unread: usize,
+        /// Any member conversation carries an unseen @mention — so a
+        /// collapsed group can still pull the eye to it.
+        mentioned: bool,
     },
     /// A conversation leaf — index into [`App::conversations`].
     Conv { idx: usize },
@@ -608,6 +611,11 @@ pub struct App {
     /// The conversation open before the current one — `Ctrl+O` toggles back
     /// to it (vim's `Ctrl+^` alternate buffer). Session-local.
     pub prev_conv_id: Option<String>,
+    /// Conversations with an unseen **@mention of you** (session-local —
+    /// the inbox `list` carries no mention state, same trade-off as
+    /// `conv_last_seen`). Set by the push path, cleared on open; renders
+    /// as a red `@` in the tree.
+    pub mentioned: HashSet<String>,
     /// Whether the `api-listen` push stream is currently down (its
     /// supervisor is reconnecting with backoff) — surfaced as a dim `⇅`
     /// badge on the status strip. Cleared by the next event that arrives.
@@ -917,6 +925,7 @@ impl App {
             prev_conv_id: None,
             boot_error: None,
             listener_down: false,
+            mentioned: HashSet::new(),
             last_activity: Instant::now(),
             last_inbox_load: Instant::now(),
             mouse_areas: MouseAreas::default(),
@@ -1827,6 +1836,9 @@ impl App {
                 .iter()
                 .filter(|&&i| self.conv_is_unread(&self.conversations[i]))
                 .count();
+            let mentioned = members
+                .iter()
+                .any(|&i| self.mentioned.contains(&self.conversations[i].id));
             let collapsed = !force_expand && !self.expanded.contains(&key);
             rows.push(TreeRow::Group {
                 key,
@@ -1834,6 +1846,7 @@ impl App {
                 is_team: team,
                 collapsed,
                 unread,
+                mentioned,
             });
             if !collapsed {
                 rows.extend(members.into_iter().map(|idx| TreeRow::Conv { idx }));

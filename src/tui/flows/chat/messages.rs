@@ -33,6 +33,7 @@ pub(crate) fn enter_conversation(app: &mut App, id: String) {
     // Seed the unread boundary from what we last saw of *this* conversation this
     // session (None on a first-ever open → no divider).
     app.unread_boundary = app.conv_last_seen.get(&id).copied();
+    app.mentioned.remove(&id); // the mention is about to be seen
     app.messages.clear();
     // Reset the per-history projections (pin / headline / id index) so the
     // loading view can't show the previous conversation's pin or topic.
@@ -395,6 +396,11 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
     let sent_at = message.sent_at;
     let sent_at_ms = message.sent_at_ms;
     let msg_id = message.id;
+    let mentions_me = !app.identity.username.is_empty()
+        && message
+            .mentions
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case(&app.identity.username));
 
     // 1. Live-update the open conversation.
     if viewing {
@@ -434,6 +440,13 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
                 }
             }
         }
+    }
+
+    // An @mention of you in a conversation you're not viewing gets the red
+    // `@` badge in the tree (cleared when you open it). Session-local — the
+    // inbox `list` carries no mention state.
+    if !from_me && !viewing && !is_control && mentions_me {
+        app.mentioned.insert(conv_id.clone());
     }
 
     // 2. Incremental inbox bump (no full re-fetch).
