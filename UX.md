@@ -196,8 +196,14 @@ status strip at the bottom.
 The **conversation** pane uses a custom layout (header ·
 messages · compose · status) because the message stream is a *viewer*, not
 a grid. The screen is mouse-interactive: click a message to select it
-(enters select mode on that row) and scroll the wheel to page history
-(`mouse_areas` carries the messages viewport rect + a per-message row map).
+(enters select mode on that row), click the **already-selected** row again
+to *activate* it — a reply jumps to the message it quotes (the
+select-then-activate the tree click uses) — and scroll the wheel to page
+history (`mouse_areas` carries the messages viewport rect + a per-message
+row map). In Select mode, `Enter` is the same activation: on a **reply** it
+jumps to the quoted message (the search-jump machinery pages older history
+in automatically when the parent is outside the loaded window), on anything
+else it returns to Compose (`i`/`a` always do).
 Link previews (`unfurl` messages) render as a compact dim card
 (`↳ preview · <site title>`) grouped under the URL message that
 triggered them — **giphy cards are dropped in projection**: the GIF itself

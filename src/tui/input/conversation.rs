@@ -159,8 +159,11 @@ fn handle_select(app: &mut App, key: KeyEvent) {
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     match key.code {
-        // vim exits: `i` / `a` (and Enter) return to insert — the compose.
-        KeyCode::Char('i') | KeyCode::Char('a') | KeyCode::Enter => chat::leave_select_mode(app),
+        // vim exits: `i` / `a` return to insert — the compose.
+        KeyCode::Char('i') | KeyCode::Char('a') => chat::leave_select_mode(app),
+        // Enter activates the cursor row (list semantics): a reply jumps to
+        // the message it quotes; anything else exits to Compose as before.
+        KeyCode::Enter => chat::select_activate(app),
         // Esc is layered like the cmdlog: clear the selection first; with
         // nothing selected it closes the conversation (normal → out), never
         // silently dropping marks *and* the conversation in one press.

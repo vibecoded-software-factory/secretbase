@@ -830,6 +830,24 @@ pub fn do_copy_url(app: &mut App) {
     }
 }
 
+/// Enter (or click-again) on the Select-mode cursor: a **reply** jumps to
+/// the message it quotes — the search-jump machinery paginates older pages
+/// if the parent is outside the loaded window — anything else returns to
+/// Compose (Enter's historical exit, kept for non-reply messages).
+pub fn select_activate(app: &mut App) {
+    let target = app
+        .selected_msg_idx
+        .and_then(|i| app.messages.get(i))
+        .and_then(|m| m.reply_to);
+    match target {
+        Some(t) => {
+            app.pending_search_jump = Some(t);
+            try_jump_to_search_target(app);
+        }
+        None => leave_select_mode(app),
+    }
+}
+
 pub fn select_move_up(app: &mut App) {
     match app.selected_msg_idx {
         // At the top of the loaded window — pull an older page instead of
