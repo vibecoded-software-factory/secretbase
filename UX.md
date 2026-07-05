@@ -204,7 +204,15 @@ messages.
 The compose box is **multi-line**: `Alt+Enter` inserts a newline (`Enter`
 sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
-cursor. Single-line inputs (search, react, new-conversation) keep
+cursor. Its bottom border carries the **compose chips** — `Alt+I emoji ·
+Alt+A attach`, right-aligned in the legend grammar (key accent + dim label)
+and **clickable** (`mouse_areas.compose_emoji/attach`): emoji opens the
+shared picker in **insert mode** (`App::react_to_compose` — Enter drops the
+glyph, or `:alias:` for a custom emoji, into the draft at the cursor),
+attach opens the file picker. There is deliberately **no GIF chip**: the
+GUI's `/giphy` is an interactive builtin the JSON API intercepts and drops
+(verified live: `send` returns `id:0` and nothing posts), so the honest
+path for a GIF is attaching the file. Single-line inputs (search, react, new-conversation) keep
 `widgets::editor_spans`. The chat column is **full-height** with an **adaptive
 header** (`has_adaptive_header` / `draw_adaptive_header`) — a bordered
 section on the standard `titled_block` chrome: `📌 Pinned` with

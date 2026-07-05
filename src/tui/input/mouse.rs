@@ -88,6 +88,16 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
     let (c, r) = (ev.column, ev.row);
     match ev.kind {
         MouseEventKind::Down(_) => {
+            // Compose-bar chips: emoji picker (insert mode) and the attach
+            // file picker — the compose's clickable buttons.
+            if hit_test(c, r, app.mouse_areas.compose_emoji) {
+                chat::open_emoji_for_compose(app);
+                return;
+            }
+            if hit_test(c, r, app.mouse_areas.compose_attach) {
+                crate::tui::input::conversation::open_attach_picker(app);
+                return;
+            }
             // Tree pane (mouse_areas.source): focus + select/activate the row.
             if hit_test(c, r, app.mouse_areas.source) {
                 app.focus = Focus::Tree;

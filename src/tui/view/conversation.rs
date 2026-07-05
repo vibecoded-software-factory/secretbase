@@ -223,7 +223,7 @@ pub(crate) fn chat_hint(app: &App) -> &'static str {
     }
 }
 
-fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
+fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = &app.theme;
     let editing = app.edit_target_id.is_some();
     let replying = app.reply_to_id;
@@ -262,6 +262,62 @@ fn render_compose(frame: &mut Frame, app: &App, area: Rect) {
             .block(titled_block(&title, app.focus == Focus::Chat, app)),
         area,
     );
+    draw_compose_chips(frame, app, area);
+}
+
+/// The compose bar's **buttons**: `Alt+I emoji · Alt+A attach` chips on the
+/// bottom border, right-aligned — clickable (their rects land in
+/// `mouse_areas`) and self-documenting (key in accent, label dim), the same
+/// grammar as every legend. Skipped when the bar is too narrow.
+fn draw_compose_chips(frame: &mut Frame, app: &mut App, area: Rect) {
+    let t = &app.theme;
+    let chips: [(&str, &str); 2] = [("Alt+I", "emoji"), ("Alt+A", "attach")];
+    let text_w: usize = chips
+        .iter()
+        .map(|(k, l)| k.chars().count() + 1 + l.chars().count())
+        .sum::<usize>()
+        + 3 * (chips.len() - 1)
+        + 2; // " · " separators + one space padding each side
+    if area.width as usize <= text_w + 8 || area.height < 1 {
+        return;
+    }
+    let y = area.y + area.height - 1; // bottom border row
+    let x = area.x + area.width - 1 - text_w as u16;
+    let mut spans: Vec<Span<'static>> = vec![Span::styled(" ", Style::default())];
+    let mut rects: Vec<Rect> = Vec::with_capacity(chips.len());
+    let mut cx = x + 1;
+    for (i, (key, label)) in chips.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" · ", Style::default().fg(t.muted)));
+            cx += 3;
+        }
+        let w = (key.chars().count() + 1 + label.chars().count()) as u16;
+        rects.push(Rect {
+            x: cx,
+            y,
+            width: w,
+            height: 1,
+        });
+        cx += w;
+        spans.push(Span::styled(
+            (*key).to_string(),
+            crate::tui::view::widgets::key_style(t),
+        ));
+        spans.push(Span::styled(
+            format!(" {label}"),
+            Style::default().fg(t.dim),
+        ));
+    }
+    spans.push(Span::styled(" ", Style::default()));
+    let rect = Rect {
+        x,
+        y,
+        width: text_w as u16 + 1,
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(Line::from(spans)), rect);
+    app.mouse_areas.compose_emoji = rects[0];
+    app.mouse_areas.compose_attach = rects[1];
 }
 
 /// The Messages-panel title — the `─[Alt+M]-` go-to tag + the conversation name.

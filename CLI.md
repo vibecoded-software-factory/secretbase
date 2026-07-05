@@ -339,6 +339,12 @@ knowable for pins set by this session) · `getdeviceinfo` ·
   `read` (`result.messages[].msg` — verified: `GetV1` → `formatMessages`).
   secretbase uses it to resolve a **pinned** message that is older than the
   loaded window (the 📌 header's body snippet), on the background lane.
+- ⚠️ **Slash builtins (`/giphy`, `/flip`, …) do not work through `send`**:
+  the service intercepts them (`AttemptBuiltinCommand`) and the interactive
+  ones need the GUI's preview UI — verified live: `send {"body":"/giphy"}`
+  returns `{"message":"message sent","id":0}` and **nothing posts**. The
+  GUI's GIF flow can't be reproduced over the JSON API; send a GIF as an
+  `attach` upload instead.
 - `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
   read), `unread_only`.
 - `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented
