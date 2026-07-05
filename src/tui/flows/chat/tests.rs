@@ -1711,6 +1711,62 @@ fn collapsed_group_hides_its_conversations() {
 }
 
 #[test]
+fn search_hits_are_retained_and_cycled_with_n() {
+    use crate::domain::InboxHit;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![
+        text_msg(1, "alice", "target one"),
+        text_msg(2, "me", "noise"),
+        text_msg(3, "alice", "target two"),
+    ];
+    rig.app.rebuild_msg_meta();
+    rig.app.conv_search_results = vec![
+        InboxHit {
+            conv_id: "c1".into(),
+            conv_name: String::new(),
+            sender: "alice".into(),
+            body_summary: "target one".into(),
+            message_id: 1,
+            sent_at: 0,
+        },
+        InboxHit {
+            conv_id: "c1".into(),
+            conv_name: String::new(),
+            sender: "alice".into(),
+            body_summary: "target two".into(),
+            message_id: 3,
+            sent_at: 0,
+        },
+    ];
+    rig.app.conv_search_selected = 0;
+    // n advances (and wraps), landing the Select cursor on each hit.
+    conv_search_cycle(&mut rig.app, 1);
+    assert_eq!(rig.app.conv_search_selected, 1);
+    assert_eq!(
+        rig.app
+            .selected_msg_idx
+            .and_then(|i| rig.app.messages.get(i))
+            .map(|m| m.id),
+        Some(3)
+    );
+    conv_search_cycle(&mut rig.app, 1); // wraps to the first hit
+    assert_eq!(rig.app.conv_search_selected, 0);
+    // Closing the modal retains everything; only a conversation switch clears.
+    close_conv_search(&mut rig.app);
+    assert_eq!(rig.app.conv_search_results.len(), 2);
+    // With no hits at all, n is a harmless toast.
+    rig.app.conv_search_results.clear();
+    conv_search_cycle(&mut rig.app, 1);
+    assert!(matches!(rig.app.action_state, ActionState::Error(_)));
+}
+
+#[test]
 fn esc_chain_never_destroys_the_draft() {
     // vim chain: Esc in compose with a draft → Select mode, draft intact;
     // Esc in Select → close; the close stashes the draft for reopen.
@@ -2375,7 +2431,9 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
     let idx = rig.app.selected_msg_idx.expect("a message is selected");
     assert_eq!(rig.app.messages[idx].id, 7);
     assert_ne!(rig.app.screen, Screen::ConvSearch);
-    assert!(rig.app.conv_search_results.is_empty());
+    // Hits are retained after the jump (vim keeps the pattern) so n/N can
+    // cycle them from Select mode.
+    assert_eq!(rig.app.conv_search_results.len(), 1);
 }
 
 #[test]

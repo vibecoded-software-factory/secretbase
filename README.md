@@ -163,8 +163,10 @@ the whole marked set** (or the cursor if nothing's marked) — a multi-message
 action runs one at a time and you stay in Select mode with the shading cleared.
 `y` copy selection (author + time + body) · `c` copy bodies only · `o` / `l`
 open / copy the first link · `e` / `p` edit / pin the cursor message · `r` / `s`
-reply / download · `/` search this conversation · `i` / `a` / `Enter` return to
-Compose · `Esc` clears the selection, then closes the conversation.
+reply / download · `/` search this conversation · `n` / `N` jump to the next /
+previous search hit (hits are retained after `Ctrl+F`, vim-style) · `i` / `a` /
+`Enter` return to Compose · `Esc` clears the selection, then closes the
+conversation.
 
 The **command log** (Tab to focus it) has the same visual multi-select:
 `↑/↓` move (·`PgUp`/`PgDn` page · `g`/`G` oldest / newest) · `Shift+↑/↓` range ·

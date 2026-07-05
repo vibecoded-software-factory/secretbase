@@ -154,8 +154,11 @@ fn handle_select(app: &mut App, key: KeyEvent) {
                 chat::close_conversation(app);
             }
         }
-        // vim buffer search: `/` in Select opens the in-conversation search.
+        // vim buffer search: `/` in Select opens the in-conversation search;
+        // `n` / `N` cycle the retained hits (wrapping) without reopening it.
         KeyCode::Char('/') => chat::open_conv_search(app),
+        KeyCode::Char('n') => chat::conv_search_cycle(app, 1),
+        KeyCode::Char('N') => chat::conv_search_cycle(app, -1),
         // Shade a contiguous range with Alt+Shift+↑/↓ or Alt+Shift+K/J — kept
         // consistent because many terminals only deliver Shift+arrows with Alt.
         KeyCode::Char('K') if alt => chat::select_extend(app, -1),

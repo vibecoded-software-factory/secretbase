@@ -183,7 +183,11 @@ sharing the `MODAL_*` geometry) — on-demand, not a permanent panel. Typing +
 conversation (full history); each hit is **two rows** — the sender + snippet,
 then a dim **day/time** line (`InboxHit::sent_at` from the hit's `ctime`,
 `message_time`) for context. `↑/↓` pick, `Enter` jumps to + highlights the
-message (via `pending_search_jump`, paginating older if needed), `Esc` closes. The **login** screen
+message (via `pending_search_jump`, paginating older if needed), `Esc` closes.
+The query + hits are **retained** until the conversation switches/closes:
+reopening restores them, editing the query invalidates them, and in Select
+mode `n`/`N` cycle the hits (wrapping) without reopening the modal — vim's
+post-`/` motion. The **login** screen
 (`view::login`) is the signed-out exception: it
 shows a **login form** over the figlet/starfield backdrop — a
 rounded `Login` block (cleared so the starfield doesn't bleed through) with
