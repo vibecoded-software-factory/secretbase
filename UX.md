@@ -475,7 +475,11 @@ badge clears as soon as a conversation is read (not on the next resync).
 Discord-style jump-to-conversation modal (`Screen::QuickSwitcher`), opened
 with `Ctrl+K` from the inbox or an open conversation (returns to wherever it
 was opened — `App::switcher_from`). With an **empty** query it shows
-Discord-style sections — **Drafts**, **Unread**, **Recent** — the Unread
+Discord-style sections — **Drafts**, **Unread**, **Recent** — each entry a
+**two-line row**: badges + name, then a dim meta line (kind `dm`/`#channel`
+· relative age · your unsent draft's first line with an accent `✎` — the
+one preview available without a per-conversation fetch, and the one that
+prevents a wrong jump) — the Unread
 section priority-ordered like the hotlist / `Ctrl+N` (unseen mentions
 first — flagged with the same red `@` badge as the tree — then DMs, then
 team channels), the others by

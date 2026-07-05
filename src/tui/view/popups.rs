@@ -137,6 +137,10 @@ pub fn react_input(frame: &mut Frame, app: &App) {
 /// Quick switcher (Ctrl+K): Drafts/Unread/Recent sections over all
 /// conversations; typing collapses to a flat fuzzy list.
 pub fn quick_switcher(frame: &mut Frame, app: &App) {
+    let now_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let t = &app.theme;
     let switcher_rows = app.switcher_rows();
     let mut conv_i = 0usize;
@@ -182,7 +186,46 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
                         Style::default().fg(t.foreground)
                     },
                 ));
-                PickerRow::Item(vec![Line::from(spans)])
+                // Second line: what we know locally without a fetch — kind,
+                // freshness, and your unsent draft's first line (the one
+                // preview that actually prevents a wrong jump).
+                let meta = app
+                    .conversations
+                    .get(*ci)
+                    .map(|c| {
+                        let kind = if c.channel.members_type.is_team() {
+                            match c.channel.topic_name.as_deref() {
+                                Some(topic) => format!("#{topic}"),
+                                None => "team".to_string(),
+                            }
+                        } else {
+                            "dm".to_string()
+                        };
+                        let age = if c.active_at > 0 && now_s >= c.active_at {
+                            crate::domain::format_duration(std::time::Duration::from_secs(
+                                now_s - c.active_at,
+                            ))
+                        } else {
+                            String::new()
+                        };
+                        let mut line = vec![Span::styled(
+                            format!("    {kind}{}{age}", if age.is_empty() { "" } else { " · " }),
+                            Style::default().fg(t.dim),
+                        )];
+                        if let Some(d) = app.drafts.get(&c.id).filter(|d| !d.trim().is_empty()) {
+                            line.push(Span::styled(" · ✎ ", Style::default().fg(t.accent)));
+                            line.push(Span::styled(
+                                crate::tui::view::widgets::trim_end_ellipsis(
+                                    d.lines().next().unwrap_or(""),
+                                    32,
+                                ),
+                                Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
+                            ));
+                        }
+                        Line::from(line)
+                    })
+                    .unwrap_or_else(|| Line::from(""));
+                PickerRow::Item(vec![Line::from(spans), meta])
             }
         })
         .collect();
