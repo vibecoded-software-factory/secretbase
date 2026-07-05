@@ -50,7 +50,8 @@ pub fn open_channel_browser(app: &mut App) {
     open_channel_browser_for_team(app, team);
 }
 
-/// Opens the channel browser for a named team (e.g. from the Teams screen).
+/// Opens the channel browser as the Teams section's drill-down (team →
+/// channels), in the Home shell's right pane. Focuses that pane.
 pub fn open_channel_browser_for_team(app: &mut App, team: String) {
     app.channel_browser.team = Some(team);
     app.channel_browser.channels.clear();
@@ -58,16 +59,19 @@ pub fn open_channel_browser_for_team(app: &mut App, team: String) {
     app.channel_browser.defaults.clear();
     clear_channel_input(app);
     app.screen = crate::tui::screens::Screen::ChannelBrowser;
+    app.focus = crate::tui::screens::Focus::Chat;
     request_load_channels(app);
 }
 
+/// Leaves the channel browser back up to the Teams section (the teams list).
 pub fn close_channel_browser(app: &mut App) {
     app.channel_browser.team = None;
     app.channel_browser.channels.clear();
     app.channel_browser.selected = 0;
     app.channel_browser.defaults.clear();
     clear_channel_input(app);
-    app.screen = crate::tui::screens::Screen::Inbox;
+    app.screen = crate::tui::screens::Screen::Teams;
+    app.focus = crate::tui::screens::Focus::Chat;
 }
 
 /// Clears every inline browser mode (create / rename / delete-confirm).

@@ -24,8 +24,10 @@ fn cycle(app: &App, forward: bool) -> Focus {
     // `cmdlog_rows` setting hides it.
     for _ in 0..FOCUS_ORDER.len() {
         // Chat is reachable with no open conversation when the right pane holds
-        // the Teams section (its list is the focus target there).
-        let skip = (f == Focus::Chat && app.open_conv_id.is_none() && app.screen != Screen::Teams)
+        // a section (Teams list / channel browser) — its list is the focus
+        // target there.
+        let in_section = matches!(app.screen, Screen::Teams | Screen::ChannelBrowser);
+        let skip = (f == Focus::Chat && app.open_conv_id.is_none() && !in_section)
             || (f == Focus::CmdLog && app.settings_cache.cmdlog_rows == 0);
         if !skip {
             break;
@@ -146,12 +148,13 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::Char('m') | KeyCode::Char('M') if alt => {
-            // Go to the Messages section — leaving the Teams section if we're
-            // in it, else focusing the open conversation.
-            if app.screen == Screen::Teams {
-                crate::tui::flows::teams::close_teams(app);
-            } else if app.open_conv_id.is_some() {
-                set_focus(app, Focus::Chat);
+            // Go to the Messages section — leaving the Teams / channel-browser
+            // section if we're in it, else focusing the open conversation.
+            match app.screen {
+                Screen::Teams => crate::tui::flows::teams::close_teams(app),
+                Screen::ChannelBrowser => crate::tui::flows::chat::close_channel_browser(app),
+                _ if app.open_conv_id.is_some() => set_focus(app, Focus::Chat),
+                _ => {}
             }
             return;
         }
@@ -206,6 +209,9 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         Focus::Tree => handle_tree(app, key),
         // The right pane is contextual: the Teams section's list, or the chat.
         Focus::Chat if app.screen == Screen::Teams => crate::tui::input::teams::handle(app, key),
+        Focus::Chat if app.screen == Screen::ChannelBrowser => {
+            crate::tui::input::popups::channel_browser(app, key)
+        }
         Focus::Chat => crate::tui::input::conversation::handle(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         // Search returns early above; keep this a no-op (not a panic) so a

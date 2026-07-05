@@ -246,9 +246,10 @@ fn handle_key(app: &mut App, key: KeyEvent) {
             }
         }
         Screen::Login => login::handle(app, key),
-        // Teams is a section of the Home shell now, routed through the inbox
-        // handler (which dispatches the right pane by the active section).
-        Screen::Inbox | Screen::Teams => inbox::handle(app, key),
+        // Teams and the channel browser are sections of the Home shell now,
+        // routed through the inbox handler (which dispatches the right pane by
+        // the active section).
+        Screen::Inbox | Screen::Teams | Screen::ChannelBrowser => inbox::handle(app, key),
         Screen::Help => handle_help(app, key),
         Screen::Settings => settings::handle(app, key),
         Screen::ConfirmLogout => common::run_confirm(
@@ -274,7 +275,6 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         ),
         Screen::NewConversation => popups::new_conversation(app, key),
         Screen::UnhideConversation => popups::unhide_conversation(app, key),
-        Screen::ChannelBrowser => popups::channel_browser(app, key),
         Screen::Members => popups::members(app, key),
         Screen::SearchGlobal => popups::search_global(app, key),
         Screen::ConfirmDeleteMessage => popups::confirm_delete_message(app, key),

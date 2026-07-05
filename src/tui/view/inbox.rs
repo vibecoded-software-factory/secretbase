@@ -73,9 +73,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let right = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(chat_area);
     let (header_area, content_area) = (right[0], right[1]);
     render_section_header(frame, app, header_area);
+    let section_focused = app.focus == Focus::Chat;
     match app.screen {
         Screen::Teams => {
-            crate::tui::view::teams::render_list(frame, app, content_area, app.focus == Focus::Chat)
+            crate::tui::view::teams::render_list(frame, app, content_area, section_focused)
+        }
+        // The channel browser is the Teams section's drill-down (team → channels).
+        Screen::ChannelBrowser => {
+            crate::tui::view::channels::render_in_pane(frame, app, content_area, section_focused)
         }
         _ if app.open_conv_id.is_some() => {
             crate::tui::view::conversation::draw_chat(frame, app, content_area);
@@ -159,7 +164,9 @@ fn render_identity(frame: &mut Frame, app: &App, area: Rect) {
 /// (mouse-clickable tabs are a follow-up).
 fn render_section_header(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let on_teams = app.screen == Screen::Teams;
+    // The channel browser is a Teams-section drill-down, so the Teams tab stays
+    // active there too.
+    let on_teams = matches!(app.screen, Screen::Teams | Screen::ChannelBrowser);
     let tab = |label: &str, active: bool| {
         let style = if active {
             Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
@@ -512,7 +519,7 @@ fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
 mod tests {
     use crate::domain::{TeamMembership, TeamRole};
     use crate::tui::app::App;
-    use crate::tui::screens::Screen;
+    use crate::tui::screens::{Focus, Screen};
 
     struct NoClip;
     impl crate::ports::ClipboardPort for NoClip {
@@ -609,5 +616,35 @@ mod tests {
             text.contains("@511v3str1"),
             "the identity chip shows the username:\n{text}"
         );
+    }
+
+    #[test]
+    fn channel_browser_renders_in_pane_as_a_teams_drilldown() {
+        use crate::domain::{Channel, Conversation, MemberStatus, MembersType};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.channel_browser.team = Some("phoenix".into());
+        app.channel_browser.channels = vec![Conversation {
+            id: "c1".into(),
+            channel: Channel {
+                name: "phoenix".into(),
+                members_type: MembersType::Team,
+                topic_name: Some("general".into()),
+            },
+            unread: false,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: MemberStatus::Active,
+            creator_info: None,
+        }];
+        app.screen = Screen::ChannelBrowser;
+        app.focus = Focus::Chat;
+        let text = render_to_text(&mut app);
+        // The drill-down renders in the right pane (not a centered modal) with
+        // the Teams tab still active.
+        assert!(text.contains("Channels"), "panel titled Channels:\n{text}");
+        assert!(text.contains("general"), "the channel renders:\n{text}");
+        assert!(text.contains("Teams"), "Teams tab stays active:\n{text}");
     }
 }

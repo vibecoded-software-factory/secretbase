@@ -776,8 +776,12 @@ under react/delete/download).
   notifications, so a local mute can't silence your phone — see README →
   *Not supported*.) **Ignore / block / report** stay server-side (`setstatus`)
   because their effect *is* observable (the conv leaves the inbox).
-- **Channel browser** (`ChannelBrowser`, `c` on a team row) — a standard
-  centered modal (`view::channels`, `MODAL_*` geometry) listing **every**
+- **Channel browser** (`ChannelBrowser`, `c` on a team row, or `Enter` on a
+  team in the Teams section) — the Teams section's **in-pane drill-down**
+  (team → its channels), rendered in the Home shell's right pane via
+  `view::channels::render_in_pane` (the same picker skeleton as the modals, on
+  the non-centered `draw_picker_into`), **not** a centered modal; `Esc` /
+  `Alt+M` go back up to the teams list. It lists **every**
   channel of the team via `keybase chat api listconvsonname` (same `ConvSummary`
   shape as `list`, so the tolerant parser is reused; `member_status == Active`
   marks the ones you're in, sorted joined-first). `↑/↓` pick, `Enter` opens a
