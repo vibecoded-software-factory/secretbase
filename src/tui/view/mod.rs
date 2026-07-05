@@ -182,8 +182,9 @@ fn draw_screen(frame: &mut Frame, app: &mut App, screen: Screen) {
     match screen {
         Screen::Splash => splash::draw(frame, app),
         Screen::Login => login::draw(frame, app),
-        Screen::Inbox => inbox::draw(frame, app),
-        Screen::Teams => teams::draw(frame, app),
+        // Teams is no longer a separate full screen — it's a *section* of the
+        // Home shell (the same two-pane layout), rendered in the right pane.
+        Screen::Inbox | Screen::Teams => inbox::draw(frame, app),
         // Overlays are never a base screen — fall back to the inbox.
         _ => inbox::draw(frame, app),
     }

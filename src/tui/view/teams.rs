@@ -1,9 +1,11 @@
-//! Teams screen renderer — identity bar + a `list_table` of the user's
-//! team memberships (role + member count), command log, status strip.
+//! Teams section renderer — a `list_table` of the user's team memberships
+//! (role + member count), rendered **in the Home shell's right pane** (it used
+//! to be a separate full screen; now it's a section, so this owns only the
+//! list, not the command log / status strip).
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::Constraint,
     style::{Modifier, Style},
     text::Span,
     widgets::{Cell, Row},
@@ -12,36 +14,16 @@ use ratatui::{
 use crate::domain::TeamRole;
 use crate::tui::app::App;
 use crate::tui::view::titled_block;
-use crate::tui::view::widgets::{
-    cmdlog_height, draw_cmd_log, draw_status_strip, empty_state_lines, list_table, list_title,
-};
+use crate::tui::view::widgets::{empty_state_lines, list_table, list_title};
 
-pub fn draw(frame: &mut Frame, app: &mut App) {
-    let area = frame.area();
-    // No identity bar here — the Teams screen is a focused list; the identity /
-    // unread chrome belongs on the inbox home, not on this drill-down.
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(5),
-            Constraint::Length(cmdlog_height(area.height, app.settings_cache.cmdlog_rows)), // responsive command log
-            Constraint::Length(1),
-        ])
-        .split(area);
-
-    render_list(frame, app, chunks[0]);
-    draw_cmd_log(frame, app, chunks[1], false, "");
-    let hint = if app.teams.filtering {
-        "type to filter · Enter keep · Esc clear"
-    } else if !app.teams.filter.is_empty() {
-        "filtered — Esc clear · / edit · Enter channels"
-    } else {
-        "↑/↓ nav · Enter channels · / filter · r refresh · Esc inbox"
-    };
-    draw_status_strip(frame, app, chunks[2], hint);
-}
-
-fn render_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
+/// Renders the teams list into `area` (the Home right pane's section content).
+/// `focused` accents the panel border when the section holds focus.
+pub(crate) fn render_list(
+    frame: &mut Frame,
+    app: &mut App,
+    area: ratatui::layout::Rect,
+    focused: bool,
+) {
     let t = app.theme.clone();
     let icon_set = crate::tui::icons::resolve(&app.settings_cache.icon_style);
     let total = app.teams.list.len();
@@ -49,7 +31,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     // Empty state that teaches (the tree/channels/members treatment) —
     // this screen used to render a bare table with no way forward.
     if app.teams.list.is_empty() {
-        let block = titled_block(" Teams ", true, app);
+        let block = titled_block(" Teams ", focused, app);
         let inner = block.inner(area);
         frame.render_widget(block, area);
         frame.render_widget(
@@ -119,7 +101,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         &t,
         area,
         &title,
-        true,
+        focused,
         &["Team", "Role", "Members"],
         &[
             Constraint::Length(name_w),

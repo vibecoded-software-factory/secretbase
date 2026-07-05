@@ -1,5 +1,7 @@
-//! Main inbox renderer — the `split_main` stack:
-//! identity · search · (filters | list) · command log · status.
+//! Home renderer — the two-pane shell: identity chip + conversation tree on
+//! the left, a section tab bar (`Messages · Teams`) + the active section on the
+//! right, command log + status strip below. Teams renders here as a section,
+//! not a separate screen.
 
 use ratatui::{
     Frame,
@@ -10,7 +12,7 @@ use ratatui::{
 };
 
 use crate::tui::app::{App, TreeRow};
-use crate::tui::screens::Focus;
+use crate::tui::screens::{Focus, Screen};
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
     cmdlog_height, draw_cmd_log, draw_status_strip, favorite_star, list_table, list_title,
@@ -65,10 +67,20 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     render_identity(frame, app, identity_area);
     render_tree(frame, app, tree_area);
-    if app.open_conv_id.is_some() {
-        crate::tui::view::conversation::draw_chat(frame, app, chat_area);
-    } else {
-        render_chat_placeholder(frame, app, chat_area);
+    // Right pane: a 1-row section tab bar (Messages · Teams) atop the active
+    // section's content — so the whole app keeps the two-pane shell instead of
+    // swapping to full-screen views.
+    let right = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(chat_area);
+    let (header_area, content_area) = (right[0], right[1]);
+    render_section_header(frame, app, header_area);
+    match app.screen {
+        Screen::Teams => {
+            crate::tui::view::teams::render_list(frame, app, content_area, app.focus == Focus::Chat)
+        }
+        _ if app.open_conv_id.is_some() => {
+            crate::tui::view::conversation::draw_chat(frame, app, content_area);
+        }
+        _ => render_chat_placeholder(frame, app, content_area),
     }
     let cmdlog_focused = app.focus == Focus::CmdLog;
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+L");
@@ -96,7 +108,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // zero rect means no click ever lands on the removed panel.
     app.mouse_areas.search = ratatui::layout::Rect::default();
     app.mouse_areas.source = tree_area;
-    app.mouse_areas.list = chat_area;
+    app.mouse_areas.list = content_area;
     app.mouse_areas.cmd_log = cmdlog;
 }
 
@@ -139,6 +151,30 @@ fn render_identity(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::styled("not signed in", Style::default().fg(t.dim)));
     }
     frame.render_widget(ratatui::widgets::Paragraph::new(Line::from(spans)), inner);
+}
+
+/// The section tab bar atop the right pane — `Messages · Teams` — marking which
+/// apartado you're viewing (Discord's top bar). Keeps the two-pane shell so the
+/// app never swaps to a jarring full-screen view. Switched with `Alt+M` / `t`
+/// (mouse-clickable tabs are a follow-up).
+fn render_section_header(frame: &mut Frame, app: &App, area: Rect) {
+    let t = &app.theme;
+    let on_teams = app.screen == Screen::Teams;
+    let tab = |label: &str, active: bool| {
+        let style = if active {
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(t.dim)
+        };
+        Span::styled(format!(" {label} "), style)
+    };
+    let line = Line::from(vec![
+        Span::raw(" "),
+        tab("Messages", !on_teams),
+        Span::raw(" "),
+        tab("Teams", on_teams),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 /// A friendly notice inside the Chats panel (empty inbox / no matches): a bold
@@ -470,4 +506,108 @@ fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(key_hint),
     ];
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::{TeamMembership, TeamRole};
+    use crate::tui::app::App;
+    use crate::tui::screens::Screen;
+
+    struct NoClip;
+    impl crate::ports::ClipboardPort for NoClip {
+        fn write(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    struct NoOpen;
+    impl crate::ports::OpenerPort for NoOpen {
+        fn open(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    struct NoSettings;
+    impl crate::ports::SettingsPort for NoSettings {
+        fn read(&self) -> crate::ports::UserSettings {
+            crate::ports::UserSettings::default()
+        }
+        fn write_setting(&self, _: &str, _: &str) -> bool {
+            true
+        }
+        fn write_theme_name(&self, _: &str) -> bool {
+            true
+        }
+        fn config_dir(&self) -> std::path::PathBuf {
+            std::path::PathBuf::from(".")
+        }
+    }
+
+    fn app() -> App {
+        use std::sync::mpsc::channel;
+        let (tx, _r1) = channel();
+        let (bg, _r2) = channel();
+        let (_t3, rx) = channel();
+        App::new(
+            tx,
+            bg,
+            rx,
+            None,
+            Box::new(NoClip),
+            Box::new(NoOpen),
+            Box::new(NoSettings),
+        )
+    }
+
+    fn render_to_text(app: &mut App) -> String {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut term = Terminal::new(TestBackend::new(90, 30)).unwrap();
+        term.draw(|f| crate::tui::view::draw(f, app)).unwrap();
+        let buf = term.backend().buffer();
+        let mut s = String::new();
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if let Some(c) = buf.cell((x, y)) {
+                    s.push_str(c.symbol());
+                }
+            }
+            s.push('\n');
+        }
+        s
+    }
+
+    #[test]
+    fn teams_section_renders_in_the_right_pane_with_a_tab_header() {
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.teams.list = vec![TeamMembership {
+            name: "phoenix".into(),
+            is_implicit_team: false,
+            member_count: 3,
+            role: TeamRole::Owner,
+        }];
+        app.screen = Screen::Teams;
+        let text = render_to_text(&mut app);
+        // The section tab bar names both apartados; the team renders on the right.
+        assert!(text.contains("Messages"), "tab bar shows Messages:\n{text}");
+        assert!(text.contains("Teams"), "tab bar shows Teams:\n{text}");
+        assert!(
+            text.contains("phoenix"),
+            "the team renders in the right pane:\n{text}"
+        );
+    }
+
+    #[test]
+    fn identity_chip_shows_the_signed_in_username() {
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "511v3str1".into();
+        app.screen = Screen::Inbox;
+        let text = render_to_text(&mut app);
+        assert!(
+            text.contains("@511v3str1"),
+            "the identity chip shows the username:\n{text}"
+        );
+    }
 }
