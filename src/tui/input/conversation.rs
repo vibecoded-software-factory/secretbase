@@ -48,6 +48,7 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         // current token) — it must not fall through to the conversation
         // escape chain while a completion is on screen.
         KeyCode::Esc if app.mention_popup_active() => app.dismiss_mention_popup(),
+        KeyCode::Esc if app.emoji_ac_active() => app.dismiss_emoji_ac(),
         KeyCode::Esc => chat::escape_conversation(app),
         // Alt+Enter — or Shift+Enter, the Discord/Slack reflex, delivered
         // distinctly on terminals with the kitty keyboard protocol —
@@ -64,7 +65,32 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
                 chat::accept_mention(app, &u);
             }
         }
+        KeyCode::Enter if app.emoji_ac_active() => {
+            let matches = app.emoji_ac_matches();
+            let sel = app.emoji_ac_selected.min(matches.len().saturating_sub(1));
+            if let Some(&ci) = matches.get(sel) {
+                chat::accept_emoji_ac(app, ci);
+            }
+        }
         KeyCode::Enter => submit_compose(app),
+
+        // ── :emoji: autocomplete (when its popup is open) ──────────────
+        // Same contract as the mention popup below: Tab accepts, ↑/↓ pick.
+        // (Its Esc/Enter arms live above, before the generic ones.)
+        KeyCode::Tab if app.emoji_ac_active() => {
+            let matches = app.emoji_ac_matches();
+            let sel = app.emoji_ac_selected.min(matches.len().saturating_sub(1));
+            if let Some(&ci) = matches.get(sel) {
+                chat::accept_emoji_ac(app, ci);
+            }
+        }
+        KeyCode::Up if app.emoji_ac_active() => {
+            app.emoji_ac_selected = app.emoji_ac_selected.saturating_sub(1);
+        }
+        KeyCode::Down if app.emoji_ac_active() => {
+            let n = app.emoji_ac_matches().len();
+            app.emoji_ac_selected = (app.emoji_ac_selected + 1).min(n.saturating_sub(1));
+        }
 
         // ── @-mention autocomplete (when its popup is open) ────────────
         // Tab accepts the highlighted suggestion; ↑/↓ pick.

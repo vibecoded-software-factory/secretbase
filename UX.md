@@ -389,7 +389,12 @@ on their own:
   `Esc` dismisses the popup for the current token only
   (`App::mention_dismissed_token` — a different token re-arms it) and does
   **not** fall through to the conversation escape chain, so a completion on
-  screen can't eat the draft-preserving Esc.
+  screen can't eat the draft-preserving Esc. Its sibling: typing
+  `:tok` (≥2 shortcode chars after a token-opening `:` — clock times never
+  match) opens the **`:emoji:` autocomplete** over the same catalogue as
+  the reaction picker; `Tab`/`Enter` insert the glyph (stock) or `:alias:`
+  (custom team emoji), `Esc` dismisses per token, and the mention popup
+  wins when both could apply.
   **Adding** a reaction (`+` in select mode) opens a searchable
   **reaction picker** (`Screen::React`): a `/`-style search over the emoji
   catalogue — the **full standard Unicode set** (`domain::emoji::standard`,

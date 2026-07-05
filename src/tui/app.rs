@@ -505,6 +505,11 @@ pub struct App {
     /// `@`-token whose mention popup was Esc-dismissed — the popup stays
     /// closed while the token under the cursor still matches it.
     pub mention_dismissed_token: Option<String>,
+    /// Cursor in the `:emoji:` autocomplete popup.
+    pub emoji_ac_selected: usize,
+    /// `:token` whose emoji popup was Esc-dismissed (same contract as
+    /// [`Self::mention_dismissed_token`]).
+    pub emoji_ac_dismissed_token: Option<String>,
     /// Fuzzy query in the Ctrl+K quick switcher.
     pub switcher: LineEditor,
     /// Selected row in the switcher (indexes [`Self::switcher_results`]).
@@ -952,6 +957,8 @@ impl App {
             emoji_filtered: Vec::new(),
             emoji_uses: HashMap::new(),
             mention_dismissed_token: None,
+            emoji_ac_selected: 0,
+            emoji_ac_dismissed_token: None,
             switcher: LineEditor::default(),
             switcher_selected: 0,
             switcher_from: Screen::Inbox,
@@ -1890,6 +1897,50 @@ impl App {
         self.mention_dismissed_token =
             crate::domain::active_mention(self.compose.text(), self.compose.cursor())
                 .map(|(_, prefix)| prefix.to_string());
+    }
+
+    /// Catalogue indices matching the `:token` under the compose cursor —
+    /// the `:emoji:` autocomplete's rows (alias prefix match, capped).
+    pub fn emoji_ac_matches(&self) -> Vec<usize> {
+        let Some((_, prefix)) =
+            crate::domain::active_emoji_token(self.compose.text(), self.compose.cursor())
+        else {
+            return Vec::new();
+        };
+        self.emojis
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.alias.to_ascii_lowercase().starts_with(&prefix))
+            .map(|(i, _)| i)
+            .take(8)
+            .collect()
+    }
+
+    /// Whether the `:emoji:` popup should show / capture keys. The mention
+    /// popup wins when both could apply (their sigils make that rare).
+    pub fn emoji_ac_active(&self) -> bool {
+        self.mention_popup_gate()
+            && !self.mention_popup_active()
+            && !self.emoji_ac_dismissed()
+            && !self.emoji_ac_matches().is_empty()
+    }
+
+    fn emoji_ac_dismissed(&self) -> bool {
+        match (
+            &self.emoji_ac_dismissed_token,
+            crate::domain::active_emoji_token(self.compose.text(), self.compose.cursor()),
+        ) {
+            (Some(dismissed), Some((_, prefix))) => *dismissed == prefix,
+            _ => false,
+        }
+    }
+
+    /// Esc on the open `:emoji:` popup — same per-token dismiss contract as
+    /// the mention popup.
+    pub fn dismiss_emoji_ac(&mut self) {
+        self.emoji_ac_dismissed_token =
+            crate::domain::active_emoji_token(self.compose.text(), self.compose.cursor())
+                .map(|(_, prefix)| prefix);
     }
 
     /// Whether the `@`-mention popup should be shown / capture keys — only in

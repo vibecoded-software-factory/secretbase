@@ -77,6 +77,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Enter", "send / save edit"),
             ("Alt+Enter / Shift+Enter", "new line (multi-line message)"),
             ("↑ (empty compose)", "edit your last message"),
+            (
+                ":emo…",
+                "emoji autocomplete popup (Tab/Enter insert, Esc dismiss)",
+            ),
             ("@… then Tab", "mention autocomplete (↑/↓ pick)"),
             (
                 "*b* _i_ ~s~ `c`",

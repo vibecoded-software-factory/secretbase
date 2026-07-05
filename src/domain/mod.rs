@@ -37,7 +37,7 @@ pub use identity::IdentityInfo;
 pub use inbox_hit::InboxHit;
 pub use line_editor::LineEditor;
 pub use markdown::{Run, parse_inline};
-pub use mention::active_mention;
+pub use mention::{active_emoji_token, active_mention};
 pub use message::{
     AttachmentInfo, Message, MessageContent, Reaction, SystemInfo, SystemKind, fold_deletes,
     fold_edits, team_role_name,

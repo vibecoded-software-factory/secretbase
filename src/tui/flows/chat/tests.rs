@@ -2234,6 +2234,36 @@ fn up_on_empty_compose_edits_last_own_message() {
 }
 
 #[test]
+fn emoji_autocomplete_inserts_and_dismisses_per_token() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Chat;
+    rig.app.compose.insert_str("nice :hea");
+    assert!(rig.app.emoji_ac_active(), "catalogue seeds :heart:");
+    // Enter inserts the glyph at the token — nothing is sent.
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(rig.app.outbox.is_empty());
+    assert!(!rig.app.compose.text().contains(":hea"));
+    assert!(rig.app.compose.text().starts_with("nice "));
+    // Esc dismisses for the token; Enter then sends.
+    rig.app.compose.clear();
+    rig.app.compose.insert_str("ok :hea");
+    assert!(rig.app.emoji_ac_active());
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(!rig.app.emoji_ac_active());
+    assert_eq!(rig.app.compose.text(), "ok :hea");
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(!rig.app.outbox.is_empty());
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

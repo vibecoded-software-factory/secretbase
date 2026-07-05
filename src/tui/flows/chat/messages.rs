@@ -811,6 +811,30 @@ pub fn do_open_url(app: &mut App) {
 
 /// Accepts the `@`-mention autocomplete: replaces the in-progress `@prefix`
 /// at the cursor with `@username ` (trailing space).
+/// Inserts the chosen `:emoji:` autocomplete row into the compose at the
+/// token: stock emojis insert their glyph (what the body renders anyway),
+/// custom team emojis insert `:alias:` (the only form Keybase accepts).
+pub fn accept_emoji_ac(app: &mut App, catalogue_idx: usize) {
+    let Some((start, _)) =
+        crate::domain::active_emoji_token(app.compose.text(), app.compose.cursor())
+    else {
+        return;
+    };
+    let Some(e) = app.emojis.get(catalogue_idx) else {
+        return;
+    };
+    let insert = if e.display.starts_with(':') {
+        format!(":{}: ", e.alias)
+    } else {
+        format!("{} ", e.display)
+    };
+    while app.compose.cursor() > start {
+        app.compose.backspace();
+    }
+    app.compose.insert_str(&insert);
+    app.emoji_ac_selected = 0;
+}
+
 pub fn accept_mention(app: &mut App, username: &str) {
     let Some((start, _)) = crate::domain::active_mention(app.compose.text(), app.compose.cursor())
     else {
