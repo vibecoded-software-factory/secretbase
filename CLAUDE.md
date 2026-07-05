@@ -2,268 +2,47 @@
 
 Guidance for Claude Code when working in this repository.
 
-## Keybase CLI — read `CLI.md` first (hard rule)
+`secretbase` — a terminal UI (Ratatui) over the **Keybase CLI**. It shells
+out to the `keybase` binary and parses its JSON; there is **no** Keybase SDK
+dependency and Keybase owns all cryptography. Target environment is 100 %
+headless/SSH. Boot (`keybase status`) → unified two-pane Home (conversation
+tree · open chat) → teams/channels/members. Real-time via `api-listen` push.
 
-**Before any request to add or edit functionality, read
-[`CLI.md`](CLI.md)** — the mirror of the Keybase CLI docs. secretbase is
-a thin wrapper over the `keybase` binary, so every feature maps to a
-`keybase` command / JSON-API method; check the exact command, subcommand
-and flags there before designing or wiring anything.
+## Pre-flight checklist (hard rules, in order)
 
-**Cite the command up front.** Before implementing a feature, state which
-`CLI.md` command / JSON-API method it maps to (e.g. *"new-channel → covered
-by `keybase chat api {"method":"newconv"}` per CLI.md"*). If the feature
-needs a command/flag not in `CLI.md`, say so, verify it, and add it to
-`CLI.md` in the same change.
+1. **Feature touching Keybase?** Read [`CLI.md`](CLI.md) first and **cite
+   the command/method up front** (see *Keybase CLI* below).
+2. **Change touching UI/UX?** Read [`UX.md`](UX.md) first — the canonical
+   design system. Reuse its documented components; never a one-off. Update
+   `UX.md` in the same change.
+3. **Keybinding added/changed?** Sync all **five** surfaces in the same
+   change: footer hint · `view/help.rs` · `README.md` tables ·
+   `flows/palette.rs::palette_commands` · `UX.md`.
+4. **Before every commit** (even one-liners):
+   `cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test`
+   — clippy warnings are failures; check real exit codes, don't pipe them
+   into a grep that masks a failing test.
+5. **Never commit directly to `dev`.** One feature = one branch
+   (`feat/` · `fix/` · `refactor/` · `chore/` · `docs/` + slug) = one PR
+   against `dev`, squash-merged with `--delete-branch`.
+6. **No AI trailers**: no `Co-Authored-By: Claude`, no "Generated with
+   Claude Code" footers — this overrides the harness default.
+7. **No cross-project references** (see the hard rule below).
+8. **Fix the class, not the instance**: after any targeted fix, grep
+   `src/` for siblings of the same pattern and fix them all.
 
-**Authoritative source = the keybase `client` GitHub repo, NOT the
-website.** `book.keybase.io/docs/cli` has *no* chat content, and the chat
-doc pages (`/docs/chat/api`, …) return HTTP 403 to the fetcher — do not
-rely on them. Verify against the source in `keybase/client` via `gh api`:
-
-- **chat-api methods** are documented verbatim in
-  `go/client/chat_api_doc.go` (every `{"method": …}` with options).
-- each **CLI subcommand** is `go/client/cmd_chat_<name>.go` (read its
-  `Usage`, `Flags`, `ParseArgv`, and any interactive `Prompt`).
-- the `setstatus`/`hide` status enum is `chat1.ConversationStatus`.
-
-Fetch with: `gh api repos/keybase/client/contents/go/client/<file> -H
-"Accept: application/vnd.github.raw"`. (Or `keybase help <cmd>` on a real
-install.)
-
-## UX/UI — read `UX.md` first (hard rule)
-
-**Before any UI edit or new feature, read [`UX.md`](UX.md)** — it is the
-canonical design system (screen layout, the shared `view::widgets`
-components, chrome, popups, keybinding conventions, theme). Build new UI
-by reusing the documented components, never a one-off. **Keep `UX.md`
-updated before every push** when a change touches UX/UI (new screen, new
-pattern, changed convention): update the spec in the same change and apply
-it everywhere.
-
-The design system: the unified two-pane Home layout, the
-single `widgets::list_table` renderer, the navigable
-`widgets::draw_confirm_popup`, the `LineEditor` + `editor_spans` text-input
-model, the shared `input::common` mechanics, the rolling command log, and a
-restrained night-sky splash. When in doubt, reuse the documented component.
-
-## Working agreements (READ FIRST)
-
-1. **Fix every occurrence, not just the one reported.** When the user
-   reports a problem (a bug, a wording issue, a layout glitch, a missing
-   keybinding, …), treat the reported spot as one *instance* of a class.
-   Before finishing, grep the whole app for the same pattern and fix it
-   everywhere it appears.
-   - Practical step: after a targeted fix, `grep` for the literal/string/
-     pattern across `src/` and confirm there are no siblings left.
-
-2. **Every UX change must stay coherent with the rest of the UI.** This
-   app has established, repeated patterns; a change to one screen should
-   match all the others, and ideally reuse the same component.
-   - Signed-in screens → the unified two-pane Home (tree · chat, with the
-     responsive `widgets::cmdlog_height` command log + status strip below).
-     Panels → `view::mod::titled_block(title, focused, app)`. Popups →
-     `widgets::center_rect` / `rounded_block`.
-   - Multi-column lists → `widgets::list_table` (header + content-sized
-     columns + `▶` + persisted scroll + `· X of Y` title via
-     `list_title`). Never a stretching `Min` on a non-final column.
-   - Text inputs → `domain::LineEditor` rendered with `widgets::editor_spans`,
-     keys routed via `input::common::route_line_editor` / `search_key`. The
-     inbox search box uses `widgets::draw_search_box`.
-   - Bottom strip → `widgets::draw_status_strip` (feedback when busy, else the
-     footer hint + `F1 help` right). Command log → `widgets::draw_cmd_log`.
-   - Confirmations → `widgets::draw_confirm_popup` + `input::common::confirm_key`
-     (navigable y/n, default highlight = cancel for destructive ops).
-   - Help popup → `tui::view::help::draw` lists the shortcuts per screen.
-     Any new screen/keybinding must be added to the matching section.
-   - List filtering follows the `App::filtered_cache: Vec<usize>` +
-     `search: LineEditor` + `rebuild_filter()` convention, ranked with
-     `domain::search::fuzzy_score_lowered` over the pre-lowercased
-     `LoweredConversation` projection. The tree cursor (`tree_selected`)
-     indexes the visible `tree_rows()`, which are built from the **filtered**
-     cache, never the raw `conversations` vec.
-   - Keybindings follow the **gradient convention** (see `UX.md`): a **bare
-     lowercase letter** is the frequent/safe action on the focused list
-     (`n` new, `r` refresh, `e` mark read, `t` teams, `c` channels…);
-     **`Shift+letter`** is the loud/destructive tier (`Shift+I` ignore,
-     `Shift+B` block, `Shift+X` delete/remove, `Shift+L` leave/logout);
-     **`Ctrl`** is global (`Ctrl+C` quit — the **only** quit — `Ctrl+F` find,
-     `Ctrl+G` search, `Ctrl+K` switcher, `Ctrl+W` panes); **`Alt+letter`**
-     jumps to a panel (`Alt+F` filter, `Alt+C` chats, `Alt+M` messages,
-     `Alt+L` log — each matches that panel's border tag); **`/`** focuses
-     search; `Esc` back, `F1` help, `Tab` cycles focus. A **text field**
-     (compose, the filter box) owns bare letters as typed text, so its actions
-     move to `Alt`/`Ctrl`; a **list** doesn't type, so its letters act. Adding
-     an action means picking the tier by weight, wiring it in the focused
-     panel's handler, and keeping the help popup + `README.md` tables in sync.
-
-3. **Verify before declaring done.** Run `cargo build`, `cargo clippy
-   --all-targets -- -D warnings` (must be warning-free) and `cargo test`
-   after every change. Add/adjust unit tests for new pure logic on
-   `App`/`domain`.
-
-4. **Judge every change as a coherence + ergonomics judge — BEFORE writing
-   it.** A change that is locally correct but breaks the app's coherence or
-   the user's real flow is a regression, not a fix. For every change (feature
-   *or* fix), reason explicitly about all three, and only proceed once they
-   line up:
-   - **Coherence with everything already built.** Does it follow the same
-     patterns, keybindings, modes, flows and mental model as the rest of the
-     app? A behaviour must not contradict how a sibling feature behaves (e.g.
-     if `react`/`pin` stay in Select mode, `delete` must too; if the
-     multi-selection drives `copy`, it must drive `delete`/`react` too). When a
-     change touches a shared mechanic, check every other place that mechanic is
-     used and keep them consistent (same discipline as #1).
-   - **How the feature is used historically.** Match the established
-     expectation from comparable clients (Discord / Slack / Telegram / iMessage,
-     and pro TUIs — mutt/aerc/lazygit/vim) and from Keybase itself — don't
-     invent behaviour that surprises the user (e.g. multi-select + delete
-     removes *all* selected; deleting keeps you in the list, not the compose
-     box).
-   - **Comfort of the real usage flow.** Walk the actual sequence a user
-     performs, not the single action in isolation (e.g. "delete several
-     messages in a row while cleaning up") and make that smooth — no needless
-     mode-switches, cursor jumps, dropped actions, or re-entry steps.
-
-   State this reasoning briefly when the change is non-trivial, so the
-   trade-off is on the record.
-
-## What this is
-
-`secretbase` — a terminal UI (Ratatui) over the **Keybase CLI**. Flow:
-boot (`keybase status`) → inbox (sidebar filters + search + conversation
-list) → conversation detail (read history + compose / edit / delete /
-react / pin) → teams. It shells out to the `keybase` binary and parses its
-JSON (`keybase chat api` / `keybase team api`); there is **no** Keybase
-SDK dependency. Keybase owns all cryptography — this app only wraps the
-CLI.
-
-## No cross-project references (hard rule)
-
-secretbase is a standalone public repository. **Never name or cite a sibling
-project** — jewel, bytewarden, termcord, or any other repo — in code,
-comments, commit messages, PR bodies, or docs. Describe every pattern as
-*this app's own* ("the unified Home layout", "the shared confirm overlay"),
-not as "ported from X" or "mirrors X". Naming another repo in a public
-project leaks the private multi-project setup and reads as unprofessional.
-
-The **only** exception is a real, declared dependency or a shared component we
-actually import and use — cite that precisely by its published identity (the
-crate name + version from `Cargo.toml`), never by the sibling repo it also
-happens to live in. You may still *learn from* a sibling project's approach;
-just don't reference it in what ships here.
-
-## Before every commit (no exceptions)
+## Commands
 
 ```sh
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings   # must be warning-free
-cargo test
+cargo run                         # run the TUI (needs `keybase` on PATH)
+cargo build --release             # optimized binary at target/release/secretbase
+cargo clippy --all-targets -- -D warnings   # lint (hard gate)
+cargo test                        # unit tests (~430, all must pass)
 ```
 
-Run this even on a one-line or comment-only change. `cargo fmt` is the
-formatter of record (default rustfmt; there is no `rustfmt.toml`, so don't
-hand-format against the default style). Clippy is a hard gate — warnings
-are failures here, not suggestions. Keep the `README.md` keybinding tables
-and the `view/help.rs` popup in sync when shortcuts change.
-
-## Stack
-
-- **Rust, edition 2024**, toolchain pinned in `rust-toolchain.toml`
-  (`1.95.0`, with `clippy` + `rustfmt` + `llvm-tools-preview`). Don't bump
-  the channel as a side effect.
-- `#![forbid(unsafe_code)]` at the crate root (`lib.rs` and `main.rs`) —
-  no `unsafe`, ever.
-- **Ratatui 0.30** + **Crossterm 0.29** for the TUI and terminal events.
-- **Serde / serde_json** to parse `keybase … api` JSON output.
-- **color-eyre** for error reports; the splash wordmark is a
-  **pre-rendered** (embedded) FIGlet-style block in `view/logo.rs` — no
-  font asset or FIGlet dependency,
-  **zeroize** to wipe chat/credential-bearing buffers, **chrono**
-  (`clock`, no default features) for local-timezone chat timestamps,
-  **emojis** for the full standard Unicode emoji set (reaction picker),
-  **syntect** (`regex-fancy`, no oniguruma C FFI — stays pure-Rust and
-  `forbid(unsafe_code)`-clean) for fenced-code syntax highlighting
-  (`tui::syntax`).
-- `tempfile` is a dev-dependency only (test fixtures).
-- Release profile is size-optimized (`opt-level = "s"`, `lto`, `strip`).
-
-## Execution model — worker thread + mpsc (do NOT touch unprompted)
-
-The keybase port lives on a **single worker thread** that owns it and
-serves requests serially over `mpsc`; the render thread never blocks on a
-`keybase` call (`tui/worker.rs`). The flow:
-
-1. A `request_*` builder (in `tui/flows/`) validates input, stashes a
-   `worker::InFlight` ticket on `App::in_flight`, sets a `Running` toast,
-   and sends a `WorkerRequest` on the worker channel.
-2. The worker runs the blocking `keybase` call off-thread and sends a
-   `WorkerResponse` back. Each call is wrapped in `run_caught`
-   (`catch_unwind`) so a panic in one can't kill the worker — it surfaces
-   as `KeybaseError::Internal`.
-3. The run loop (`tui/mod.rs`) drains the response channel every frame and
-   routes each response through `flows::apply_response`, which consumes the
-   `in_flight` ticket and dispatches to the owning `handle_*`. The spinner
-   animates throughout; `Ctrl+C` stays instant.
-
-Only one user request is in flight at a time (`App::in_flight:
-Option<_>`). Two layers enforce this: `input::common::busy_blocks` gates
-keys while busy (so the user can't queue a second), and every `request_*`
-claims the slot via **`App::begin(slot)`** instead of assigning `in_flight`
-directly — `begin` refuses (and logs) if one is already in flight, so a
-*programmatic* race (e.g. the idle auto-refresh vs. opening a conversation)
-can't overwrite the slot and desync the `in_flight` ↔ response ordering
-(which surfaced as a "dispatch mismatch"). Each call still has a
-per-operation timeout in `adapters/keybase_cli/process.rs`.
-
-Clipboard + settings stay **synchronous** on the render thread (they're
-fast).
-
-## Real-time push (`keybase chat api-listen`)
-
-Alongside the request/response worker, a **third lane** delivers push
-updates: a long-lived `keybase chat api-listen --convs --hide-exploding`
-process (`adapters/keybase_cli/listen.rs`) whose reader parses each JSON
-line into a `domain::ChatEvent` and sends it on a channel. A **supervisor
-thread respawns the stream with backoff** if it dies (service restart,
-logout/login) — a `ChatEvent::StreamClosed` tells the UI about the gap and
-triggers a silent resync. `main.rs` owns the listener guard (the supervisor
-is stopped and its child killed on exit) and hands only the
-`Receiver<ChatEvent>` to the TUI, which drains it every frame in the run
-loop and applies events via `flows::apply_chat_event` — no `InFlight`
-ticket, so a push can land at any time without touching the user's slot.
-Events update state **incrementally** (append a message to the open
-conversation, bump a conversation in the inbox) instead of re-fetching;
-edits/deletes/reactions trigger a re-read to reproject. Because real-time
-arrives via push, the periodic inbox `list` is only a **safety-net resync**
-(`inbox_refresh_secs`, default 180 s). The listener is push-only (no stdin);
-see `CLI.md` for the event shapes and the CLI's limits (no typing/read-state
-over `api-listen`).
-
-**Do NOT pull in `tokio`/`async-std`.** Extend the `std::thread` + `mpsc`
-worker pattern: add a `WorkerRequest`/`WorkerResponse`/`InFlight` variant
-and a `request_*`/`handle_*` pair.
-
-## No Keybase SDK
-
-All Keybase access is the `keybase` CLI binary spawned as a subprocess
-(`adapters/keybase_cli/`). Adding functionality means a new CLI
-invocation, not an SDK crate: build the JSON request in `codec.rs`, run
-with a timeout in `process.rs`, parse in `mod.rs`/`json.rs`.
-
-For latency, all `chat`/`team` API calls funnel through the two
-chokepoints `run_api`/`run_api_raw`, which run them over a **persistent
-`keybase <family> api` stream** (`adapters/keybase_cli/session.rs`,
-`ApiSession`) instead of spawning a fresh process per call — amortising
-the binary's fork+exec and `keybased` connection. The worker is the
-single serial caller, so request↔response ordering is implicit. Any
-protocol failure (dead process, broken pipe, a first-call probe timeout)
-**transparently falls back to a one-shot spawn** and disables the stream
-after repeated failures, so it is never less correct than the old path.
-`status`/`logout` are not API-mode and stay one-shot. Parse
-strict-but-tolerant — skip a malformed conversation/team row (collecting a
-diagnostic), don't drop the whole list. Every invocation is appended to
-the in-app command log.
+`cargo fmt` is the formatter of record (default rustfmt, no `rustfmt.toml`).
+Debug logging: `SECRETBASE_DEBUG=1` → `~/.secretbase.log` (0600; never logs
+message plaintext).
 
 ## Architecture (hexagonal / ports & adapters)
 
@@ -273,112 +52,240 @@ main ──► tui ──► flows ──► ports ◄── adapters
                     └── domain (pure types, no I/O)
 ```
 
-- `src/domain/` — pure types and rules, no I/O (e.g. `Conversation`,
-  `Message`/`MessageContent`, `TeamMembership`,
-  `fuzzy_score_lowered`/`LoweredConversation`, validators).
-- `src/ports/` — trait abstractions: `KeybasePort`, `ClipboardPort`,
-  `SettingsPort`, `KeybaseError`.
-- `src/adapters/` — the only layer allowed to do I/O: `keybase_cli/`
-  (subprocess + `codec` + `process` + `json`), `clipboard_system.rs`
-  (`wl-copy`/`xclip`/`xsel`/`pbcopy`, with an **OSC 52** terminal-escape
-  fallback when no display server is present — the headless/SSH case),
-  `settings_toml.rs` (hand-rolled
-  TOML that preserves unknown keys, atomic writes, owner-only perms).
+- `src/domain/` — pure types + rules, **no I/O**: `Conversation`,
+  `Message`/`MessageContent`, `LineEditor` (every text input; word ops,
+  `ZeroizeOnDrop`), `fuzzy_score_lowered`/`LoweredConversation`,
+  `fold_edits`/`fold_deletes`, `ChatEvent`, validators.
+- `src/ports/` — traits: `KeybasePort`, `ClipboardPort`, `SettingsPort`
+  (+ `KeybaseError`). `SettingsPort::write_*` return `bool` — never fatal,
+  but callers must inform on failure.
+- `src/adapters/` — the **only** layer doing I/O:
+  - `keybase_cli/` — subprocess + `codec` (serde-built JSON requests) +
+    `process` (wall-clock timeouts, piped-drain pattern) + `json` +
+    `session.rs` (persistent `keybase <family> api` stream, idempotency-
+    gated one-shot fallback) + `listen.rs` (push stream + **supervisor
+    that respawns it with backoff**; capped line reader).
+  - `clipboard_system.rs` — wl-copy/xclip/xsel/pbcopy + **OSC 52** fallback
+    for headless; auto-clear (`clipboard_clear_secs`).
+  - `settings_toml.rs` — hand-rolled TOML preserving unknown keys, atomic
+    writes, 0700/0600 perms. Its `unquote` does **not** process escapes —
+    sanitize values, don't escape them (`app::toml_quoted`).
 - `src/tui/` — the driving adapter:
-  - `app.rs` — global mutable `App` state container (incl. worker channels
-    + `in_flight`).
-  - `worker.rs` — the worker thread + `WorkerRequest`/`WorkerResponse`/
-    `InFlight` enums.
-  - `action.rs` — `ActionState` (Idle/Running/Done/Error) + `CmdEntry`.
-  - `screens.rs` — `Screen`, `Focus` enums.
-  - `flows/` — per-feature `request_*`/`handle_*` pairs (`auth`, `teams`,
-    `palette`, and `chat/` split by area: `inbox` · `messages` · `channels`
-    · `attachments` · `search`, re-exported flat as `flows::chat::*`).
-    `flows::apply_response` routes each `WorkerResponse` to its `handle_*`.
-  - `input/` — per-screen keyboard handlers (wired in `input/mod.rs`) +
-    `mouse.rs`; shared mechanics in `input/common.rs` (`clamp_move`,
-    `cycle_focus`, `busy_blocks`, `route_line_editor`, `search_key`,
-    `confirm_key`). New handlers delegate here.
-  - `view/` — per-screen Ratatui renderers (router in `view/mod.rs::draw`,
-    which owns `titled_block`) + the shared `list_table` and
-    chrome in `view/widgets.rs`; `theme.rs`, `logo.rs`, `starfield.rs`
-    (restrained, splash/login only).
-  - `domain::LineEditor` backs every text input across the app.
-  - Helpers: `debug_log.rs` (`SECRETBASE_DEBUG=1` → `~/.secretbase.log`,
-    mode 0600), `mouse_areas.rs` (hit-test rects).
+  - `app.rs` — the mutable `App` state container + the invalidation
+    methods (next section).
+  - `worker.rs` — worker thread(s) + `WorkerRequest`/`WorkerResponse`/
+    `InFlight`; `run_caught` panic isolation per call.
+  - `flows/` — per-feature `request_*`/`handle_*` pairs: `auth`, `teams`,
+    `palette`, and `chat/` split by area (`inbox` · `messages` ·
+    `channels` · `attachments` · `search`), re-exported flat as
+    `flows::chat::*`. `flows::apply_response` routes responses;
+    `flows::apply_chat_event` applies push events.
+  - `input/` — per-screen key handlers (router `input/mod.rs`) + `mouse.rs`;
+    shared mechanics in `input/common.rs` (`list_nav`, `list_nav_arrows`,
+    `route_line_editor`, `search_key`, `confirm_key` + `run_confirm`,
+    `busy_blocks`, `cycle_focus`).
+  - `view/` — per-screen renderers (router `view/mod.rs::draw`; popups draw
+    their base screen underneath) + the widget system in `view/widgets.rs`
+    (see *UI system*); `logo.rs`/`starfield.rs` (splash/login only).
+  - Support modules directly under `tui/`: `theme.rs` (presets + semantic
+    styles), `settings_model.rs` (the Settings data model), `syntax.rs`
+    (memoized syntect), `image.rs` (chafa/kitty/sixel + LRU caches +
+    subprocess timeouts), `file_picker.rs`, `action.rs`
+    (`ActionState`/`CmdEntry`), `screens.rs` (`Screen`/`Focus`),
+    `mouse_areas.rs` (hit-test rects), `debug_log.rs`.
 
-When adding a new screen: add the `Screen` variant, an `input/<screen>.rs`
-handler (wired in `input/mod.rs`), a `view/<screen>.rs` renderer (wired in
-the `view/mod.rs::draw` router — popups draw their origin screen
-underneath first), reuse `widgets::*` for chrome, and add its section to
-`view/help.rs`. **Reuse the shared helpers above rather than
-re-implementing per screen** — that's what keeps the app coherent.
+New screen = `Screen` variant + `input/<screen>.rs` (wired in the router) +
+`view/<screen>.rs` (wired in `draw`) + a `view/help.rs` section + the
+five-surface keybinding sync.
+
+## Execution model — worker threads + mpsc (do NOT touch unprompted)
+
+**Do NOT pull in `tokio`/`async-std`.** Extend the `std::thread` + `mpsc`
+pattern instead: a `WorkerRequest`/`WorkerResponse`/`InFlight` variant + a
+`request_*`/`handle_*` pair.
+
+- **User lane** — one worker owns a `KeybasePort`, serves serially. A flow
+  starts a request with **`App::submit(slot, label, req)`** (claims the
+  `in_flight` slot via `begin`, shows the Running toast, sends; a failed
+  send releases the slot). Only bare `begin()` when state must mutate
+  between claiming and sending (the optimistic-send paths) — comment why.
+  One request in flight at a time; `busy_blocks` gates keys meanwhile.
+- **Background lane** — a second worker (`bg_worker_tx`) for work that must
+  never block the user: the idle inbox resync, the emoji fetch, the silent
+  mark-read. Its responses carry **no ticket** and are routed **by
+  variant** at the top of `apply_response`.
+- **Push lane** — `api-listen` events drain every frame via
+  `apply_chat_event`; no ticket, may land any time. Incremental updates
+  (append/bump); edits/deletes/reactions trigger a depth-preserving re-read
+  (`request_reload_messages`, never the bare first page). The periodic
+  inbox `list` is only a safety net (`inbox_refresh_secs`).
+- **Failure containment** — `run_caught` per call; per-op wall-clock
+  timeouts (`process.rs`, and `image.rs::run_with_timeout` for
+  chafa/convert); all-workers-dead is observable (`TryRecvError::
+  Disconnected` → `App::on_worker_dead` unwedges the UI, `begin` refuses,
+  a `⚠ WORKER DEAD` badge persists) plus a per-tick watchdog for lost
+  tickets. The listener supervisor respawns the push stream with backoff
+  (`ChatEvent::StreamClosed` → `⇅ reconnecting…` badge + silent resync).
+
+Clipboard + settings stay synchronous on the render thread (they're fast).
+
+## State & invalidation contracts (the footgun list)
+
+`App` caches derived state; each cache has exactly one rebuild path.
+**Mutating the input without calling the rebuild is a bug**, and calling a
+rebuild with the wrong cursor semantics is a UX regression:
+
+| Input mutated | Must call | Notes |
+|---|---|---|
+| `conversations` replaced | `rebuild_lowered()` + `rebuild_filter_preserving_cursor()` | lowered projection = names/labels only — do **not** rebuild it for unread/recency bumps |
+| unread/recency/mute bump | `rebuild_filter_preserving_cursor()` | keeps the tree cursor on its conversation by id |
+| new search/filter query | `rebuild_filter()` | deliberately snaps the cursor to the first match |
+| `expanded` (fold state) | `rebuild_tree_rows()` (via `toggle_collapsed`) | |
+| `messages` (any mutation) | `rebuild_msg_meta()` | rebuilds pin/headline/`msg_index` **and bumps the render-cache epoch** — an edit re-read keeps ids but changes bodies |
+| theme / settings / emoji catalogue | `invalidate_msg_render_cache()` | message blocks bake colours/glyphs into spans |
+| picker query/catalogue/frecency | `rebuild_emoji_filter()` / `rebuild_emoji_index()` | |
+
+More identity rules:
+
+- **Select-mode marks (`msg_marks`) and search jumps are message ids,
+  never indices** — re-reads reproject the list under any index. The
+  reload handler prunes dead ids and re-anchors the cursor by id.
+- The per-message render cache lives thread-local in
+  `view/conversation.rs`, keyed by id + fingerprint (grouped/pinned),
+  invalidated by `App::msg_cache_epoch` + width; only the viewport rows
+  are materialised per frame. Attachment messages are never cached (they
+  animate). Keep new per-frame work out of `render_messages`' pass 1.
+- Session-local attention state (`mentioned`, `conv_last_seen`,
+  `prev_conv_id`, drafts) is deliberately not persisted — the inbox `list`
+  can't round-trip it.
+
+## UI system
+
+**Read `UX.md` before any UI change** — it is the spec; keep it updated in
+the same change. The component vocabulary (all in `view/widgets.rs` unless
+noted; a new overlay/hint/empty-state **must** use these):
+
+- `draw_picker_modal(PickerModal { .. })` — **every** centered query/list
+  overlay (switcher, palette, react, both searches, channels, members).
+  Multi-line items + non-selectable headers supported; `footer` slot takes
+  `inline_input_line` / `inline_confirm_line` for inline modes.
+- `list_table` — every multi-column list panel (never a stretching `Min`
+  on a non-final column). `draw_input_popup` — small single-input popups.
+- `legend_line(&[(key, label)], width, theme)` — every hint/legend (keys
+  in accent via `key_style`, fitted by whole segments — never clipped).
+- `draw_confirm_popup` + `input::common::run_confirm` — every y/n confirm
+  (navigable, default = cancel on destructive).
+- `focus_style` / `titled_block` / `rounded_block` / `center_rect` +
+  `MODAL_*` — chrome; `empty_state_lines` — empty states;
+  `Theme::emphasis()` / `Theme::danger_title()` — semantic styles;
+  `editor_spans`/`editor_lines` — the one text-input renderer.
+- Status strip: mode badge + persistent **condition badges** (worker dead,
+  stream down) + sticky **errors** (cleared by next keypress; successes
+  expire ~1.5 s) + dim `@username` + `F1` anchor.
+
+**Keybindings — the gradient + vim layer** (full spec in `UX.md`): bare
+letters act on the focused list; `Shift` = destructive; `Ctrl` = global;
+`Alt` = panel jumps + compose verbs; `/` search. The vim layer is a
+first-class contract: `Esc` chain (cancel edit → cancel reply → **Select
+mode** → close; **never destroys a draft**), `i`/`a` enter Compose, `v`
+visual anchor (+`{`/`}` speaker runs, `n`/`N` search hits), `:` palette,
+`Ctrl+D/U` half-page, `Ctrl+W` deletes a word in inputs (pane-nav leader
+only in non-typing surfaces), `Ctrl+N`/`Ctrl+O` next-unread/alternate
+conversation. `Ctrl+C` is the **only** quit. Word ops live once in
+`route_line_editor` so every input inherits them.
+
+## Keybase CLI — read `CLI.md` first (hard rule)
+
+Every feature maps to a `keybase` command / JSON-API method — check
+[`CLI.md`](CLI.md) before designing, and **cite the mapping up front**
+(e.g. *"new-channel → `keybase chat api {"method":"newconv"}` per
+CLI.md"*). If a needed command/flag isn't in `CLI.md`, verify it and add
+it there in the same change.
+
+**Authoritative source = the `keybase/client` GitHub repo, NOT the
+website** (`book.keybase.io` has no chat content; the chat doc pages 403):
+
+- chat-api methods: `go/client/chat_api_doc.go` (verbatim, with options).
+- each CLI subcommand: `go/client/cmd_chat_<name>.go` (`Usage`, `Flags`,
+  `ParseArgv`, interactive `Prompt`s).
+- the `setstatus`/`hide` status enum: `chat1.ConversationStatus`.
+
+Fetch with `gh api repos/keybase/client/contents/go/client/<file> -H
+"Accept: application/vnd.github.raw"` (or `keybase help <cmd>` locally).
+
+Adapter rules: build requests in `codec.rs` (serde, never string concat),
+run with a timeout via `process.rs`/`session.rs`, parse
+strict-but-tolerant (skip a malformed row with a diagnostic, never drop
+the list), log every invocation to the command log. `status`/`logout`
+stay one-shot (not API-mode).
+
+## Working agreements
+
+1. **Fix every occurrence, not just the one reported** — the reported spot
+   is one instance of a class; grep for siblings before finishing.
+2. **Every UX change stays coherent with the whole UI** — reuse the
+   documented component; when touching a shared mechanic, check every
+   other place it's used (e.g. the confirm mechanics, the Esc layering,
+   the multi-select semantics must match across chat/cmdlog/channels).
+3. **Verify before declaring done** — the full gate (fmt/clippy/test) plus
+   unit tests for new pure logic on `App`/`domain`. Regression tests
+   accompany behaviour fixes.
+4. **Judge coherence + history + flow BEFORE writing.** For every change:
+   does it match the app's own patterns; does it match what users know
+   from comparable clients (Discord/Slack/Telegram and vim/mutt/aerc/
+   lazygit); is the real multi-step flow smooth (no needless mode
+   switches, cursor jumps, or lost text)? State the reasoning briefly when
+   non-trivial. Typed text is sacred: no action may silently destroy a
+   draft.
 
 ## Security & memory hygiene
 
-- **Chat payloads live in `zeroize`d buffers.** Domain types
-  (`Conversation`, `Message`, …) derive `Zeroize`/`ZeroizeOnDrop`, and the
-  adapter zeroizes subprocess JSON buffers before drop. This is *hygiene*
-  (no stale plaintext on the heap), not a cryptographic defense.
-- **Text inputs are zeroized.** `domain::LineEditor` derives `ZeroizeOnDrop`.
-  Every text input can hold sensitive chat content (a message draft,
-  a participant username, a global-search query), so the buffer is wiped on
-  drop. This restores and extends the hygiene the compose/new-conversation
-  drafts had as `Zeroizing<String>` before they moved onto the shared editor.
-  Keep this derive when touching `LineEditor`.
-- **Clipboard auto-clear** (`clipboard_clear_secs`, default 30 s) wipes a
-  copied value — only if the clipboard still holds secretbase's write. (Applies
-  to the process backends only; the **OSC 52** fallback can't read the clipboard
-  back to verify, so it copies without a timed clear.)
-- **Attachment downloads are path-traversal hardened**
-  (`safe_attachment_basename`); settings are written atomically
-  (temp + fsync + rename) with `0o700` dirs / `0o600` files.
-- Don't add a surface that writes chat content to disk (beyond the
-  user-chosen attachment download path) without an explicit ask.
+- Chat payloads and every `LineEditor` are **zeroized** on drop; the
+  adapter wipes subprocess JSON buffers. Hygiene, not crypto. Keep the
+  derives when touching these types.
+- Clipboard auto-clear only wipes if the clipboard still holds our write
+  (OSC 52 can't verify, so it skips the timed clear).
+- Attachment names are traversal-hardened (`safe_attachment_basename`);
+  settings writes are atomic with owner-only perms; the debug log refuses
+  symlinked paths.
+- Don't add any surface that writes chat content to disk (beyond the
+  user-chosen download path) without an explicit ask.
 
-## Branching & PRs
+## No cross-project references (hard rule)
 
-- The default / integration branch is **`dev`** — never commit directly
-  to it.
-- **One feature = one branch = one PR.** Branch off `dev` as
-  `feat/<short-slug>` (or `fix/` · `chore/` · `docs/`), implement +
-  verify, push, open a PR against `dev`, then **merge it** (squash,
-  `--delete-branch`) and `git checkout dev && git pull`. Keep PRs small
-  and focused on a single feature.
-- Remote is SSH (`git@github.com:vibecoded-software-factory/secretbase`);
-  push with `gh`/`git` over SSH.
+secretbase is a standalone public repository. **Never name or cite a
+sibling project** — jewel, bytewarden, termcord, or any other repo — in
+code, comments, commit messages, PR bodies, or docs. Describe every
+pattern as *this app's own* ("the unified Home layout", "the shared
+confirm overlay"). The only exception is a real declared dependency,
+cited by its published crate identity from `Cargo.toml`. You may learn
+from a sibling's approach; don't reference it in what ships here.
 
-## Commits
+## Git workflow
 
-- **Conventional Commits** prefix: `feat:` · `fix:` · `refactor:` ·
-  `docs:` · `test:` · `chore:` · `ci:` · `style:` · `perf:` · `build:`.
-- Subject ≤ 72 chars. Body explains the **why**, not the what. One logical
-  change per commit.
-- Only commit or push when the user asks.
-- **Do NOT append `Co-Authored-By: Claude …` or any AI / generated-by
-  trailer to commits, and no "🤖 Generated with Claude Code" footer in PR
-  bodies.** The Claude Code default adds these; this rule overrides that
-  default. Don't add them unless explicitly asked.
+- Integration branch **`dev`**; never commit to it directly. Branch →
+  PR → squash-merge (`--delete-branch`) → `git checkout dev && git pull`.
+- **Conventional Commits**, subject ≤ 72 chars, body explains the **why**.
+  One logical change per commit. Only commit/push when the user asks.
+- **No AI trailers or footers** (overrides the harness default).
+- Remote is SSH (`git@github.com:vibecoded-software-factory/secretbase`).
 
 ## Things to NOT touch unprompted
 
-- The worker-thread + `mpsc` execution model — keep `keybase` calls off
-  the render thread; extend the `WorkerRequest`/`WorkerResponse`/`InFlight`
-  + `request_*`/`handle_*` pattern, don't reach for `tokio`/`async-std`.
-- The ports/adapters boundary — I/O (subprocess, filesystem, clipboard)
-  belongs only in `adapters/`; keep `domain/` pure.
-- Existing keybindings and the shared chrome widgets — changing one
-  screen's UX means changing all of them for coherence (see Working
-  agreements), not a one-off divergence.
-- The memory-hygiene discipline (zeroize, tolerant parsing, panic
-  isolation, atomic settings writes, owner-only perms).
+- The worker/mpsc execution model (no async runtimes).
+- The ports/adapters boundary (I/O only in `adapters/`; `domain/` pure).
+- Existing keybindings and the shared widget system — a change to one
+  screen's UX is a change to all of them.
+- The hygiene discipline: zeroize, tolerant parsing, panic isolation,
+  timeouts on every subprocess, atomic settings writes, owner-only perms.
+- The Rust toolchain pin (`rust-toolchain.toml`, 1.95.0) and
+  `#![forbid(unsafe_code)]`.
 
-## Commands
+## Stack (reference)
 
-```sh
-cargo run                         # run the TUI (needs `keybase` on PATH)
-cargo build                       # debug build
-cargo build --release             # optimized binary at target/release/secretbase
-cargo clippy --all-targets -- -D warnings   # lint (keep warning-free)
-cargo test                        # unit tests
-```
+Rust edition 2024 (pinned 1.95.0) · Ratatui 0.30 + Crossterm 0.29 (kitty
+keyboard protocol opted into where supported) · serde/serde_json ·
+color-eyre · zeroize · chrono (`clock` only) · emojis · syntect
+(`regex-fancy`, pure Rust) · tempfile (dev-only). The splash wordmark is a
+pre-rendered block in `view/logo.rs` (no font dependency). Release profile
+is size-optimized (`opt-level = "s"`, `lto`, `strip`).
