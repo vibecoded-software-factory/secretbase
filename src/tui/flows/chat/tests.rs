@@ -2447,17 +2447,17 @@ fn out_of_window_pin_target_fetches_body_once() {
     pin_env.content = MessageContent::Pin { target_id: 0 };
     rig.mock.st().messages = vec![text_msg(39, "alice", "hi"), pin_env];
     // The persisted local record knows the target: #7.
-    rig.app.pinned_local.insert("c1".into(), 7);
+    rig.app.pins.local.insert("c1".into(), 7);
     rig.mock.st().get_result = Some(text_msg(7, "alice", "the pinned body"));
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert!(rig.app.pin_present);
-    assert_eq!(rig.app.pinned_msg_id, Some(7));
+    assert!(rig.app.pins.present);
+    assert_eq!(rig.app.pins.msg_id, Some(7));
     // The background `get` fired for the missing target…
     pump_one(&mut rig.app); // its response shares the worker channel
     assert_eq!(rig.mock.st().get_calls, vec![7]);
     // …and the fetched body is cached for the 📌 header.
-    assert_eq!(rig.app.pin_bodies.get("c1").map(|m| m.id), Some(7));
+    assert_eq!(rig.app.pins.bodies.get("c1").map(|m| m.id), Some(7));
     // A later reload must not refetch — the body is cached.
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
@@ -2477,24 +2477,24 @@ fn dismissed_pin_banner_stays_hidden_until_a_newer_pin() {
     pin_msg.content = MessageContent::Pin { target_id: 0 };
     rig.app.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
     rig.app.rebuild_msg_meta();
-    assert!(rig.app.pin_present);
-    assert_eq!(rig.app.pin_envelope_id, Some(158));
+    assert!(rig.app.pins.present);
+    assert_eq!(rig.app.pins.envelope_id, Some(158));
     // Local dismiss: hidden, persisted, still hidden after a reload rebuild.
     dismiss_pin_banner(&mut rig.app);
-    assert!(!rig.app.pin_present);
+    assert!(!rig.app.pins.present);
     assert_eq!(
         rig.app.settings_cache.pins_dismissed,
         vec!["c1:158".to_string()]
     );
     rig.app.rebuild_msg_meta();
-    assert!(!rig.app.pin_present);
+    assert!(!rig.app.pins.present);
     // A newer pin (new envelope id) revives the banner.
     let mut newer = text_msg(160, "alice", "");
     newer.content = MessageContent::Pin { target_id: 0 };
     rig.app.messages.push(newer);
     rig.app.rebuild_msg_meta();
-    assert!(rig.app.pin_present);
-    assert_eq!(rig.app.pin_envelope_id, Some(160));
+    assert!(rig.app.pins.present);
+    assert_eq!(rig.app.pins.envelope_id, Some(160));
 }
 
 #[test]
@@ -2540,19 +2540,19 @@ fn pin_without_payload_shows_presence_and_uses_local_target() {
     rig.app.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
     rig.app.rebuild_msg_meta();
     // Presence + sender known; target unknown (nothing pinned locally).
-    assert!(rig.app.pin_present);
-    assert_eq!(rig.app.pin_sender.as_deref(), Some("alice"));
-    assert_eq!(rig.app.pinned_msg_id, None);
+    assert!(rig.app.pins.present);
+    assert_eq!(rig.app.pins.sender.as_deref(), Some("alice"));
+    assert_eq!(rig.app.pins.msg_id, None);
     // Once this session pinned #157 itself, the target resolves.
-    rig.app.pinned_local.insert("c1".into(), 157);
+    rig.app.pins.local.insert("c1".into(), 157);
     rig.app.rebuild_msg_meta();
-    assert_eq!(rig.app.pinned_msg_id, Some(157));
+    assert_eq!(rig.app.pins.msg_id, Some(157));
     // No pin message at all → no presence (unpin DELETEs the pin message,
     // so fold_deletes removes it from a fresh read).
     rig.app.messages = vec![text_msg(157, "alice", "pin me")];
     rig.app.rebuild_msg_meta();
-    assert!(!rig.app.pin_present);
-    assert_eq!(rig.app.pinned_msg_id, None);
+    assert!(!rig.app.pins.present);
+    assert_eq!(rig.app.pins.msg_id, None);
 }
 
 #[test]
@@ -2566,10 +2566,10 @@ fn pin_response_records_local_target_and_unpin_forgets_it() {
     );
     handle_pin_response(&mut rig.app, Ok(()), 157);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.pinned_local.get("c1").copied(), Some(157));
+    assert_eq!(rig.app.pins.local.get("c1").copied(), Some(157));
     handle_unpin_response(&mut rig.app, Ok(()));
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.pinned_local.get("c1"), None);
+    assert_eq!(rig.app.pins.local.get("c1"), None);
 }
 
 #[test]
@@ -3055,7 +3055,7 @@ fn rebuild_pinned_finds_latest_pin_in_history() {
         text_msg(3, "alice", "later"),
     ];
     rig.app.rebuild_msg_meta();
-    assert_eq!(rig.app.pinned_msg_id, Some(1));
+    assert_eq!(rig.app.pins.msg_id, Some(1));
 }
 
 #[test]
@@ -3088,7 +3088,7 @@ fn rebuild_pinned_clears_when_target_zero() {
         },
     ];
     rig.app.rebuild_msg_meta();
-    assert_eq!(rig.app.pinned_msg_id, None);
+    assert_eq!(rig.app.pins.msg_id, None);
 }
 
 #[test]
@@ -3096,7 +3096,7 @@ fn rebuild_pinned_yields_none_when_no_pin_in_history() {
     let mut rig = build_rig();
     rig.app.messages = vec![text_msg(1, "alice", "x")];
     rig.app.rebuild_msg_meta();
-    assert_eq!(rig.app.pinned_msg_id, None);
+    assert_eq!(rig.app.pins.msg_id, None);
 }
 
 // ── teams ─────────────────────────────────────────────────────────────
