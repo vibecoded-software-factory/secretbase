@@ -657,8 +657,15 @@ weight of the action before you press it. Every screen follows the same tiers:
   can't be undone in-app, it's `Shift`** (and still guarded by a confirm).
 - **`Ctrl` = global** — works from any focus, never confused with typed text:
   `Ctrl+C` quit (the **only** quit), `Ctrl+F` in-chat find, `Ctrl+G` global
-  search, `Ctrl+K` quick switcher, `Ctrl+P` command palette, `Ctrl+W`
-  positional pane nav.
+  search, `Ctrl+K` quick switcher, `Ctrl+P` command palette (both from the
+  inbox *and* Teams), `Ctrl+W` positional pane nav (non-typing surfaces only —
+  in an input it deletes a word), `Ctrl+D`/`Ctrl+U` half-page in every list
+  and viewer, `Ctrl+J`/`Ctrl+K` selection moves inside every picker popup.
+  **`:`** opens the command palette from any non-typing surface (the vim
+  command line; `Ctrl+P` remains the works-everywhere form). The run loop
+  opts into the **kitty keyboard protocol** where supported
+  (`DISAMBIGUATE_ESCAPE_CODES` only), so Alt/Shift chords survive SSH;
+  unsupported terminals keep classic delivery.
 - **`Alt+letter` = jump to a panel** — each combo matches that panel's border
   tag: `Alt+F` Filter, `Alt+C` Chats, `Alt+M` Messages, `Alt+L` Log. These fire
   from any focus (even mid-compose), so a text field can't trap you. Compose

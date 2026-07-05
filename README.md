@@ -110,9 +110,11 @@ stays in sync with these tables.
 | `Alt+C` / `Alt+M`       | Go to `[Alt+C]` Chats / `[Alt+M]` Messages (works mid-compose) |
 | `Alt+F` / `Alt+L`       | Go to `[Alt+F]` Filter / `[Alt+L]` Command log |
 | `Ctrl+F`                | In-chat search — modal (open conversation) |
-| `Ctrl+G`                | Global search |
-| `Ctrl+K`                | Quick switcher — jump to a conversation |
-| `Ctrl+P`                | Command palette — run any action |
+| `Ctrl+G`                | Global search (inbox & Teams) |
+| `Ctrl+K`                | Quick switcher — jump to a conversation (inbox & Teams) |
+| `Ctrl+P` / `:`          | Command palette — run any action (`:` from any non-typing surface, vim-style) |
+| `Ctrl+D` / `Ctrl+U`     | Half-page down / up in every list and viewer |
+| `Ctrl+J` / `Ctrl+K`     | Selection down / up inside every picker popup |
 | **lowercase = frequent, safe** | |
 | `n`                     | New conversation |
 | `r` / `F5`              | Refresh inbox |

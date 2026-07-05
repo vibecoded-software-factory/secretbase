@@ -311,6 +311,12 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             "in any input: delete word / to line start",
         ),
         ("Ctrl+←/→ · Ctrl+A/E", "in any input: word jump · start/end"),
+        ("Ctrl+D / Ctrl+U", "in any list/viewer: half-page down / up"),
+        (
+            "Ctrl+J / Ctrl+K",
+            "in any picker popup: selection down / up",
+        ),
+        (":", "command palette (from any non-typing surface)"),
         ("↑/↓ j/k · PgUp/Dn", "scroll this help"),
         ("g / G · Home/End", "top / bottom of help"),
         ("q / Esc", "close help"),

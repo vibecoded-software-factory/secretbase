@@ -75,7 +75,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     // conversation — pure navigation, allowed even while busy.
     if matches!(key.code, KeyCode::Char('k'))
         && key.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(app.screen, Screen::Inbox)
+        && matches!(app.screen, Screen::Inbox | Screen::Teams)
     {
         crate::tui::flows::chat::open_quick_switcher(app);
         return;
@@ -180,6 +180,16 @@ fn handle_help(app: &mut App, key: KeyEvent) {
         }
         KeyCode::PageDown => app.help_scroll = app.help_scroll.saturating_add(PAGE),
         KeyCode::PageUp => app.help_scroll = app.help_scroll.saturating_sub(PAGE),
+        KeyCode::Char('d') | KeyCode::Char('D')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            app.help_scroll = app.help_scroll.saturating_add(PAGE);
+        }
+        KeyCode::Char('u') | KeyCode::Char('U')
+            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
+            app.help_scroll = app.help_scroll.saturating_sub(PAGE);
+        }
         KeyCode::Home | KeyCode::Char('g') => app.help_scroll = 0,
         KeyCode::End | KeyCode::Char('G') => app.help_scroll = u16::MAX,
         _ => {}
