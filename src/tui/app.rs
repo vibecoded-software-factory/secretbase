@@ -658,6 +658,9 @@ pub struct App {
     /// `Ctrl+W` window-nav leader is armed — the next key is read as a
     /// direction (`h/j/k/l` or an arrow) to move between panels positionally.
     pub pending_pane_nav: bool,
+    /// Last OSC terminal title we set — avoids re-emitting the escape on
+    /// every frame. Session-local.
+    pub last_term_title: String,
     /// Armed by `z` in Select mode: the next key (`z`/`t`/`b`) aligns the
     /// selected message in the viewport (vim's `zz`/`zt`/`zb`).
     pub select_z_pending: bool,
@@ -1041,6 +1044,7 @@ impl App {
             cmdlog_marks: HashSet::new(),
             cmdlog_anchor: None,
             pending_pane_nav: false,
+            last_term_title: String::new(),
             select_z_pending: false,
             pending_align: None,
             pane_zoomed: false,
@@ -1489,6 +1493,36 @@ impl App {
         // Several settings feed message blocks (emoji/icon style, image
         // protocol) — invalidating on any adjust is cheap and can't go stale.
         self.invalidate_msg_render_cache();
+    }
+
+    /// The terminal-window title reflecting the current state: the open
+    /// conversation plus the attention badges — tmux/SSH users get a free
+    /// status surface (tut's terminal-title integration).
+    pub fn desired_term_title(&self) -> String {
+        let mut t = String::from("secretbase");
+        if let Some(conv) = self
+            .open_conv_id
+            .as_deref()
+            .and_then(|id| self.conversations.iter().position(|c| c.id == id))
+            .and_then(|i| self.conversations_lowered.get(i))
+        {
+            t.push_str(" — ");
+            t.push_str(&conv.display_label);
+        }
+        let mentions = self.mentioned.len();
+        let unread = self
+            .conversations
+            .iter()
+            .filter(|c| c.member_status == crate::domain::MemberStatus::Active)
+            .filter(|c| self.conv_is_unread(c))
+            .count();
+        if mentions > 0 {
+            t.push_str(&format!(" @{mentions}"));
+        }
+        if unread > 0 {
+            t.push_str(&format!(" ({unread})"));
+        }
+        t
     }
 
     /// Convenience: whether the worker is currently processing a

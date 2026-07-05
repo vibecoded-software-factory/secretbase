@@ -345,10 +345,22 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
             done_ticks = 0;
         }
 
+        // Terminal-window title: conversation + attention badges — a free
+        // status surface in tmux / SSH window lists. Only re-emitted when
+        // it changes.
+        let title = app.desired_term_title();
+        if title != app.last_term_title {
+            let _ = execute!(std::io::stdout(), crossterm::terminal::SetTitle(&title));
+            app.last_term_title = title;
+        }
+
         if app.should_quit {
             break;
         }
     }
+    // Leave the window title clean — terminals show their default when
+    // the title is empty.
+    let _ = execute!(std::io::stdout(), crossterm::terminal::SetTitle(""));
     Ok(())
 }
 
