@@ -248,6 +248,13 @@ pub struct App {
     pub teams: Vec<TeamMembership>,
     /// Currently selected row inside [`Self::teams`].
     pub teams_selected: usize,
+    /// Persisted Teams-list viewport offset (was reset every frame — the
+    /// list snapped to the top on each redraw).
+    pub teams_scroll: usize,
+    /// `/` filter over the Teams list (name substring, case-insensitive).
+    pub teams_filter: LineEditor,
+    /// Whether the Teams `/` filter input owns typing.
+    pub teams_filtering: bool,
 
     // ── Channel browser (`c` on a team) ───────────────────────────────
     /// Team whose channels the browser is showing (`None` while closed).
@@ -890,6 +897,9 @@ impl App {
             inbox_error: None,
             teams: Vec::new(),
             teams_selected: 0,
+            teams_scroll: 0,
+            teams_filter: LineEditor::default(),
+            teams_filtering: false,
             channel_browser_team: None,
             channels: Vec::new(),
             channel_selected: 0,
@@ -1202,6 +1212,15 @@ impl App {
                 SwitcherRow::Conv(i) => Some(i),
                 SwitcherRow::Header(_) => None,
             })
+            .collect()
+    }
+
+    /// Indices into [`Self::teams`] matching the `/` filter (all when the
+    /// query is empty) — what the Teams list renders and selection indexes.
+    pub fn teams_filtered(&self) -> Vec<usize> {
+        let q = self.teams_filter.text().trim().to_lowercase();
+        (0..self.teams.len())
+            .filter(|&i| q.is_empty() || self.teams[i].name.to_lowercase().contains(&q))
             .collect()
     }
 
