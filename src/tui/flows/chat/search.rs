@@ -84,7 +84,7 @@ pub(crate) fn try_jump_to_search_target(app: &mut App) {
     let Some(target) = app.pending_search_jump else {
         return;
     };
-    if let Some(idx) = app.messages.iter().position(|m| m.id == target) {
+    if let Some(idx) = app.thread.messages.iter().position(|m| m.id == target) {
         // Selecting the message makes the renderer scroll it into view and
         // highlight it (same as Select mode).
         app.pending_search_jump = None;

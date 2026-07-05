@@ -159,7 +159,7 @@ pub fn request_mark_read(app: &mut App) {
         (read_channel_from_conv(conv), conv.id.clone())
     };
     let upto = match app.open_conv_id.as_deref() {
-        Some(id) if id == this_conv_id => app.messages.last().map(|m| m.id).unwrap_or(0),
+        Some(id) if id == this_conv_id => app.thread.messages.last().map(|m| m.id).unwrap_or(0),
         _ => 0,
     };
     let Some(channel) = resolve_channel_or_fail(app, channel_result) else {

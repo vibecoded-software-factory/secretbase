@@ -74,7 +74,7 @@ pub fn react_input(frame: &mut Frame, app: &App) {
     } else {
         app.select
             .cursor
-            .and_then(|i| app.messages.get(i))
+            .and_then(|i| app.thread.messages.get(i))
             .map(|m| format!("React to #{} · by {} · {n}", m.id, m.sender))
             .unwrap_or_else(|| format!("React · {n}"))
     };

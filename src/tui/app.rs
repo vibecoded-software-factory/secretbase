@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use crate::domain::{
     ChatEvent, Conversation, IdentityInfo, InboxHit, LineEditor, LoweredConversation, MemberStatus,
-    Message, fuzzy_score_lowered,
+    fuzzy_score_lowered,
 };
 use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
@@ -237,10 +237,12 @@ pub struct App {
     /// Conversation id currently open on the detail screen. `None`
     /// while we're on the inbox screen.
     pub open_conv_id: Option<String>,
-    /// Messages of the open conversation, in chronological order
-    /// (oldest first, latest last — keybase's read response is
-    /// newest-first, the flow reverses it).
-    pub messages: Vec<Message>,
+    /// The loaded conversation thread — the open conversation's messages plus
+    /// the projections derived from them (the id→index lookup and the
+    /// topic/headline) — extracted into its own cohesive type (see
+    /// [`crate::tui::thread_state`]). `rebuild_msg_meta` reprojects it and the
+    /// render-cache epoch stays on `App` (it's cross-cutting).
+    pub thread: crate::tui::thread_state::ThreadState,
     /// The open conversation's message-viewport state — the scroll offset,
     /// the older-page cursor and the derived scroll/pagination cues (max-back,
     /// new-since-scroll, the new-messages divider anchor) — extracted into its
@@ -262,14 +264,6 @@ pub struct App {
     /// emoji into the **compose draft** instead of reacting to a message —
     /// the compose bar's emoji button / `Alt+I`.
     pub react_to_compose: bool,
-    /// Latest channel topic/headline in the loaded history — the chat's
-    /// adaptive header line, cached by [`Self::rebuild_msg_meta`] so the
-    /// render doesn't rescan the history per frame. Zeroized on drop
-    /// (it's chat content).
-    pub conv_headline: Option<zeroize::Zeroizing<String>>,
-    /// `message id → index into `messages`` for O(1) lookups (reply
-    /// quotes, the pin header). Rebuilt by [`Self::rebuild_msg_meta`].
-    pub msg_index: HashMap<u64, usize>,
     /// Invalidation epoch for the per-message rendered-lines cache
     /// (`view::conversation`). Bumped by
     /// [`Self::invalidate_msg_render_cache`] whenever an input that feeds a
@@ -675,7 +669,7 @@ impl App {
             members: crate::tui::members_state::MembersState::default(),
             open_conv_id: None,
             conv_last_seen: HashMap::new(),
-            messages: Vec::new(),
+            thread: crate::tui::thread_state::ThreadState::default(),
             outbox: Vec::new(),
             file_picker: None,
             pagination: crate::tui::pagination_state::PaginationState::default(),
@@ -684,8 +678,6 @@ impl App {
             giphy_results: Vec::new(),
             giphy_selected: 0,
             react_to_compose: false,
-            conv_headline: None,
-            msg_index: HashMap::new(),
             msg_cache_epoch: 0,
             compose_open: false,
             compose: LineEditor::default(),
@@ -1468,7 +1460,7 @@ impl App {
                 }
             }
         }
-        for m in &self.messages {
+        for m in &self.thread.messages {
             if !m.sender.is_empty() {
                 set.insert(m.sender.clone());
             }
@@ -1630,19 +1622,25 @@ impl App {
         // O(1) id → index lookups (reply quotes, the pin header). Projected
         // histories have unique ids; a duplicate would keep the later row,
         // matching what the reader sees.
-        self.msg_index = self
+        self.thread.msg_index = self
+            .thread
             .messages
             .iter()
             .enumerate()
             .map(|(i, m)| (m.id, i))
             .collect();
         // Latest channel topic/headline — the chat's adaptive header.
-        self.conv_headline = self.messages.iter().rev().find_map(|m| match &m.content {
-            MessageContent::Headline { headline } if !headline.trim().is_empty() => {
-                Some(zeroize::Zeroizing::new(headline.clone()))
-            }
-            _ => None,
-        });
+        self.thread.conv_headline =
+            self.thread
+                .messages
+                .iter()
+                .rev()
+                .find_map(|m| match &m.content {
+                    MessageContent::Headline { headline } if !headline.trim().is_empty() => {
+                        Some(zeroize::Zeroizing::new(headline.clone()))
+                    }
+                    _ => None,
+                });
         // The newest (undeleted) `Pin` message is authoritative — an unpin
         // is a DELETE superseding it, so `fold_deletes` already removed
         // cleared pins from the history. The JSON API does **not** carry
@@ -1653,7 +1651,7 @@ impl App {
         self.pins.present = false;
         self.pins.sender = None;
         self.pins.envelope_id = None;
-        for m in self.messages.iter().rev() {
+        for m in self.thread.messages.iter().rev() {
             if let MessageContent::Pin { target_id } = &m.content {
                 // Locally dismissed (the GUI-parity ✕)? The pin stays active
                 // server-side, but this client hides the banner — until a
@@ -2074,7 +2072,7 @@ mod tests {
         app.open_conv_id = Some("dm1".into());
         let mut m = Message::default();
         m.sender = "carol".into(); // spoke in the thread but isn't in the name
-        app.messages = vec![m, Message::default()]; // empty sender is dropped
+        app.thread.messages = vec![m, Message::default()]; // empty sender is dropped
         app.rebuild_conv_members();
         // Participants from the DM name + people who've spoken, sorted, no
         // blanks — the @-mention candidate pool.
@@ -2103,7 +2101,7 @@ mod tests {
         app.open_conv_id = Some("t1".into());
         let mut m = Message::default();
         m.sender = "dave".into();
-        app.messages = vec![m];
+        app.thread.messages = vec![m];
         app.rebuild_conv_members();
         assert_eq!(app.conv_members, vec!["dave"]);
     }

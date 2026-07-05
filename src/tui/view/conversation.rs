@@ -28,7 +28,7 @@ use crate::tui::view::widgets::{editor_lines, trim_end_ellipsis};
 /// no chrome is reserved for nothing (the name lives on the Messages panel
 /// title either way).
 fn has_adaptive_header(app: &App) -> bool {
-    app.pins.present || app.conv_headline.is_some()
+    app.pins.present || app.thread.conv_headline.is_some()
 }
 
 /// The adaptive header: a proper bordered **section** (the same rounded
@@ -57,10 +57,11 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
         // else from the background-fetched body cache (targets older than
         // the window, `maybe_fetch_pin_body`).
         let resolved = app.pins.msg_id.and_then(|pid| {
-            app.msg_index
+            app.thread
+                .msg_index
                 .get(&pid)
                 .copied()
-                .and_then(|i| app.messages.get(i))
+                .and_then(|i| app.thread.messages.get(i))
                 .or_else(|| {
                     app.open_conv_id
                         .as_ref()
@@ -108,7 +109,7 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
             }
         }
         s
-    } else if let Some(topic) = app.conv_headline.as_deref() {
+    } else if let Some(topic) = app.thread.conv_headline.as_deref() {
         let topic = trim_end_ellipsis(
             topic.lines().next().unwrap_or(""),
             w.saturating_sub(4).max(8),
@@ -447,7 +448,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
     // rendered below the loaded history.
     let outbox = outbox_lines(app, now_s, &t, body_width);
 
-    if app.messages.is_empty() && outbox.is_empty() {
+    if app.thread.messages.is_empty() && outbox.is_empty() {
         // Distinguish the initial fetch (LoadMessages in flight) from a
         // genuinely empty conversation — showing "empty" while we're still
         // downloading the history is misleading.
@@ -498,10 +499,10 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             cache.width = body_width;
         }
 
-        let mut chunks: Vec<(usize, Chunk)> = Vec::with_capacity(app.messages.len() + 4);
+        let mut chunks: Vec<(usize, Chunk)> = Vec::with_capacity(app.thread.messages.len() + 4);
         let mut off = 0usize;
 
-        if !app.messages.is_empty() {
+        if !app.thread.messages.is_empty() {
             let head = if app.pagination.next.is_some() {
                 "  ↑ press Up to load older messages"
             } else {
@@ -519,7 +520,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
 
         let mut selected_line: Option<usize> = None;
         // Line span [start, end) each message occupies, for click-to-select.
-        let mut spans_map: Vec<(usize, usize, usize)> = Vec::with_capacity(app.messages.len());
+        let mut spans_map: Vec<(usize, usize, usize)> =
+            Vec::with_capacity(app.thread.messages.len());
         // Absolute (line, rows, msg_id, cache path) reservations for inline images.
         let mut img_reservations: Vec<(usize, u16, u64, String)> = Vec::new();
         // Thumbnail width (indent 4 + a right margin so it isn't glued to the
@@ -533,6 +535,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // (`ensure_visible_images`) can route their cache paths to the web
         // fetcher. Cheap (bounded by the loaded page) and idempotent.
         let web_urls: Vec<(String, String)> = app
+            .thread
             .messages
             .iter()
             .filter_map(|m| {
@@ -550,7 +553,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         let mut prev_day_ts: Option<u64> = None;
         let unread_boundary = app.pagination.unread_boundary;
         let mut marker_done = false;
-        for (idx, m) in app.messages.iter().enumerate() {
+        for (idx, m) in app.thread.messages.iter().enumerate() {
             let m_is_system = is_system_content(&m.content);
             // Day divider when the local day changes (or before the first dated
             // msg). Dividers depend on "now" (Today/Yesterday) and are at most
@@ -573,7 +576,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             if !marker_done
                 && let Some(b) = unread_boundary
                 && m.id > b
-                && app.messages[..idx].iter().any(|x| x.id <= b)
+                && app.thread.messages[..idx].iter().any(|x| x.id <= b)
             {
                 pre.push(divider_line("new messages", t.conv_unread, body_width));
                 marker_done = true;
@@ -615,7 +618,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 // refreshes the `↩ …` quote to the resolved sender.
                 let reply_resolved = m
                     .reply_to
-                    .is_none_or(|target| app.msg_index.contains_key(&target));
+                    .is_none_or(|target| app.thread.msg_index.contains_key(&target));
                 let hit = cache.blocks.get(&m.id).is_some_and(|e| {
                     e.grouped == grouped && e.pinned == pinned && e.reply_resolved == reply_resolved
                 });
@@ -780,7 +783,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // Scrollbar on the panel's right border — the textual cue below
         // says *where*, this says *how much*.
         crate::tui::view::widgets::draw_scrollbar(frame, &t, area, total_lines, viewport, scroll_y);
-        let n = app.messages.len();
+        let n = app.thread.messages.len();
         let counter = if app.pagination.loading_older {
             format!("{n} msgs · loading older…")
         } else if max_back == 0 {
@@ -1118,6 +1121,7 @@ fn symbol_image_lines(
     }
     let conv_id = app.open_conv_id.clone().unwrap_or_default();
     let items: Vec<(u64, String)> = app
+        .thread
         .messages
         .iter()
         .filter_map(|m| {
@@ -1445,9 +1449,10 @@ fn reply_quote_lines(
     width: usize,
 ) -> Vec<Line<'static>> {
     let Some(m) = app
+        .thread
         .msg_index
         .get(&target)
-        .and_then(|&i| app.messages.get(i))
+        .and_then(|&i| app.thread.messages.get(i))
     else {
         // Parent not in the loaded window — no raw message id, an ellipsis.
         return vec![Line::from(Span::styled(
@@ -2563,7 +2568,7 @@ mod tests {
         let mut app = app_for_render();
         app.open_conv_id = Some("c1".into());
         // A reply whose parent (id 1) isn't in the loaded window yet.
-        app.messages = vec![text_msg(2, "bob", "hey", Some(1))];
+        app.thread.messages = vec![text_msg(2, "bob", "hey", Some(1))];
         app.rebuild_msg_meta();
         let first = render_to_text(&mut app);
         assert!(
@@ -2578,7 +2583,8 @@ mod tests {
         // An older page brings the parent in: prepend + the prepend-only meta
         // rebuild, which deliberately does NOT bump the render epoch — the
         // exact path that used to leave the reply stuck on `↩ …`.
-        app.messages
+        app.thread
+            .messages
             .insert(0, text_msg(1, "alice", "original", None));
         app.rebuild_msg_meta_after_prepend();
         let second = render_to_text(&mut app);

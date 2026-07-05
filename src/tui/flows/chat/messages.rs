@@ -34,7 +34,7 @@ pub(crate) fn enter_conversation(app: &mut App, id: String) {
     // session (None on a first-ever open → no divider).
     app.pagination.unread_boundary = app.conv_last_seen.get(&id).copied();
     app.mentioned.remove(&id); // the mention is about to be seen
-    app.messages.clear();
+    app.thread.messages.clear();
     // Reset the per-history projections (pin / headline / id index) so the
     // loading view can't show the previous conversation's pin or topic.
     app.rebuild_msg_meta();
@@ -111,7 +111,7 @@ pub fn close_conversation(app: &mut App) {
     app.open_conv_id = None;
     app.pagination.unread_boundary = None;
     app.pane_zoomed = false;
-    app.messages.clear();
+    app.thread.messages.clear();
     app.rebuild_msg_meta();
     app.pagination.scroll = 0;
     app.pagination.next = None;
@@ -126,7 +126,7 @@ pub fn close_conversation(app: &mut App) {
 /// whatever arrived since. No-op when nothing is open / loaded.
 fn record_conv_seen(app: &mut App) {
     if let Some(id) = app.open_conv_id.clone()
-        && let Some(last) = app.messages.last()
+        && let Some(last) = app.thread.messages.last()
     {
         let entry = app.conv_last_seen.entry(id).or_insert(0);
         *entry = (*entry).max(last.id);
@@ -206,7 +206,7 @@ pub fn edit_last_own_message(app: &mut App) {
     if me.is_empty() {
         return;
     }
-    let Some(idx) = app.messages.iter().rposition(|m| {
+    let Some(idx) = app.thread.messages.iter().rposition(|m| {
         m.sender == me
             && matches!(
                 m.content,
@@ -264,7 +264,7 @@ const RELOAD_DEPTH_MAX: u32 = MESSAGES_PER_PAGE * 8;
 /// first page — so a re-read triggered by an edit / delete / reaction /
 /// pin doesn't throw away the scrollback the reader paged into.
 pub fn request_reload_messages(app: &mut App) {
-    let loaded = u32::try_from(app.messages.len()).unwrap_or(RELOAD_DEPTH_MAX);
+    let loaded = u32::try_from(app.thread.messages.len()).unwrap_or(RELOAD_DEPTH_MAX);
     request_load_messages_num(app, loaded.clamp(MESSAGES_PER_PAGE, RELOAD_DEPTH_MAX));
 }
 
@@ -280,7 +280,7 @@ const BACKFILL_MAX_PAGES: u8 = 8;
 /// too thin to scroll/select over (see [`App::backfill_pages`]). Called by
 /// both read handlers after they merge + reproject.
 fn maybe_backfill(app: &mut App) {
-    if app.messages.len() >= BACKFILL_VISIBLE_FLOOR
+    if app.thread.messages.len() >= BACKFILL_VISIBLE_FLOOR
         || app.pagination.next.is_none()
         || app.pagination.backfill_pages == 0
         || app.pagination.loading_older
@@ -345,12 +345,12 @@ pub fn handle_load_messages_response(
             let prev_cursor_id = app
                 .select
                 .cursor
-                .and_then(|i| app.messages.get(i))
+                .and_then(|i| app.thread.messages.get(i))
                 .map(|m| m.id);
             msgs.reverse();
-            app.messages = project_messages(msgs, app.settings_cache.smart_joins);
+            app.thread.messages = project_messages(msgs, app.settings_cache.smart_joins);
             app.rebuild_conv_members(); // add the people who've spoken
-            let n = app.messages.len();
+            let n = app.thread.messages.len();
             app.pagination.next = next;
             app.pagination.loading_older = false;
             app.rebuild_msg_meta();
@@ -364,15 +364,17 @@ pub fn handle_load_messages_response(
             // The cursor re-seeks its message by id; only when that message
             // no longer exists does it fall back to clamping the old index
             // (or clearing, if the conversation is now empty).
-            app.select.marks.retain(|id| app.msg_index.contains_key(id));
+            app.select
+                .marks
+                .retain(|id| app.thread.msg_index.contains_key(id));
             if let Some(i) = app.select.cursor {
-                app.select.cursor = if app.messages.is_empty() {
+                app.select.cursor = if app.thread.messages.is_empty() {
                     None
                 } else {
                     Some(
                         prev_cursor_id
-                            .and_then(|id| app.msg_index.get(&id).copied())
-                            .unwrap_or_else(|| i.min(app.messages.len() - 1)),
+                            .and_then(|id| app.thread.msg_index.get(&id).copied())
+                            .unwrap_or_else(|| i.min(app.thread.messages.len() - 1)),
                     )
                 };
             }
@@ -476,8 +478,8 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
                 app.pagination.preserve_scroll = true;
                 request_reload_messages(app);
             }
-        } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
-            app.messages.push(message);
+        } else if msg_id != 0 && !app.thread.messages.iter().any(|m| m.id == msg_id) {
+            app.thread.messages.push(message);
             app.rebuild_msg_meta();
             // If the reader is scrolled up in history, a new arrival lands below
             // the fold — count it for the floating "▼ N new · End" jump cue.
@@ -584,8 +586,8 @@ pub fn handle_load_older_messages_response(
             older.reverse();
             older = project_messages(older, app.settings_cache.smart_joins);
             let n = older.len();
-            older.extend(std::mem::take(&mut app.messages));
-            app.messages = older;
+            older.extend(std::mem::take(&mut app.thread.messages));
+            app.thread.messages = older;
             app.pagination.next = next;
             app.pagination.loading_older = false;
             // The Select-mode cursor and the `v` anchor are **indices** (the
@@ -631,7 +633,7 @@ pub fn escape_conversation(app: &mut App) {
         cancel_edit(app);
     } else if app.reply_to_id.is_some() {
         app.reply_to_id = None;
-    } else if !app.messages.is_empty() {
+    } else if !app.thread.messages.is_empty() {
         enter_select_mode(app);
     } else {
         close_conversation(app);
@@ -641,13 +643,13 @@ pub fn escape_conversation(app: &mut App) {
 // ── Message selection (Compose ↔ Select modes) ──────────────────────
 
 pub fn enter_select_mode(app: &mut App) {
-    if app.messages.is_empty() {
+    if app.thread.messages.is_empty() {
         app.set_action(ActionState::Error("No messages to select".into()));
         return;
     }
     app.compose_open = false;
     app.select.from_compose = false;
-    app.select.cursor = Some(app.messages.len() - 1);
+    app.select.cursor = Some(app.thread.messages.len() - 1);
     app.select.marks.clear();
     app.select.anchor = None;
 }
@@ -665,7 +667,7 @@ pub fn msg_toggle_mark(app: &mut App) {
     let Some(id) = app
         .select
         .cursor
-        .and_then(|i| app.messages.get(i))
+        .and_then(|i| app.thread.messages.get(i))
         .map(|m| m.id)
     else {
         return;
@@ -682,13 +684,13 @@ pub fn select_extend(app: &mut App, delta: isize) {
     let Some(cur) = app.select.cursor else {
         return;
     };
-    let max = app.messages.len().saturating_sub(1);
+    let max = app.thread.messages.len().saturating_sub(1);
     let anchor = *app.select.anchor.get_or_insert(cur);
     let new = (cur as isize + delta).clamp(0, max as isize) as usize;
     app.select.cursor = Some(new);
     let (lo, hi) = (anchor.min(new), anchor.max(new));
     app.select.marks = (lo..=hi)
-        .filter_map(|i| app.messages.get(i))
+        .filter_map(|i| app.thread.messages.get(i))
         .map(|m| m.id)
         .collect();
 }
@@ -705,12 +707,12 @@ pub fn do_copy_messages(app: &mut App, full: bool) {
             .select
             .marks
             .iter()
-            .filter_map(|id| app.msg_index.get(id).copied())
+            .filter_map(|id| app.thread.msg_index.get(id).copied())
             .collect();
         v.sort_unstable();
         v
     };
-    idxs.retain(|&i| i < app.messages.len());
+    idxs.retain(|&i| i < app.thread.messages.len());
     if idxs.is_empty() {
         app.set_action(ActionState::Error("No messages selected".into()));
         return;
@@ -721,7 +723,7 @@ pub fn do_copy_messages(app: &mut App, full: bool) {
         .unwrap_or(0);
     let mut blocks: Vec<String> = Vec::new();
     for &i in &idxs {
-        let m = &app.messages[i];
+        let m = &app.thread.messages[i];
         let Some(body) = message_copy_body(m) else {
             continue; // skip system rows / non-text content
         };
@@ -779,7 +781,7 @@ fn selected_message_urls(app: &App) -> Vec<String> {
     let Some(idx) = app.select.cursor else {
         return Vec::new();
     };
-    let body = match app.messages.get(idx).map(|m| &m.content) {
+    let body = match app.thread.messages.get(idx).map(|m| &m.content) {
         Some(MessageContent::Text(b)) => b.clone(),
         Some(MessageContent::Edit { body, .. }) => body.clone(),
         Some(MessageContent::Attachment(a)) => a.title.clone(),
@@ -879,7 +881,7 @@ pub fn select_activate(app: &mut App) {
     let target = app
         .select
         .cursor
-        .and_then(|i| app.messages.get(i))
+        .and_then(|i| app.thread.messages.get(i))
         .and_then(|m| m.reply_to);
     match target {
         Some(t) => {
@@ -899,7 +901,7 @@ pub fn jump_to_new_messages(app: &mut App) {
         app.set_action(ActionState::Done("No new-messages marker here".into()));
         return;
     };
-    let Some(idx) = app.messages.iter().position(|m| m.id > boundary) else {
+    let Some(idx) = app.thread.messages.iter().position(|m| m.id > boundary) else {
         app.set_action(ActionState::Done(
             "Nothing newer than your last visit".into(),
         ));
@@ -921,9 +923,9 @@ pub fn select_jump_mention(app: &mut App, dir: isize) {
     let mentions_me = |m: &Message| m.mentions.iter().any(|u| u.eq_ignore_ascii_case(&me));
     let cur = app.select.cursor.unwrap_or(0);
     let found = if dir < 0 {
-        app.messages[..cur].iter().rposition(&mentions_me)
+        app.thread.messages[..cur].iter().rposition(&mentions_me)
     } else {
-        app.messages[cur + 1..]
+        app.thread.messages[cur + 1..]
             .iter()
             .position(mentions_me)
             .map(|i| cur + 1 + i)
@@ -941,7 +943,7 @@ pub fn select_jump_mention(app: &mut App, dir: isize) {
 /// senders on the feedback strip (the chips only show counts; the GUI
 /// shows names on hover, which a terminal doesn't have).
 pub fn show_reactors(app: &mut App) {
-    let Some(m) = app.select.cursor.and_then(|i| app.messages.get(i)) else {
+    let Some(m) = app.select.cursor.and_then(|i| app.thread.messages.get(i)) else {
         return;
     };
     if m.reactions.is_empty() {
@@ -978,7 +980,7 @@ pub fn select_move_up(app: &mut App) {
 }
 
 pub fn select_move_down(app: &mut App) {
-    let max = app.messages.len().saturating_sub(1);
+    let max = app.thread.messages.len().saturating_sub(1);
     if let Some(i) = app.select.cursor
         && i < max
     {
@@ -997,7 +999,7 @@ pub(crate) fn select_resync_anchor_marks(app: &mut App) {
     };
     let (lo, hi) = (anchor.min(cur), anchor.max(cur));
     app.select.marks = (lo..=hi)
-        .filter_map(|i| app.messages.get(i))
+        .filter_map(|i| app.thread.messages.get(i))
         .map(|m| m.id)
         .collect();
 }
@@ -1022,13 +1024,13 @@ pub fn select_jump_run(app: &mut App, dir: isize) {
     let Some(cur) = app.select.cursor else {
         return;
     };
-    let n = app.messages.len();
+    let n = app.thread.messages.len();
     if n == 0 {
         return;
     }
-    let sender_of = |i: usize| app.messages[i].sender.clone();
+    let sender_of = |i: usize| app.thread.messages[i].sender.clone();
     let run_head = |mut i: usize| {
-        while i > 0 && app.messages[i - 1].sender == app.messages[i].sender {
+        while i > 0 && app.thread.messages[i - 1].sender == app.thread.messages[i].sender {
             i -= 1;
         }
         i
@@ -1045,7 +1047,7 @@ pub fn select_jump_run(app: &mut App, dir: isize) {
     } else {
         let mut i = cur;
         let s = sender_of(cur);
-        while i + 1 < n && app.messages[i + 1].sender == s {
+        while i + 1 < n && app.thread.messages[i + 1].sender == s {
             i += 1;
         }
         (i + 1).min(n - 1)
@@ -1061,7 +1063,7 @@ pub fn open_edit_for_selected(app: &mut App) {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
-    let Some(msg) = app.messages.get(idx) else {
+    let Some(msg) = app.thread.messages.get(idx) else {
         return;
     };
     if msg.sender != app.identity.username {
@@ -1143,7 +1145,7 @@ pub fn start_reply_for_selected(app: &mut App) {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
-    let Some(msg) = app.messages.get(idx) else {
+    let Some(msg) = app.thread.messages.get(idx) else {
         return;
     };
     app.edit_target_id = None;
@@ -1170,7 +1172,12 @@ fn selection_target_ids(app: &App, own_only: bool) -> Vec<u64> {
             .select
             .marks
             .iter()
-            .filter_map(|id| app.msg_index.get(id).and_then(|&i| app.messages.get(i)))
+            .filter_map(|id| {
+                app.thread
+                    .msg_index
+                    .get(id)
+                    .and_then(|&i| app.thread.messages.get(i))
+            })
             .filter(keep)
             .map(|m| m.id)
             .collect();
@@ -1180,7 +1187,7 @@ fn selection_target_ids(app: &App, own_only: bool) -> Vec<u64> {
     } else {
         app.select
             .cursor
-            .and_then(|i| app.messages.get(i))
+            .and_then(|i| app.thread.messages.get(i))
             .filter(keep)
             .map(|m| m.id)
             .into_iter()
@@ -1534,7 +1541,7 @@ pub fn request_pin_selected_message(app: &mut App) {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
-    let Some(msg_id) = app.messages.get(idx).map(|m| m.id) else {
+    let Some(msg_id) = app.thread.messages.get(idx).map(|m| m.id) else {
         return;
     };
     let Some((_, channel)) = open_channel(app) else {
@@ -1631,7 +1638,7 @@ pub(crate) fn maybe_fetch_pin_body(app: &mut App) {
     let Some(pid) = app.pins.msg_id else {
         return;
     };
-    if app.msg_index.contains_key(&pid) {
+    if app.thread.msg_index.contains_key(&pid) {
         return; // in the loaded window — the header reads it directly
     }
     let Some(conv_id) = app.open_conv_id.clone() else {

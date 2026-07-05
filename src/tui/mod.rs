@@ -38,6 +38,7 @@ pub mod settings_ui_state;
 pub mod syntax;
 pub mod teams_state;
 pub mod theme;
+pub mod thread_state;
 pub mod view;
 pub mod worker;
 

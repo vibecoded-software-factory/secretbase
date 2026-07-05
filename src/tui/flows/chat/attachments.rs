@@ -52,7 +52,7 @@ pub fn open_download_for_selected(app: &mut App) {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     };
-    let Some(msg) = app.messages.get(idx) else {
+    let Some(msg) = app.thread.messages.get(idx) else {
         return;
     };
     let MessageContent::Attachment(att) = &msg.content else {
@@ -204,7 +204,7 @@ fn selected_ready_image(app: &App) -> Option<(String, String)> {
     if !app.select.marks.is_empty() {
         return None; // multi-select copies text, not a single image
     }
-    let m = app.messages.get(app.select.cursor?)?;
+    let m = app.thread.messages.get(app.select.cursor?)?;
     let crate::domain::MessageContent::Attachment(att) = &m.content else {
         return None;
     };

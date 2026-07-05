@@ -100,7 +100,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 let one = app
                     .select
                     .cursor
-                    .and_then(|i| app.messages.get(i))
+                    .and_then(|i| app.thread.messages.get(i))
                     .map(|m| format!("msg #{} by {}", m.id, m.sender))
                     .unwrap_or_else(|| "(none)".to_string());
                 (" Delete this message? ".to_string(), one)

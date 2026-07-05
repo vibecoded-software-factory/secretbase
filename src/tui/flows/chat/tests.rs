@@ -704,9 +704,9 @@ fn load_messages_reverses_to_chronological_and_pins_to_bottom() {
     );
     request_load_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
-    assert_eq!(rig.app.messages.len(), 3);
-    assert_eq!(rig.app.messages[0].id, 1);
-    assert_eq!(rig.app.messages[2].id, 3);
+    assert_eq!(rig.app.thread.messages.len(), 3);
+    assert_eq!(rig.app.thread.messages[0].id, 1);
+    assert_eq!(rig.app.thread.messages[2].id, 3);
     assert_eq!(rig.app.pagination.scroll, 0);
 }
 
@@ -782,7 +782,7 @@ fn load_older_messages_prepends_in_chronological_order() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(4, "me", "fourth"), text_msg(5, "me", "fifth")];
+    rig.app.thread.messages = vec![text_msg(4, "me", "fourth"), text_msg(5, "me", "fifth")];
     rig.app.pagination.next = Some("CURSOR-A".into());
 
     rig.mock.st().messages = vec![
@@ -795,7 +795,7 @@ fn load_older_messages_prepends_in_chronological_order() {
     request_load_older_messages(&mut rig.app);
     pump_until_idle(&mut rig.app);
 
-    let ids: Vec<u64> = rig.app.messages.iter().map(|m| m.id).collect();
+    let ids: Vec<u64> = rig.app.thread.messages.iter().map(|m| m.id).collect();
     assert_eq!(ids, vec![1, 2, 3, 4, 5], "got {ids:?}");
     assert_eq!(rig.app.pagination.next.as_deref(), Some("CURSOR-B"));
     assert!(!rig.app.pagination.loading_older);
@@ -815,12 +815,12 @@ fn load_older_messages_no_op_when_cursor_is_none() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(1, "me", "x")];
+    rig.app.thread.messages = vec![text_msg(1, "me", "x")];
     rig.app.pagination.next = None;
     request_load_older_messages(&mut rig.app);
     // No worker request queued — pump must not block.
     assert!(rig.app.in_flight.is_none());
-    assert_eq!(rig.app.messages.len(), 1, "messages must not change");
+    assert_eq!(rig.app.thread.messages.len(), 1, "messages must not change");
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
 }
 
@@ -1022,7 +1022,7 @@ fn delete_selected_calls_adapter_with_correct_id() {
         "c1",
     );
     rig.app.identity.username = "me".into();
-    rig.app.messages = vec![text_msg(7, "me", "doomed")];
+    rig.app.thread.messages = vec![text_msg(7, "me", "doomed")];
     rig.app.select.cursor = Some(0);
     request_delete_selected_message(&mut rig.app);
     pump_one(&mut rig.app);
@@ -1045,7 +1045,7 @@ fn input_x_in_select_opens_delete_confirm() {
         "c1",
     );
     rig.app.identity.username = "me".into();
-    rig.app.messages = vec![text_msg(7, "me", "doomed")];
+    rig.app.thread.messages = vec![text_msg(7, "me", "doomed")];
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Chat;
     rig.app.select.cursor = Some(0);
@@ -1067,7 +1067,7 @@ fn delete_acts_on_the_whole_marked_selection_sequentially() {
         "c1",
     );
     rig.app.identity.username = "me".into();
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(10, "me", "a"),
         text_msg(11, "me", "b"),
         text_msg(12, "me", "c"),
@@ -1101,7 +1101,7 @@ fn delete_skips_other_peoples_messages() {
         "c1",
     );
     rig.app.identity.username = "me".into();
-    rig.app.messages = vec![text_msg(20, "me", "mine"), text_msg(21, "alice", "theirs")];
+    rig.app.thread.messages = vec![text_msg(20, "me", "mine"), text_msg(21, "alice", "theirs")];
     rig.app.rebuild_msg_meta();
     rig.app.select.cursor = Some(0);
     rig.app.select.marks = [20u64, 21].into_iter().collect();
@@ -1121,7 +1121,7 @@ fn marks_survive_a_reprojecting_reload_by_id() {
         "c1",
     );
     rig.app.identity.username = "me".into();
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "alice", "old"),
         text_msg(2, "me", "keep-a"),
         text_msg(3, "me", "keep-b"),
@@ -1162,7 +1162,7 @@ fn react_with_empty_query_sends_the_highlighted_emoji() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(5, "me", "x")];
+    rig.app.thread.messages = vec![text_msg(5, "me", "x")];
     rig.app.select.cursor = Some(0);
     rig.app.react.clear();
     rig.app.react_selected = 0;
@@ -1194,7 +1194,7 @@ fn react_failure_surfaces_error_and_stays_in_select() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(5, "me", "x")];
+    rig.app.thread.messages = vec![text_msg(5, "me", "x")];
     rig.mock.st().messages = vec![text_msg(5, "me", "x")]; // reload returns it
     rig.app.select.cursor = Some(0);
     rig.app.react.set(":fire:");
@@ -1216,7 +1216,7 @@ fn react_sends_with_correct_msg_id_and_body() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(5, "me", "x")];
+    rig.app.thread.messages = vec![text_msg(5, "me", "x")];
     rig.app.select.cursor = Some(0);
     rig.app.react.set(":+1:");
     request_send_reaction(&mut rig.app);
@@ -1650,7 +1650,7 @@ fn pin_uses_selected_message_id() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(99, "me", "important")];
+    rig.app.thread.messages = vec![text_msg(99, "me", "important")];
     rig.app.select.cursor = Some(0);
     request_pin_selected_message(&mut rig.app);
     pump_until_idle(&mut rig.app);
@@ -1742,7 +1742,7 @@ fn search_hits_are_retained_and_cycled_with_n() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "alice", "target one"),
         text_msg(2, "me", "noise"),
         text_msg(3, "alice", "target two"),
@@ -1774,7 +1774,7 @@ fn search_hits_are_retained_and_cycled_with_n() {
         rig.app
             .select
             .cursor
-            .and_then(|i| rig.app.messages.get(i))
+            .and_then(|i| rig.app.thread.messages.get(i))
             .map(|m| m.id),
         Some(3)
     );
@@ -1798,7 +1798,7 @@ fn select_cursor_at_top_paginates_and_stays_on_its_message() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(100, "alice", "top"), text_msg(101, "alice", "hi")];
+    rig.app.thread.messages = vec![text_msg(100, "alice", "top"), text_msg(101, "alice", "hi")];
     rig.app.rebuild_msg_meta();
     rig.app.pagination.next = Some("cursor".into());
     rig.app.select.cursor = Some(0);
@@ -1815,19 +1815,19 @@ fn select_cursor_at_top_paginates_and_stays_on_its_message() {
     pump_until_idle(&mut rig.app);
     // …and the cursor + anchor (indices) shifted with the prepend, so they
     // still point at the same messages.
-    assert_eq!(rig.app.messages.len(), 12);
+    assert_eq!(rig.app.thread.messages.len(), 12);
     assert_eq!(
-        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.thread.messages[i].id),
         Some(100)
     );
     assert_eq!(
-        rig.app.select.anchor.map(|i| rig.app.messages[i].id),
+        rig.app.select.anchor.map(|i| rig.app.thread.messages[i].id),
         Some(101)
     );
     // A further `k` now walks into the newly-loaded page.
     select_move_up(&mut rig.app);
     assert_eq!(
-        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.thread.messages[i].id),
         Some(99)
     );
 }
@@ -1841,7 +1841,7 @@ fn select_move_up_at_top_without_cursor_does_nothing() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(100, "alice", "top")];
+    rig.app.thread.messages = vec![text_msg(100, "alice", "top")];
     rig.app.rebuild_msg_meta();
     rig.app.pagination.next = None; // beginning of history reached
     rig.app.select.cursor = Some(0);
@@ -1868,20 +1868,20 @@ fn giphy_unfurl_cards_are_dropped_everywhere() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    let n = rig.app.messages.len();
+    let n = rig.app.thread.messages.len();
     let mut pushed = text_msg(91, "alice", "");
     pushed.content = MessageContent::Unfurl {
         label: "GIPHY".into(),
     };
     handle_incoming_message(&mut rig.app, "c1".into(), pushed);
-    assert_eq!(rig.app.messages.len(), n);
+    assert_eq!(rig.app.thread.messages.len(), n);
     // Generic site cards still flow through.
     let mut site = text_msg(92, "alice", "");
     site.content = MessageContent::Unfurl {
         label: "An Article".into(),
     };
     handle_incoming_message(&mut rig.app, "c1".into(), site);
-    assert_eq!(rig.app.messages.len(), n + 1);
+    assert_eq!(rig.app.thread.messages.len(), n + 1);
 }
 
 #[test]
@@ -1927,6 +1927,7 @@ fn unfurl_push_appends_without_unread_or_recency_bump() {
     handle_incoming_message(&mut rig.app, "c1".into(), unfurl2);
     assert!(
         rig.app
+            .thread
             .messages
             .iter()
             .any(|m| matches!(&m.content, MessageContent::Unfurl { .. }))
@@ -1991,7 +1992,7 @@ fn select_activate_jumps_to_reply_parent_or_exits() {
     );
     let mut reply = text_msg(11, "alice", "replying");
     reply.reply_to = Some(10);
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(9, "alice", "x"),
         text_msg(10, "alice", "orig"),
         reply,
@@ -2001,7 +2002,7 @@ fn select_activate_jumps_to_reply_parent_or_exits() {
     rig.app.select.cursor = Some(2);
     select_activate(&mut rig.app);
     assert_eq!(
-        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.thread.messages[i].id),
         Some(10)
     );
     // Enter on a non-reply keeps the historical exit-to-compose.
@@ -2161,7 +2162,7 @@ fn attention_motions_jump_to_divider_and_mentions() {
     rig.app.identity.username = "me".into();
     let mut with_mention = text_msg(12, "alice", "oye @me");
     with_mention.mentions = vec!["me".into()];
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(10, "alice", "viejo"),
         text_msg(11, "alice", "nuevo"),
         with_mention,
@@ -2172,23 +2173,23 @@ fn attention_motions_jump_to_divider_and_mentions() {
     rig.app.pagination.unread_boundary = Some(10);
     jump_to_new_messages(&mut rig.app);
     assert_eq!(
-        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.thread.messages[i].id),
         Some(11)
     );
     // `]` finds the next @mention; at the end it stays put, honestly.
     select_jump_mention(&mut rig.app, 1);
     assert_eq!(
-        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.thread.messages[i].id),
         Some(12)
     );
     select_jump_mention(&mut rig.app, 1);
     assert_eq!(
-        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.thread.messages[i].id),
         Some(12)
     );
     select_jump_mention(&mut rig.app, -1);
     assert_eq!(
-        rig.app.select.cursor.map(|i| rig.app.messages[i].id),
+        rig.app.select.cursor.map(|i| rig.app.thread.messages[i].id),
         Some(12)
     );
 }
@@ -2227,7 +2228,7 @@ fn up_on_empty_compose_edits_last_own_message() {
         "c1",
     );
     rig.app.identity.username = "me".into();
-    rig.app.messages = vec![text_msg(10, "alice", "hola"), text_msg(11, "me", "mío")];
+    rig.app.thread.messages = vec![text_msg(10, "alice", "hola"), text_msg(11, "me", "mío")];
     rig.app.rebuild_msg_meta();
     rig.app.screen = Screen::Inbox;
     rig.app.focus = Focus::Chat;
@@ -2327,7 +2328,7 @@ fn show_reactors_lists_names_per_emoji() {
             usernames: vec!["carol".into()],
         },
     ];
-    rig.app.messages = vec![m];
+    rig.app.thread.messages = vec![m];
     rig.app.rebuild_msg_meta();
     rig.app.select.cursor = Some(0);
     show_reactors(&mut rig.app);
@@ -2393,7 +2394,7 @@ fn projection_collapse_triggers_bounded_backfill() {
     assert_eq!(rig.mock.st().read_calls.len(), 1 + 8);
     assert!(!rig.app.pagination.loading_older);
     // Everything folded away — the empty-history UI is honest here.
-    assert!(rig.app.messages.is_empty());
+    assert!(rig.app.thread.messages.is_empty());
 }
 
 #[test]
@@ -2413,7 +2414,7 @@ fn full_visible_page_does_not_backfill() {
     pump_until_idle(&mut rig.app);
     // Floor met by the first page — no auto-chaining.
     assert_eq!(rig.mock.st().read_calls.len(), 1);
-    assert_eq!(rig.app.messages.len(), 50);
+    assert_eq!(rig.app.thread.messages.len(), 50);
 }
 
 #[test]
@@ -2476,7 +2477,7 @@ fn dismissed_pin_banner_stays_hidden_until_a_newer_pin() {
     );
     let mut pin_msg = text_msg(158, "alice", "");
     pin_msg.content = MessageContent::Pin { target_id: 0 };
-    rig.app.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
+    rig.app.thread.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
     rig.app.rebuild_msg_meta();
     assert!(rig.app.pins.present);
     assert_eq!(rig.app.pins.envelope_id, Some(158));
@@ -2492,7 +2493,7 @@ fn dismissed_pin_banner_stays_hidden_until_a_newer_pin() {
     // A newer pin (new envelope id) revives the banner.
     let mut newer = text_msg(160, "alice", "");
     newer.content = MessageContent::Pin { target_id: 0 };
-    rig.app.messages.push(newer);
+    rig.app.thread.messages.push(newer);
     rig.app.rebuild_msg_meta();
     assert!(rig.app.pins.present);
     assert_eq!(rig.app.pins.envelope_id, Some(160));
@@ -2538,7 +2539,7 @@ fn pin_without_payload_shows_presence_and_uses_local_target() {
     );
     let mut pin_msg = text_msg(158, "alice", "");
     pin_msg.content = MessageContent::Pin { target_id: 0 };
-    rig.app.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
+    rig.app.thread.messages = vec![text_msg(157, "alice", "pin me"), pin_msg];
     rig.app.rebuild_msg_meta();
     // Presence + sender known; target unknown (nothing pinned locally).
     assert!(rig.app.pins.present);
@@ -2550,7 +2551,7 @@ fn pin_without_payload_shows_presence_and_uses_local_target() {
     assert_eq!(rig.app.pins.msg_id, Some(157));
     // No pin message at all → no presence (unpin DELETEs the pin message,
     // so fold_deletes removes it from a fresh read).
-    rig.app.messages = vec![text_msg(157, "alice", "pin me")];
+    rig.app.thread.messages = vec![text_msg(157, "alice", "pin me")];
     rig.app.rebuild_msg_meta();
     assert!(!rig.app.pins.present);
     assert_eq!(rig.app.pins.msg_id, None);
@@ -2676,7 +2677,7 @@ fn alt_e_edits_the_last_own_text_message() {
         "c1",
     );
     rig.app.identity.username = "me".into();
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "me", "old own"),
         text_msg(2, "me", "fix me"),
         text_msg(3, "alice", "latest but not mine"),
@@ -2697,7 +2698,7 @@ fn visual_anchor_extends_with_plain_motions() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "alice", "a"),
         text_msg(2, "alice", "b"),
         text_msg(3, "bob", "c"),
@@ -2732,7 +2733,7 @@ fn brace_motions_jump_by_speaker_run() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "alice", "a1"),
         text_msg(2, "alice", "a2"),
         text_msg(3, "bob", "b1"),
@@ -2766,7 +2767,7 @@ fn esc_chain_never_destroys_the_draft() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(1, "alice", "hey")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "hey")];
     rig.app.rebuild_msg_meta();
     rig.app.focus = crate::tui::screens::Focus::Chat;
     rig.app.compose.set("precious draft");
@@ -2792,7 +2793,7 @@ fn esc_cancels_reply_without_closing_or_clearing() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(1, "alice", "hey")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "hey")];
     rig.app.rebuild_msg_meta();
     rig.app.reply_to_id = Some(1);
     rig.app.compose.set("half-typed reply");
@@ -2812,7 +2813,7 @@ fn esc_in_select_clears_marks_before_closing() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(1, "alice", "a"), text_msg(2, "alice", "b")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "a"), text_msg(2, "alice", "b")];
     rig.app.rebuild_msg_meta();
     rig.app.focus = crate::tui::screens::Focus::Chat;
     rig.app.select.cursor = Some(1);
@@ -2919,7 +2920,7 @@ fn incoming_push_keeps_tree_cursor_on_selected_conversation() {
 #[test]
 fn enter_select_anchors_to_last_message() {
     let mut rig = build_rig();
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "me", "a"),
         text_msg(2, "me", "b"),
         text_msg(3, "me", "c"),
@@ -2932,7 +2933,7 @@ fn enter_select_anchors_to_last_message() {
 #[test]
 fn enter_select_errors_on_empty_history() {
     let mut rig = build_rig();
-    rig.app.messages.clear();
+    rig.app.thread.messages.clear();
     enter_select_mode(&mut rig.app);
     assert!(rig.app.select.cursor.is_none());
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
@@ -2941,7 +2942,7 @@ fn enter_select_errors_on_empty_history() {
 #[test]
 fn select_move_up_clamps_at_zero() {
     let mut rig = build_rig();
-    rig.app.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
+    rig.app.thread.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
     rig.app.select.cursor = Some(0);
     select_move_up(&mut rig.app);
     assert_eq!(rig.app.select.cursor, Some(0));
@@ -2950,7 +2951,7 @@ fn select_move_up_clamps_at_zero() {
 #[test]
 fn select_move_down_clamps_at_last() {
     let mut rig = build_rig();
-    rig.app.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
+    rig.app.thread.messages = vec![text_msg(1, "me", "a"), text_msg(2, "me", "b")];
     rig.app.select.cursor = Some(1);
     select_move_down(&mut rig.app);
     assert_eq!(rig.app.select.cursor, Some(1));
@@ -2959,7 +2960,7 @@ fn select_move_down_clamps_at_last() {
 #[test]
 fn leave_select_restores_compose_focus() {
     let mut rig = build_rig();
-    rig.app.messages = vec![text_msg(1, "me", "x")];
+    rig.app.thread.messages = vec![text_msg(1, "me", "x")];
     enter_select_mode(&mut rig.app);
     leave_select_mode(&mut rig.app);
     assert!(rig.app.select.cursor.is_none());
@@ -2972,7 +2973,7 @@ fn leave_select_restores_compose_focus() {
 fn open_edit_refuses_non_own_message() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
-    rig.app.messages = vec![text_msg(1, "bob", "yours")];
+    rig.app.thread.messages = vec![text_msg(1, "bob", "yours")];
     rig.app.select.cursor = Some(0);
     open_edit_for_selected(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
@@ -2983,7 +2984,7 @@ fn open_edit_refuses_non_own_message() {
 fn open_edit_loads_body_into_compose_buffer() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
-    rig.app.messages = vec![text_msg(1, "alice", "hola mundo")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "hola mundo")];
     rig.app.select.cursor = Some(0);
     open_edit_for_selected(&mut rig.app);
     assert_eq!(rig.app.edit_target_id, Some(1));
@@ -2996,7 +2997,7 @@ fn open_edit_loads_body_into_compose_buffer() {
 fn open_delete_refuses_non_own_message() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
-    rig.app.messages = vec![text_msg(1, "bob", "yours")];
+    rig.app.thread.messages = vec![text_msg(1, "bob", "yours")];
     rig.app.select.cursor = Some(0);
     open_delete_for_selected(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
@@ -3039,7 +3040,7 @@ fn escape_on_empty_draft_closes_conversation() {
 #[test]
 fn rebuild_pinned_finds_latest_pin_in_history() {
     let mut rig = build_rig();
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "alice", "first"),
         Message {
             id: 2,
@@ -3062,7 +3063,7 @@ fn rebuild_pinned_finds_latest_pin_in_history() {
 #[test]
 fn rebuild_pinned_clears_when_target_zero() {
     let mut rig = build_rig();
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         Message {
             id: 1,
             sender: "alice".into(),
@@ -3095,7 +3096,7 @@ fn rebuild_pinned_clears_when_target_zero() {
 #[test]
 fn rebuild_pinned_yields_none_when_no_pin_in_history() {
     let mut rig = build_rig();
-    rig.app.messages = vec![text_msg(1, "alice", "x")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "x")];
     rig.app.rebuild_msg_meta();
     assert_eq!(rig.app.pins.msg_id, None);
 }
@@ -3194,7 +3195,7 @@ fn load_teams_surfaces_skipped_rows_as_warnings_but_keeps_good_ones() {
 fn start_reply_sets_reply_to_id_and_clears_buffer() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "alice");
-    rig.app.messages = vec![text_msg(42, "bob", "original")];
+    rig.app.thread.messages = vec![text_msg(42, "bob", "original")];
     rig.app.select.cursor = Some(0);
     rig.app.compose.set("old draft");
     start_reply_for_selected(&mut rig.app);
@@ -3207,7 +3208,7 @@ fn start_reply_sets_reply_to_id_and_clears_buffer() {
 #[test]
 fn start_reply_cancels_pending_edit() {
     let mut rig = build_rig();
-    rig.app.messages = vec![text_msg(10, "alice", "x")];
+    rig.app.thread.messages = vec![text_msg(10, "alice", "x")];
     rig.app.select.cursor = Some(0);
     rig.app.edit_target_id = Some(99);
     start_reply_for_selected(&mut rig.app);
@@ -3274,7 +3275,7 @@ fn attachment_msg(id: u64, sender: &str, filename: &str, size: u64) -> Message {
 #[test]
 fn open_download_requires_attachment_message() {
     let mut rig = build_rig();
-    rig.app.messages = vec![text_msg(1, "alice", "not an attachment")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "not an attachment")];
     rig.app.select.cursor = Some(0);
     open_download_for_selected(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
@@ -3285,7 +3286,7 @@ fn open_download_requires_attachment_message() {
 fn open_download_opens_dir_picker_with_a_download_action() {
     use crate::tui::app::PickerAction;
     let mut rig = build_rig();
-    rig.app.messages = vec![attachment_msg(99, "bob", "secret.txt", 1024)];
+    rig.app.thread.messages = vec![attachment_msg(99, "bob", "secret.txt", 1024)];
     rig.app.select.cursor = Some(0);
     open_download_for_selected(&mut rig.app);
     assert!(rig.app.file_picker.is_some(), "directory picker opened");
@@ -3367,7 +3368,7 @@ fn search_jump_selects_matched_message_when_in_loaded_page() {
     ];
     handle_load_messages_response(&mut rig.app, Ok((page, None)));
     let idx = rig.app.select.cursor.expect("a message is selected");
-    assert_eq!(rig.app.messages[idx].id, 42);
+    assert_eq!(rig.app.thread.messages[idx].id, 42);
     assert_eq!(rig.app.pending_search_jump, None);
     assert!(!rig.app.compose_open);
 }
@@ -3397,7 +3398,7 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
     open_conversation_by_id(&mut rig.app, "c1".into());
     pump_until_idle(&mut rig.app);
     // Loaded history contains the match (#7).
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         text_msg(1, "alice", "hi"),
         text_msg(7, "alice", "needle"),
         text_msg(9, "alice", "bye"),
@@ -3419,7 +3420,7 @@ fn conv_search_runs_searchregexp_then_jumps_to_match() {
     // Enter on the hit jumps to + selects the message and closes the modal.
     conv_search_jump_selected(&mut rig.app);
     let idx = rig.app.select.cursor.expect("a message is selected");
-    assert_eq!(rig.app.messages[idx].id, 7);
+    assert_eq!(rig.app.thread.messages[idx].id, 7);
     assert_ne!(rig.app.screen, Screen::ConvSearch);
     // Hits are retained after the jump (vim keeps the pattern) so n/N can
     // cycle them from Select mode.
@@ -3523,7 +3524,7 @@ fn mark_read_uses_latest_loaded_message_id_when_conv_is_open() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(10, "alice", "old"), text_msg(11, "alice", "newer")];
+    rig.app.thread.messages = vec![text_msg(10, "alice", "old"), text_msg(11, "alice", "newer")];
     request_mark_read(&mut rig.app);
     pump_until_idle(&mut rig.app);
     let st = rig.mock.st();
@@ -3557,10 +3558,10 @@ fn incoming_text_appends_to_the_open_conversation() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(1, "alice", "hi")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "hi")];
     handle_incoming_message(&mut rig.app, "c1".into(), text_msg(2, "alice", "there"));
-    assert_eq!(rig.app.messages.len(), 2);
-    assert_eq!(rig.app.messages.last().unwrap().id, 2);
+    assert_eq!(rig.app.thread.messages.len(), 2);
+    assert_eq!(rig.app.thread.messages.last().unwrap().id, 2);
 }
 
 #[test]
@@ -3572,10 +3573,10 @@ fn incoming_message_deduplicates_by_id() {
         vec![conv("c1", "alice", MembersType::ImpTeamNative)],
         "c1",
     );
-    rig.app.messages = vec![text_msg(5, "alice", "once")];
+    rig.app.thread.messages = vec![text_msg(5, "alice", "once")];
     handle_incoming_message(&mut rig.app, "c1".into(), text_msg(5, "alice", "again"));
     assert_eq!(
-        rig.app.messages.len(),
+        rig.app.thread.messages.len(),
         1,
         "a message already in the stream must not be re-appended"
     );
@@ -3957,7 +3958,7 @@ fn render_perf_smoke_conversation_50_messages() {
             )
         })
         .collect();
-    rig.app.messages = msgs;
+    rig.app.thread.messages = msgs;
     rig.app.screen = Screen::Inbox;
 
     let times = run_render_iterations(&mut rig.app, 100);
@@ -4350,7 +4351,7 @@ fn ctrl_w_window_nav_moves_between_panels() {
     // In a non-typing surface (Chat in Select mode) the leader arms and
     // stays armed across consecutive directions so two keys chain:
     // k (up) chat → filter, then j (down) filter → chats.
-    rig.app.messages = vec![text_msg(1, "alice", "x")];
+    rig.app.thread.messages = vec![text_msg(1, "alice", "x")];
     rig.app.rebuild_msg_meta();
     rig.app.select.cursor = Some(0);
     press(&mut rig.app, KeyCode::Char('w'), KeyModifiers::CONTROL);
@@ -4403,7 +4404,7 @@ fn open_url_opens_first_link_or_reports_none() {
     };
     let mut rig = build_rig();
 
-    rig.app.messages = vec![text("docs at https://keybase.io/x and more")];
+    rig.app.thread.messages = vec![text("docs at https://keybase.io/x and more")];
     rig.app.select.cursor = Some(0);
     do_open_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Done(_)));
@@ -4416,7 +4417,7 @@ fn open_url_opens_first_link_or_reports_none() {
         "clipboard write"
     );
 
-    rig.app.messages = vec![text("no link here")];
+    rig.app.thread.messages = vec![text("no link here")];
     rig.app.select.cursor = Some(0);
     do_open_url(&mut rig.app);
     assert!(matches!(rig.app.action_state, ActionState::Error(_)));
@@ -4435,7 +4436,7 @@ fn chat_multiselect_copies_messages() {
         m
     };
     let mut rig = build_rig();
-    rig.app.messages = vec![
+    rig.app.thread.messages = vec![
         mk(1, "ana", "hola"),
         mk(2, "beto", "chau"),
         mk(3, "ana", "ok"),
@@ -4906,7 +4907,7 @@ fn open_download_uses_safe_basename_for_malicious_filename() {
     let mut rig = build_rig();
     // Simulate a malicious sender embedding a path traversal in the
     // attachment filename.
-    rig.app.messages = vec![attachment_msg(
+    rig.app.thread.messages = vec![attachment_msg(
         77,
         "mallory",
         "../../.ssh/authorized_keys",
