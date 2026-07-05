@@ -125,7 +125,9 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("o / l", "open / copy the first link in the message"),
             ("e / p", "edit / pin the cursor message"),
             ("r / s", "reply / download"),
-            ("i / Enter / Esc", "back to compose"),
+            ("i / a / Enter", "back to compose (insert)"),
+            ("/", "search this conversation"),
+            ("Esc", "clear selection · then close the conversation"),
         ] {
             lines.push(help_line(k, d, t));
         }

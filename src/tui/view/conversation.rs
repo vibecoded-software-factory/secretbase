@@ -164,11 +164,11 @@ fn draw_mention_popup(frame: &mut Frame, app: &App, compose_area: Rect, matches:
 /// The status-strip hint for the chat, by interaction mode.
 pub(crate) fn chat_hint(app: &App) -> &'static str {
     if app.selected_msg_idx.is_some() {
-        "↑/↓ move · Space mark · e edit · Shift+X del · + react · y copy · Esc back"
+        "↑/↓ move · Space mark · e edit · Shift+X del · + react · y copy · / find · Esc close"
     } else if app.edit_target_id.is_some() {
         "Enter save edit · Esc cancel"
     } else {
-        "Enter send · Alt+A attach · Alt+V select · Esc back"
+        "Enter send · Alt+A attach · Esc select"
     }
 }
 

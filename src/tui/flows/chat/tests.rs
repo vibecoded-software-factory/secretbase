@@ -1711,6 +1711,81 @@ fn collapsed_group_hides_its_conversations() {
 }
 
 #[test]
+fn esc_chain_never_destroys_the_draft() {
+    // vim chain: Esc in compose with a draft → Select mode, draft intact;
+    // Esc in Select → close; the close stashes the draft for reopen.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(1, "alice", "hey")];
+    rig.app.rebuild_msg_meta();
+    rig.app.focus = crate::tui::screens::Focus::Chat;
+    rig.app.compose.set("precious draft");
+    escape_conversation(&mut rig.app);
+    assert!(rig.app.selected_msg_idx.is_some(), "insert → Select");
+    assert_eq!(rig.app.compose.text(), "precious draft", "draft untouched");
+    // Esc in Select (no marks) closes; close_conversation stashes the draft.
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(rig.app.open_conv_id.is_none(), "conversation closed");
+    assert_eq!(
+        rig.app.drafts.get("c1").map(String::as_str),
+        Some("precious draft"),
+        "draft stashed on close"
+    );
+}
+
+#[test]
+fn esc_cancels_reply_without_closing_or_clearing() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(1, "alice", "hey")];
+    rig.app.rebuild_msg_meta();
+    rig.app.reply_to_id = Some(1);
+    rig.app.compose.set("half-typed reply");
+    escape_conversation(&mut rig.app);
+    assert_eq!(rig.app.reply_to_id, None, "reply target cancelled");
+    assert!(rig.app.open_conv_id.is_some(), "conversation stays open");
+    assert_eq!(rig.app.compose.text(), "half-typed reply", "text kept");
+    assert!(rig.app.selected_msg_idx.is_none(), "still composing");
+}
+
+#[test]
+fn esc_in_select_clears_marks_before_closing() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.messages = vec![text_msg(1, "alice", "a"), text_msg(2, "alice", "b")];
+    rig.app.rebuild_msg_meta();
+    rig.app.focus = crate::tui::screens::Focus::Chat;
+    rig.app.selected_msg_idx = Some(1);
+    rig.app.msg_marks = [1u64, 2].into_iter().collect();
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(
+        rig.app.msg_marks.is_empty(),
+        "first Esc clears the selection"
+    );
+    assert!(
+        rig.app.open_conv_id.is_some(),
+        "…but keeps the conversation"
+    );
+    press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(rig.app.open_conv_id.is_none(), "second Esc closes");
+}
+
+#[test]
 fn tree_forward_expands_but_never_collapses() {
     use crate::tui::app::TreeRow;
     let mut rig = build_rig();
