@@ -47,10 +47,19 @@ status strip at the bottom.
   `conversation::chat_title`). In-conversation search is a **`Ctrl+F` modal**
   (`Screen::ConvSearch`). The chat draws an **adaptive header** only when it has
   something to say (`conversation::has_adaptive_header` / `draw_adaptive_header`):
-  a **pin** (`📌 sender · "content" · Alt+U unpin`; when the target isn't knowable -- the chat JSON API strips the pin payload -- it degrades honestly to `📌 <sender> pinned a message`, resolving for pins set by this client via `App::pinned_local`, which is **persisted** to config (`pins` key) so our own pins survive a restart; when the known target is older than the loaded window, the body is fetched once in the background (`{"method":"get"}`) and the snippet still renders) or, failing that, the channel
-  **topic** (latest `headline`) — one borderless line; when there's **neither**
-  it collapses to **0 rows** and the message history takes the space, so no
-  chrome is reserved for nothing.
+  a **pin** or, failing that, the channel **topic** (latest `headline`) — a
+  proper bordered **section** on the standard `titled_block` rounded chrome
+  (3 rows, unfocused tint — a floating borderless line broke the app's visual
+  grammar next to the titled panels). Titled `📌 Pinned` with content
+  `sender · "body" · Alt+U unpin` (when the target isn't knowable — the chat
+  JSON API strips the pin payload — it degrades honestly to
+  `<sender> pinned a message`, resolving for pins set by this client via
+  `App::pinned_local`, which is **persisted** to config (`pins` key) so our
+  own pins survive a restart; when the known target is older than the loaded
+  window, the body is fetched once in the background (`{"method":"get"}`) and
+  the snippet still renders), or titled `~ Topic` with the quoted headline.
+  When there's **neither** it collapses to **0 rows** and the message history
+  takes the space, so no chrome is reserved for nothing.
 - **body** — `─[Alt+C]-Chats` tree (`Length(28)`) on the left, the chat
   (`Min(24)`) on the right:
   - `─[Alt+C]-Chats` (`Focus::Tree`) — the **conversation tree** (`App::tree_rows`
@@ -185,10 +194,12 @@ sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
 cursor. Single-line inputs (search, react, new-conversation) keep
 `widgets::editor_spans`. The chat column is **full-height** with an **adaptive
-header** (`has_adaptive_header` / `draw_adaptive_header`) — a single borderless
-line for a **pin** (`📌 sender · "content" · Alt+U unpin`; when the target isn't knowable -- the chat JSON API strips the pin payload -- it degrades honestly to `📌 <sender> pinned a message`, resolving for pins set by this client via `App::pinned_local`, which is **persisted** to config (`pins` key) so our own pins survive a restart; when the known target is older than the loaded window, the body is fetched once in the background (`{"method":"get"}`) and the snippet still renders) or the channel
-**topic**, or **nothing at all** (0 rows) when there's neither, so history isn't
-squeezed by empty chrome. **In-conversation search is a modal**
+header** (`has_adaptive_header` / `draw_adaptive_header`) — a bordered
+section on the standard `titled_block` chrome: `📌 Pinned` with
+`sender · "body" · Alt+U unpin` (target resolution + persistence + the
+background body fetch as described in the Home section) or `~ Topic` with
+the quoted headline, or **nothing at all** (0 rows) when there's neither, so
+history isn't squeezed by empty chrome. **In-conversation search is a modal**
 (`Screen::ConvSearch`, `view::conv_search`): `Ctrl+F` opens a centered
 `searchregexp` box + results (sibling of the `Ctrl+G` global-search modal,
 sharing the `MODAL_*` geometry) — on-demand, not a permanent panel. Typing +
@@ -863,8 +874,8 @@ toward the floor on a narrow terminal so the chat keeps room, and grows on a wid
 one so long DM/team names aren't always truncated (no magic `28`). The Home's
 header filter and body tree pass the same width so their columns line up; the
 chat side is `Min(20/24)` and flexes, spanning the **full height** (no reserved
-header row) — the chat's adaptive header line appears only when there's a pin or
-topic, otherwise the message history takes the row.
+header row) — the chat's adaptive header section appears only when there's a
+pin or topic, otherwise the message history takes the rows.
 
 **Text that fits-or-degrades (never a fixed char cap that the terminal clips):**
 - **Footer hint** — `widgets::fit_segments` keeps only whole ` · ` segments that

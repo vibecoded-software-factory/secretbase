@@ -22,7 +22,7 @@ use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{editor_lines, trim_end_ellipsis};
 
-/// Whether the chat draws its **adaptive** 1-line header — a pin or a channel
+/// Whether the chat draws its **adaptive** header — a pin or a channel
 /// topic (`App::conv_headline`, cached per load). When neither exists the
 /// header collapses to **0 rows** and the message history takes the space, so
 /// no chrome is reserved for nothing (the name lives on the Messages panel
@@ -31,14 +31,27 @@ fn has_adaptive_header(app: &App) -> bool {
     app.pin_present || app.conv_headline.is_some()
 }
 
-/// The adaptive header line: a **pin** (`📌 sender · "content" · Alt+U unpin`)
-/// when the conversation has one, else the channel **topic** (headline). Only
-/// called when [`has_adaptive_header`] is true.
+/// The adaptive header: a proper bordered **section** (the same rounded
+/// [`titled_block`] chrome as every other panel — an unstyled floating line
+/// broke the app's visual grammar) titled `📌 Pinned` when the conversation
+/// has a pin, else `~ Topic` for the channel headline. Content line:
+/// `sender · “body” · Alt+U unpin`. Only called when
+/// [`has_adaptive_header`] is true.
 fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-    let w = area.width as usize;
+    let title = if app.pin_present {
+        "📌 Pinned"
+    } else {
+        "~ Topic"
+    };
+    // Not a focusable panel — the standard unfocused chrome, like every
+    // other section that isn't under the cursor.
+    let block = titled_block(title, false, app);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let w = inner.width as usize;
     let spans: Vec<Span<'static>> = if app.pin_present {
-        let mut s = vec![Span::styled(" 📌 ", Style::default().fg(t.conv_unread))];
+        let mut s = vec![Span::styled(" ", Style::default())];
         // Resolve the pinned message: from the loaded window when present,
         // else from the background-fetched body cache (targets older than
         // the window, `maybe_fetch_pin_body`).
@@ -63,9 +76,9 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
                     _ => String::new(),
                 };
                 // Leave room for the fixed chrome around the snippet —
-                // measured from the real strings (` 📌 `, ` · `, the quotes,
-                // `  ·  Alt+U unpin`) instead of a magic cap.
-                let suffix_w = " 📌 ".chars().count()
+                // measured from the real strings (the lead space, ` · `, the
+                // quotes, `  ·  Alt+U unpin`) instead of a magic cap.
+                let suffix_w = 1
                     + " · ".chars().count()
                     + 2 // the “” quotes
                     + "  ·  Alt+U unpin".chars().count();
@@ -105,37 +118,39 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
     } else if let Some(topic) = app.conv_headline.as_deref() {
         let topic = trim_end_ellipsis(
             topic.lines().next().unwrap_or(""),
-            w.saturating_sub(6).max(8),
+            w.saturating_sub(4).max(8),
         );
         vec![
-            Span::styled(" ~ ", Style::default().fg(t.conv_team)),
+            Span::styled(" ", Style::default()),
             Span::styled(
                 format!("\u{201c}{topic}\u{201d}"),
-                Style::default().fg(t.dim),
+                Style::default().fg(t.foreground),
             ),
         ]
     } else {
         return;
     };
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    frame.render_widget(Paragraph::new(Line::from(spans)), inner);
 }
 
-/// Renders the chat **body** into `area`: an **optional** adaptive header line
-/// (a pin / topic, `has_adaptive_header`) that takes 0 rows when there's nothing
-/// to show, then the message history and the compose box.
+/// Renders the chat **body** into `area`: an **optional** adaptive header
+/// section (a pin / topic, `has_adaptive_header`) that takes 0 rows when
+/// there's nothing to show, then the message history and the compose box.
 pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
-    let header_h: u16 = if has_adaptive_header(app) { 1 } else { 0 };
+    // The header is a bordered section like every other panel — 3 rows
+    // (border + content + border), 0 when there's nothing to show.
+    let header_h: u16 = if has_adaptive_header(app) { 3 } else { 0 };
     // Compose grows with its line count (multi-line via Alt+Enter), capped.
     let compose_lines = app.compose.text().split('\n').count().max(1) as u16;
     let compose_h = (compose_lines + 2).clamp(3, 8);
     let layout = Layout::vertical([
-        Constraint::Length(header_h),  // adaptive header (0 or 1 row)
+        Constraint::Length(header_h),  // adaptive header (0 or 3 rows)
         Constraint::Min(3),            // messages
         Constraint::Length(compose_h), // compose pane (dynamic)
     ])
     .split(area);
 
-    if header_h == 1 {
+    if header_h > 0 {
         draw_adaptive_header(frame, app, layout[0]);
     }
     render_messages(frame, app, layout[1]);
