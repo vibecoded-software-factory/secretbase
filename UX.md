@@ -74,8 +74,11 @@ status strip at the bottom.
     and conversations are **bold** (plus a `●` / unread count) so they stand
     out; an unseen **@mention of you** adds a red `@` (session-local, from
     the push stream — cleared on open; collapsed groups aggregate it), and
-    each conversation row carries a dim **relative age** (`5m`, `2h`) in the
-    table's second column. The tree **starts fully collapsed** — `App::expanded` holds the
+    each conversation row carries a dim **GUI-style stamp** in the table's
+    second column (`timefmt::inbox_stamp` — today → `23:39`, this week →
+    `Tue`, this year → `Jun 3`, older → `22 Dec 25`, matching the Keybase
+    GUI's chat list); the column is sized to the widest stamp actually
+    shown, the name column takes the rest. The tree **starts fully collapsed** — `App::expanded` holds the
     *expanded* groups (empty = all folded, so it persists across refreshes); a
     non-empty search force-expands all. The border count is the **visible rows**
     (headers + the conversations of expanded groups) of the total. `↑/↓` move
