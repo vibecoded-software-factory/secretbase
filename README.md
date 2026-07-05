@@ -143,7 +143,7 @@ collapse a group); the header search fuzzy-filters it.
 |---|---|
 | typing                  | Extend draft |
 | `Enter`                 | Send / save edit |
-| `Alt+Enter`             | New line (multi-line message) |
+| `Alt+Enter` / `Shift+Enter` | New line (multi-line message; Shift needs a kitty-protocol terminal) |
 | `@…` then `Tab`         | Mention autocomplete (`↑`/`↓` pick) |
 | `↑` / `↓` · `PgUp` / `PgDn` | Scroll history |
 | `←` / `→` · `Home` / `End`  | Compose cursor (empty compose: `Home`/`End` jump to oldest / latest message) |

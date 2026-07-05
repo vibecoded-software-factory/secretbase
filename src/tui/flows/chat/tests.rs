@@ -1889,6 +1889,27 @@ fn unfurl_push_appends_without_unread_or_recency_bump() {
 }
 
 #[test]
+fn shift_enter_inserts_a_newline_in_compose() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Chat;
+    rig.app.compose.insert_str("hola");
+    // Shift+Enter (kitty-protocol terminals) = newline, like Alt+Enter.
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::SHIFT);
+    assert_eq!(rig.app.compose.text(), "hola\n");
+    // Plain Enter still sends (drains the draft into an outbox slot).
+    press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(rig.app.compose.is_empty());
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

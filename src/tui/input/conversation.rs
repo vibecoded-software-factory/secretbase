@@ -40,12 +40,15 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 fn handle_compose(app: &mut App, key: KeyEvent) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
     match key.code {
         // ── lifecycle ───────────────────────────────────────────────────
         KeyCode::Esc => chat::escape_conversation(app),
-        // Alt+Enter inserts a newline (multi-line message); plain Enter sends.
-        KeyCode::Enter if alt => app.compose.insert('\n'),
+        // Alt+Enter — or Shift+Enter, the Discord/Slack reflex, delivered
+        // distinctly on terminals with the kitty keyboard protocol —
+        // inserts a newline (multi-line message); plain Enter sends.
+        KeyCode::Enter if alt || shift => app.compose.insert('\n'),
         KeyCode::Enter => submit_compose(app),
 
         // ── @-mention autocomplete (when its popup is open) ────────────
