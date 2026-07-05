@@ -423,7 +423,12 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
     // Unfurls decorate the message that carried the URL: append them live
     // (they render as a card), but like controls they are not "new
     // content" — no unread badge, no recency bump for a link preview.
+    // Giphy cards don't even append: projection drops them (the GIF itself
+    // renders inline on the URL message), so a pushed one must not slip in.
     let is_decoration = matches!(&message.content, MessageContent::Unfurl { .. });
+    if matches!(&message.content, MessageContent::Unfurl { label } if label == "GIPHY") {
+        return;
+    }
     let sent_at = message.sent_at;
     let sent_at_ms = message.sent_at_ms;
     let msg_id = message.id;

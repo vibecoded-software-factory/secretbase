@@ -1840,6 +1840,39 @@ fn select_move_up_at_top_without_cursor_does_nothing() {
 }
 
 #[test]
+fn giphy_unfurl_cards_are_dropped_everywhere() {
+    // Projection: the card duplicates the inline GIF (or the visible URL).
+    let mut unfurl = text_msg(90, "bob", "");
+    unfurl.content = MessageContent::Unfurl {
+        label: "GIPHY".into(),
+    };
+    let projected = project_messages(vec![text_msg(89, "bob", "url"), unfurl]);
+    assert_eq!(projected.len(), 1);
+    // Push: a live giphy card must not append either.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let n = rig.app.messages.len();
+    let mut pushed = text_msg(91, "alice", "");
+    pushed.content = MessageContent::Unfurl {
+        label: "GIPHY".into(),
+    };
+    handle_incoming_message(&mut rig.app, "c1".into(), pushed);
+    assert_eq!(rig.app.messages.len(), n);
+    // Generic site cards still flow through.
+    let mut site = text_msg(92, "alice", "");
+    site.content = MessageContent::Unfurl {
+        label: "An Article".into(),
+    };
+    handle_incoming_message(&mut rig.app, "c1".into(), site);
+    assert_eq!(rig.app.messages.len(), n + 1);
+}
+
+#[test]
 fn unfurl_push_appends_without_unread_or_recency_bump() {
     let mut rig = build_rig();
     preload_inbox(
@@ -1862,7 +1895,7 @@ fn unfurl_push_appends_without_unread_or_recency_bump() {
         .unwrap();
     let mut unfurl = text_msg(90, "bob", "");
     unfurl.content = MessageContent::Unfurl {
-        label: "GIPHY".into(),
+        label: "An Article".into(),
     };
     unfurl.sent_at_ms = 9_999_999;
     handle_incoming_message(&mut rig.app, "c2".into(), unfurl);
@@ -1877,7 +1910,7 @@ fn unfurl_push_appends_without_unread_or_recency_bump() {
     // In the *viewed* conversation it appends live as a card.
     let mut unfurl2 = text_msg(91, "alice", "");
     unfurl2.content = MessageContent::Unfurl {
-        label: "GIPHY".into(),
+        label: "An Article".into(),
     };
     handle_incoming_message(&mut rig.app, "c1".into(), unfurl2);
     assert!(
