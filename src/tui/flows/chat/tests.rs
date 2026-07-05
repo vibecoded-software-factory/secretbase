@@ -1767,6 +1767,57 @@ fn search_hits_are_retained_and_cycled_with_n() {
 }
 
 #[test]
+fn projection_collapse_triggers_bounded_backfill() {
+    // A `read` page counts RAW slots; in an envelope-heavy conversation the
+    // projection can fold 50 slots to zero visible messages. The handlers
+    // must chain older pages (bounded) instead of leaving the user staring
+    // at an empty, unscrollable history.
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    // Every page the mock serves is pure delete envelopes + a next cursor.
+    let mut envelope = text_msg(1, "alice", "");
+    envelope.content = MessageContent::Delete {
+        target_ids: vec![999],
+    };
+    rig.mock.st().messages = vec![envelope; 50];
+    rig.mock.st().messages_next = Some("cursor".into());
+    rig.mock.st().read_calls.clear();
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // 1 first page + BACKFILL_MAX_PAGES chained older pages, then it stops
+    // (budget exhausted) — bounded, no infinite loop.
+    assert_eq!(rig.mock.st().read_calls.len(), 1 + 8);
+    assert!(!rig.app.messages_loading_older);
+    // Everything folded away — the empty-history UI is honest here.
+    assert!(rig.app.messages.is_empty());
+}
+
+#[test]
+fn full_visible_page_does_not_backfill() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let page: Vec<Message> = (1..=50).map(|i| text_msg(i, "alice", "hi")).collect();
+    rig.mock.st().messages = page;
+    rig.mock.st().messages_next = Some("cursor".into());
+    rig.mock.st().read_calls.clear();
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    // Floor met by the first page — no auto-chaining.
+    assert_eq!(rig.mock.st().read_calls.len(), 1);
+    assert_eq!(rig.app.messages.len(), 50);
+}
+
+#[test]
 fn pin_without_payload_shows_presence_and_uses_local_target() {
     // The JSON API strips the pin payload (convertMsgBody omits Pin__), so
     // a real read returns {"type":"pin"} → target_id 0. Presence must still

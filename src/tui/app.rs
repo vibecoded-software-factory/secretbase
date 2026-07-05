@@ -617,6 +617,13 @@ pub struct App {
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     pub should_quit: bool,
+    /// Remaining auto-backfill budget (older pages the read handlers may
+    /// chain without user input). A `read` counts **raw server slots**, and
+    /// projection (fold edits/deletes, drop reactions) can collapse a
+    /// 50-slot page to one visible message — in envelope-heavy
+    /// conversations an open/reload would land nearly empty and the
+    /// scroll/selector had nothing to move over. Reset per fresh load.
+    pub backfill_pages: u8,
     /// Set once the worker response channel reports `Disconnected` (every
     /// worker thread gone) so the failure is surfaced a single time.
     pub worker_dead: bool,
@@ -936,6 +943,7 @@ impl App {
             settings_theme_idx,
             settings_from: Screen::Inbox,
             should_quit: false,
+            backfill_pages: 0,
             worker_dead: false,
             prev_conv_id: None,
             boot_error: None,
