@@ -2097,6 +2097,46 @@ fn mention_popup_enter_accepts_and_esc_dismisses() {
 }
 
 #[test]
+fn resend_walks_failed_queue_oldest_first_with_count() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    for (i, body) in ["primero", "segundo"].iter().enumerate() {
+        rig.app.outbox.push(crate::tui::app::PendingSend {
+            conv_id: "c1".into(),
+            body: (*body).to_string(),
+            reply_to: None,
+            sent_at_ms: i as u64,
+            state: crate::tui::app::SendState::Failed,
+        });
+    }
+    request_resend_message(&mut rig.app);
+    // The OLDEST failed goes out, and the toast names it + the remainder.
+    match &rig.app.action_state {
+        ActionState::Running(s) => {
+            assert!(s.contains("primero"), "toast was: {s}");
+            assert!(s.contains("1 more failed"), "toast was: {s}");
+        }
+        other => panic!("expected Running, got {other:?}"),
+    }
+    pump_until_idle(&mut rig.app);
+    // Second Alt+R picks up the next one, no remainder note.
+    request_resend_message(&mut rig.app);
+    match &rig.app.action_state {
+        ActionState::Running(s) => {
+            assert!(s.contains("segundo"), "toast was: {s}");
+            assert!(!s.contains("more failed"), "toast was: {s}");
+        }
+        other => panic!("expected Running, got {other:?}"),
+    }
+    pump_until_idle(&mut rig.app);
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

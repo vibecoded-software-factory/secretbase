@@ -840,6 +840,9 @@ fn outbox_lines(
     let me = app.identity.username.clone();
     let sender_style = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
     let mut lines: Vec<Line<'static>> = Vec::new();
+    // Alt+R resends oldest-first — label only the bubble that key will
+    // actually act on; later failures say they're queued behind it.
+    let mut first_failed_seen = false;
     for p in app.outbox.iter().filter(|p| p.conv_id == conv_id) {
         let (icon, icon_color, status) = match p.state {
             SendState::Pending => (
@@ -858,14 +861,22 @@ fn outbox_lines(
                     Style::default().fg(t.dim),
                 ),
             ),
-            SendState::Failed => (
-                "✗",
-                t.error,
-                Span::styled(
-                    "failed · Alt+R to resend".to_string(),
-                    Style::default().fg(t.error).add_modifier(Modifier::BOLD),
-                ),
-            ),
+            SendState::Failed => {
+                let label = if first_failed_seen {
+                    "failed · resends after the one above".to_string()
+                } else {
+                    first_failed_seen = true;
+                    "failed · Alt+R to resend".to_string()
+                };
+                (
+                    "✗",
+                    t.error,
+                    Span::styled(
+                        label,
+                        Style::default().fg(t.error).add_modifier(Modifier::BOLD),
+                    ),
+                )
+            }
         };
         lines.push(Line::from(vec![
             Span::styled(format!(" {icon} "), Style::default().fg(icon_color)),

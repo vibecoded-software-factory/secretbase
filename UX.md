@@ -408,6 +408,9 @@ on their own:
   `○ sending…` while in flight; on success it flips to a delivered `→` and
   the reconciling re-read prunes it; on failure it stays as a red
   `✗ failed · Alt+R to resend`, preserving the body so **`Alt+R`** retries
+  — **oldest-first** when several failed: only the bubble the key will act
+  on carries the hint (later ones read `resends after the one above`), and
+  the Running toast names the message going out plus how many still wait —
   it. The compose is cleared at send time (the draft is safe in the outbox).
 - **Jump-to-latest cue** — when the reader is **scrolled up** in history and
   messages arrive below the fold, a floating accent pill at the foot of the
