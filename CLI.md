@@ -334,6 +334,11 @@ knowable for pins set by this session) · `getdeviceinfo` ·
   senderUsername, …}}` (flat — already scoped to the channel, no convID
   wrapper). secretbase drives it from the conversation search box (`Ctrl+F`)
   and jumps to the picked match.
+- `get` `{"channel":…,"message_ids":[314,315,342]}` — fetch specific messages
+  by id (vs `read`'s paginated window). Result is the same `Thread` shape as
+  `read` (`result.messages[].msg` — verified: `GetV1` → `formatMessages`).
+  secretbase uses it to resolve a **pinned** message that is older than the
+  loaded window (the 📌 header's body snippet), on the background lane.
 - `read` supports `pagination` (`{num,next,previous}`), `peek` (don't mark
   read), `unread_only`.
 - `list` supports `topic_type` (`CHAT`/`DEV`). **There is no documented
@@ -370,9 +375,6 @@ The list above is the **complete** `chat_api_doc.go` surface; these are the
 methods secretbase does not call yet — each is a candidate for a future flow
 (build the request in `codec.rs`, add a `WorkerRequest`/`InFlight` pair):
 
-- `get` `{"channel":…,"message_ids":[314,315,342]}` — fetch specific messages
-  by id (vs `read`'s paginated window). Useful for jump-to-message / reply
-  context without a full page.
 - **search filters** (both `searchinbox` and `searchregexp`): `sent_by`,
   `sent_to`, `sent_after`/`sent_before` (dates, e.g. `"09/10/2017"`), `max_hits`;
   `searchinbox` also takes a free `query`, `searchregexp` an `is_regex` bool.

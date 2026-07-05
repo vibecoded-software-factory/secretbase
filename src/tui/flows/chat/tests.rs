@@ -62,6 +62,9 @@ struct MockState {
     emojis: Vec<Emoji>,
     mark_reads: Vec<u64>,
     read_calls: Vec<Option<String>>,
+    /// Message ids requested via `get_message` + the canned reply.
+    get_calls: Vec<u64>,
+    get_result: Option<Message>,
     /// Channel-browser: pre-baked `listconvsonname` result + recorded
     /// join / leave topic names.
     channels: Vec<Conversation>,
@@ -348,6 +351,14 @@ impl KeybasePort for MockKeybase {
         }
         s.statuses.push((channel.name.clone(), status.to_string()));
         Ok(())
+    }
+    fn get_message(&mut self, _: &ReadChannel, id: u64) -> Result<Option<Message>, KeybaseError> {
+        let mut s = self.0.lock().unwrap();
+        if let Some(e) = s.fail_next.take() {
+            return Err(e);
+        }
+        s.get_calls.push(id);
+        Ok(s.get_result.clone())
     }
     fn pin_message(&mut self, _: &ReadChannel, id: u64) -> Result<(), KeybaseError> {
         let mut s = self.0.lock().unwrap();
@@ -1815,6 +1826,55 @@ fn full_visible_page_does_not_backfill() {
     // Floor met by the first page — no auto-chaining.
     assert_eq!(rig.mock.st().read_calls.len(), 1);
     assert_eq!(rig.app.messages.len(), 50);
+}
+
+#[test]
+fn pin_target_persists_to_config_and_survives_restart() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    handle_pin_response(&mut rig.app, Ok(()), 157);
+    // Persisted as a "convid:msgid" pair — the favorites/muted pattern.
+    assert_eq!(rig.app.settings_cache.pins, vec!["c1:157".to_string()]);
+    pump_until_idle(&mut rig.app); // drain the chained reload
+    handle_unpin_response(&mut rig.app, Ok(()));
+    assert!(rig.app.settings_cache.pins.is_empty());
+}
+
+#[test]
+fn out_of_window_pin_target_fetches_body_once() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    // The served page holds a payload-stripped pin envelope, but NOT the
+    // pinned message itself (older than the window).
+    let mut pin_env = text_msg(40, "alice", "");
+    pin_env.content = MessageContent::Pin { target_id: 0 };
+    rig.mock.st().messages = vec![text_msg(39, "alice", "hi"), pin_env];
+    // The persisted local record knows the target: #7.
+    rig.app.pinned_local.insert("c1".into(), 7);
+    rig.mock.st().get_result = Some(text_msg(7, "alice", "the pinned body"));
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert!(rig.app.pin_present);
+    assert_eq!(rig.app.pinned_msg_id, Some(7));
+    // The background `get` fired for the missing target…
+    pump_one(&mut rig.app); // its response shares the worker channel
+    assert_eq!(rig.mock.st().get_calls, vec![7]);
+    // …and the fetched body is cached for the 📌 header.
+    assert_eq!(rig.app.pin_bodies.get("c1").map(|m| m.id), Some(7));
+    // A later reload must not refetch — the body is cached.
+    request_load_messages(&mut rig.app);
+    pump_until_idle(&mut rig.app);
+    assert_eq!(rig.mock.st().get_calls, vec![7]);
 }
 
 #[test]

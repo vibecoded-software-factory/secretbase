@@ -390,6 +390,7 @@ pub fn handle_load_messages_response(
             app.push_cmd("keybase chat api read", true, format!("{n} messages"));
             try_jump_to_search_target(app);
             maybe_backfill(app);
+            maybe_fetch_pin_body(app);
         }
         Err(e) => {
             app.messages_loading_older = false;
@@ -571,6 +572,7 @@ pub fn handle_load_older_messages_response(
             );
             try_jump_to_search_target(app);
             maybe_backfill(app);
+            maybe_fetch_pin_body(app);
         }
         Err(e) => {
             app.messages_loading_older = false;
@@ -1374,7 +1376,7 @@ pub fn handle_pin_response(app: &mut App, result: Result<(), KeybaseError>, mess
             // payload from reads, so this session-local record is the only
             // way the 📌 header can point at the *specific* message.
             if let Some(conv) = app.open_conv_id.clone() {
-                app.pinned_local.insert(conv, message_id);
+                app.set_local_pin(conv, Some(message_id));
             }
             // Stay in Select mode (coherent with delete/react) and reload so
             // `rebuild_msg_meta` refreshes the 📌 indicator from the new history.
@@ -1407,7 +1409,7 @@ pub fn handle_unpin_response(app: &mut App, result: Result<(), KeybaseError>) {
             app.set_action(ActionState::Done("Pin cleared".into()));
             app.push_cmd("keybase chat api unpin", true, "ok");
             if let Some(conv) = app.open_conv_id.clone() {
-                app.pinned_local.remove(&conv);
+                app.set_local_pin(conv, None);
             }
             // Reload so the 📌 banner clears from fresh history.
             request_reload_messages(app);
@@ -1416,6 +1418,66 @@ pub fn handle_unpin_response(app: &mut App, result: Result<(), KeybaseError>) {
             app.set_action(ActionState::Error(e.to_string()));
             app.push_cmd("keybase chat api unpin", false, e.to_string());
         }
+    }
+}
+
+/// Fires a background `{"method":"get"}` for the pinned message when its
+/// target is known (the persisted local pin record) but **older than the
+/// loaded window** — so the 📌 header can show the real body instead of
+/// just `#id`. Fire-and-forget on the background lane (routed by variant,
+/// no `InFlight` ticket); one attempt per `(conv, target)` so a failing
+/// fetch can't loop on every reload.
+pub(crate) fn maybe_fetch_pin_body(app: &mut App) {
+    if !app.pin_present {
+        return;
+    }
+    let Some(pid) = app.pinned_msg_id else {
+        return;
+    };
+    if app.msg_index.contains_key(&pid) {
+        return; // in the loaded window — the header reads it directly
+    }
+    let Some(conv_id) = app.open_conv_id.clone() else {
+        return;
+    };
+    if app.pin_bodies.get(&conv_id).is_some_and(|m| m.id == pid) {
+        return; // already fetched
+    }
+    if !app.pin_fetch_attempted.insert((conv_id.clone(), pid)) {
+        return;
+    }
+    let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id) else {
+        return;
+    };
+    let Ok(channel) = read_channel_from_conv(conv) else {
+        return; // unsupported members_type — silent, it's a background nicety
+    };
+    let _ = app.bg_worker_tx.send(WorkerRequest::GetPinnedMessage {
+        conv_id,
+        channel,
+        message_id: pid,
+    });
+}
+
+pub fn handle_get_pinned_message_response(
+    app: &mut App,
+    conv_id: String,
+    message_id: u64,
+    result: Result<Option<Message>, KeybaseError>,
+) {
+    match result {
+        Ok(Some(m)) if m.id == message_id => {
+            app.push_cmd(
+                "keybase chat api get (pin)",
+                true,
+                format!("msg #{message_id}"),
+            );
+            app.pin_bodies.insert(conv_id, m);
+        }
+        // Deleted / not returned: leave the honest `#id` fallback. The
+        // attempted-marker stays, so this target isn't re-fetched.
+        Ok(_) => app.push_cmd("keybase chat api get (pin)", false, "message not returned"),
+        Err(e) => app.push_cmd("keybase chat api get (pin)", false, e.to_string()),
     }
 }
 

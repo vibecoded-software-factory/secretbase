@@ -63,6 +63,12 @@ pub struct UserSettings {
     /// unread count + filter) — our TUI has no push notifications to silence, so
     /// muting *is* "stop nagging me in the inbox". Never synced to Keybase.
     pub muted: Vec<String>,
+    /// **Local-only** pin targets, one `"convid:msgid"` pair per entry. The
+    /// JSON API strips the pin payload from reads (see `CLI.md`), so the
+    /// only way to know *which* message a pin points at is to remember the
+    /// pins this client set itself — persisted here so they survive a
+    /// restart, same local-only pattern as [`Self::favorites`].
+    pub pins: Vec<String>,
 }
 
 impl Default for UserSettings {
@@ -80,6 +86,7 @@ impl Default for UserSettings {
             icon_style: "unicode".to_string(),
             favorites: Vec::new(),
             muted: Vec::new(),
+            pins: Vec::new(),
         }
     }
 }

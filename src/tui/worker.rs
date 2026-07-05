@@ -190,6 +190,15 @@ pub enum WorkerRequest {
     UnpinMessage {
         channel: ReadChannel,
     },
+    /// Background fetch of a pinned message whose target is known (from the
+    /// session-local pin record) but older than the loaded window — the 📌
+    /// header needs its body. Routed by variant on the background lane,
+    /// like [`Self::MarkReadSilent`].
+    GetPinnedMessage {
+        conv_id: String,
+        channel: ReadChannel,
+        message_id: u64,
+    },
     DownloadAttachment {
         channel: ReadChannel,
         message_id: u64,
@@ -263,6 +272,12 @@ pub enum WorkerResponse {
     SetConvStatus(Result<(), KeybaseError>),
     PinMessage(Result<(), KeybaseError>),
     UnpinMessage(Result<(), KeybaseError>),
+    /// Response for [`WorkerRequest::GetPinnedMessage`] — routed by variant.
+    GetPinnedMessage {
+        conv_id: String,
+        message_id: u64,
+        result: Result<Option<Message>, KeybaseError>,
+    },
     DownloadAttachment(Result<(), KeybaseError>),
     /// The cache **path** + the download result (the path is carried even on
     /// error so the failure can be pinned to the right attachment).
@@ -595,6 +610,13 @@ mod tests {
         fn pin_message(&mut self, _: &ReadChannel, _: u64) -> Result<(), KeybaseError> {
             Ok(())
         }
+        fn get_message(
+            &mut self,
+            _: &ReadChannel,
+            _: u64,
+        ) -> Result<Option<Message>, KeybaseError> {
+            Ok(None)
+        }
         fn unpin_message(&mut self, _: &ReadChannel) -> Result<(), KeybaseError> {
             Ok(())
         }
@@ -713,6 +735,7 @@ mod tests {
                 Self::SetConvStatus(r) => write!(f, "SetConvStatus({r:?})"),
                 Self::PinMessage(r) => write!(f, "PinMessage({r:?})"),
                 Self::UnpinMessage(r) => write!(f, "UnpinMessage({r:?})"),
+                Self::GetPinnedMessage { .. } => f.write_str("GetPinnedMessage(..)"),
                 Self::DownloadAttachment(r) => write!(f, "DownloadAttachment({r:?})"),
                 Self::PreviewImage(p, r) => write!(f, "PreviewImage({p}, {r:?})"),
                 Self::UploadAttachment(r) => write!(f, "UploadAttachment({r:?})"),
@@ -856,6 +879,15 @@ fn run_worker(
             WorkerRequest::UnpinMessage { channel } => {
                 WorkerResponse::UnpinMessage(run_caught(|| keybase.unpin_message(&channel)))
             }
+            WorkerRequest::GetPinnedMessage {
+                conv_id,
+                channel,
+                message_id,
+            } => WorkerResponse::GetPinnedMessage {
+                conv_id,
+                message_id,
+                result: run_caught(|| keybase.get_message(&channel, message_id)),
+            },
             WorkerRequest::DownloadAttachment {
                 channel,
                 message_id,
