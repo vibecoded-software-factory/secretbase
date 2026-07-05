@@ -608,6 +608,11 @@ pub struct App {
     /// The conversation open before the current one — `Ctrl+O` toggles back
     /// to it (vim's `Ctrl+^` alternate buffer). Session-local.
     pub prev_conv_id: Option<String>,
+    /// Persistent boot-failure notice for the Login screen (e.g. "keybase
+    /// binary not found") — the toast expires in seconds, but a form that
+    /// can never succeed needs the real cause on screen. Cleared when a
+    /// status retry succeeds.
+    pub boot_error: Option<String>,
     pub last_activity: Instant,
     /// Wall-clock timestamp of the last inbox load — used by the run
     /// loop's auto-refresh hook.
@@ -906,6 +911,7 @@ impl App {
             should_quit: false,
             worker_dead: false,
             prev_conv_id: None,
+            boot_error: None,
             last_activity: Instant::now(),
             last_inbox_load: Instant::now(),
             mouse_areas: MouseAreas::default(),

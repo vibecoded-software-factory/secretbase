@@ -189,22 +189,35 @@ fn render_strip(frame: &mut Frame, area: Rect, app: &App, t: &Theme) {
     let sep = Block::default()
         .borders(Borders::TOP)
         .border_style(Style::default().fg(t.muted));
-    let line = match &app.action_state {
-        ActionState::Error(msg) => Line::from(vec![
+    let line = if let Some(msg) = &app.boot_error {
+        // A missing/unrunnable keybase binary makes the whole form moot —
+        // this notice persists (unlike the expiring toast) until a retry
+        // succeeds.
+        Line::from(vec![
             Span::styled(
                 " ✕ ",
                 Style::default().fg(t.error).add_modifier(Modifier::BOLD),
             ),
             Span::styled(msg.clone(), Style::default().fg(t.error)),
-        ]),
-        ActionState::Done(msg) => Line::from(vec![
-            Span::styled(
-                " ✓ ",
-                Style::default().fg(t.success).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(msg.clone(), Style::default().fg(t.success)),
-        ]),
-        _ => Line::from(""),
+        ])
+    } else {
+        match &app.action_state {
+            ActionState::Error(msg) => Line::from(vec![
+                Span::styled(
+                    " ✕ ",
+                    Style::default().fg(t.error).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(msg.clone(), Style::default().fg(t.error)),
+            ]),
+            ActionState::Done(msg) => Line::from(vec![
+                Span::styled(
+                    " ✓ ",
+                    Style::default().fg(t.success).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(msg.clone(), Style::default().fg(t.success)),
+            ]),
+            _ => Line::from(""),
+        }
     };
     frame.render_widget(Paragraph::new(line).block(sep), area);
 }

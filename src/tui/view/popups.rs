@@ -90,7 +90,7 @@ pub fn react_input(frame: &mut Frame, app: &App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "↑↓ select · Enter react · type to search · Esc cancel",
+            "↑↓ select · Enter reacts with ▶ (empty query = your most-used) · Esc",
             Style::default().fg(t.dim),
         )))
         .alignment(Alignment::Center),

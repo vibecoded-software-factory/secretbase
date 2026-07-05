@@ -145,7 +145,14 @@ pub fn request_mark_read(app: &mut App) {
     // channel-mapping result — so the immutable borrow on `app`
     // ends before we touch `app` mutably below.
     let (channel_result, this_conv_id) = {
-        let Some(conv) = app.selected_conversation() else {
+        // The tree selection first; else the open chat — so the palette's
+        // "Mark as read" works with the cursor on a group header too.
+        let conv = app.selected_conversation().or_else(|| {
+            app.open_conv_id
+                .as_ref()
+                .and_then(|id| app.conversations.iter().find(|c| &c.id == id))
+        });
+        let Some(conv) = conv else {
             app.set_action(ActionState::Error("No conversation selected".into()));
             return;
         };

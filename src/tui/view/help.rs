@@ -119,6 +119,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Alt+Shift+K / J", "shade a range (or Alt+Shift+↑/↓)"),
             ("Space", "mark / unmark (multi-select)"),
             ("Shift+X / +", "delete / react — ALL marked (or the cursor)"),
+            (
+                "+ then Enter",
+                "fast react: empty query sends your most-used",
+            ),
             ("y", "copy selection (author + time + body)"),
             (
                 "c",
