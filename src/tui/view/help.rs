@@ -180,6 +180,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 lines.push(section("Channel browser (c)", t));
                 for (k, d) in [
                     ("↑/↓ k/j · PgUp/Dn", "navigate"),
+                    ("/", "filter channels (Enter keeps, Esc clears)"),
                     (
                         "Enter / → / l",
                         "open a joined channel · join one you're not in",
@@ -200,6 +201,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 for (k, d) in [
                     ("↑/↓ k/j · PgUp/Dn", "navigate"),
                     ("a", "add member(s) (comma/space-separated)"),
+                    ("/", "filter members"),
                     ("x", "remove the selected member"),
                     ("F5 / Esc", "refresh / back"),
                 ] {

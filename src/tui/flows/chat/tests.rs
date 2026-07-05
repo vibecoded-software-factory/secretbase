@@ -2264,6 +2264,34 @@ fn emoji_autocomplete_inserts_and_dismisses_per_token() {
 }
 
 #[test]
+fn channel_filter_projects_selection_for_actions() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let ch = |topic: &str| {
+        let mut c = conv(topic, "team", MembersType::Team);
+        c.channel.topic_name = Some(topic.to_string());
+        c
+    };
+    rig.app.channels = vec![ch("general"), ch("dev"), ch("design")];
+    rig.app.channel_filter.insert_str("de");
+    // Filter matches dev + design; cursor 1 must resolve to `design`,
+    // not to the unfiltered index 1 (`dev`).
+    rig.app.channel_selected = 1;
+    let filtered = rig.app.channels_filtered();
+    assert_eq!(filtered, vec![1, 2]);
+    let idx = rig.app.selected_channel_idx().unwrap();
+    assert_eq!(
+        rig.app.channels[idx].channel.topic_name.as_deref(),
+        Some("design")
+    );
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers

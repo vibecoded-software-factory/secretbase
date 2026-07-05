@@ -22,9 +22,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
     let team = app.channel_browser_team.clone().unwrap_or_default();
 
-    let rows: Vec<PickerRow> = app
-        .channels
+    let filtered = app.channels_filtered();
+    let rows: Vec<PickerRow> = filtered
         .iter()
+        .filter_map(|&i| app.channels.get(i))
         .map(|c| {
             let topic = c.channel.topic_name.clone().unwrap_or_default();
             let joined = c.member_status == MemberStatus::Active;
@@ -82,11 +83,17 @@ pub fn draw(frame: &mut Frame, app: &App) {
         frame,
         t,
         PickerModal {
-            title: format!("Channels — {team} · {}", app.channels.len()),
-            query: None,
-            selected: app
-                .channel_selected
-                .min(app.channels.len().saturating_sub(1)),
+            title: format!(
+                "Channels — {team} · {} of {}",
+                filtered.len(),
+                app.channels.len()
+            ),
+            query: if app.channel_filtering || !app.channel_filter.is_empty() {
+                Some((&app.channel_filter, "filter channels…"))
+            } else {
+                None
+            },
+            selected: app.channel_selected.min(filtered.len().saturating_sub(1)),
             rows,
             empty: crate::tui::view::widgets::empty_state_lines(
                 "No channels loaded",
@@ -94,6 +101,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 t,
             ),
             legend: &[
+                ("/", "filter"),
                 ("Enter", "open/join"),
                 ("n", "new"),
                 ("r", "rename"),

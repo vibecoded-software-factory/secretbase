@@ -17,9 +17,10 @@ use crate::tui::view::widgets::{
 pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
 
-    let rows: Vec<PickerRow> = app
-        .members
+    let filtered = app.members_filtered();
+    let rows: Vec<PickerRow> = filtered
         .iter()
+        .filter_map(|&i| app.members.get(i))
         .map(|m| {
             PickerRow::Item(vec![Line::from(vec![
                 Span::styled(m.username.clone(), Style::default().fg(t.foreground)),
@@ -51,11 +52,18 @@ pub fn draw(frame: &mut Frame, app: &App) {
         frame,
         t,
         PickerModal {
-            title: format!("Members — {} · {}", app.members_label, app.members.len()),
-            query: None,
-            selected: app
-                .members_selected
-                .min(app.members.len().saturating_sub(1)),
+            title: format!(
+                "Members — {} · {} of {}",
+                app.members_label,
+                filtered.len(),
+                app.members.len()
+            ),
+            query: if app.member_filtering || !app.member_filter.is_empty() {
+                Some((&app.member_filter, "filter members…"))
+            } else {
+                None
+            },
+            selected: app.members_selected.min(filtered.len().saturating_sub(1)),
             rows,
             empty: crate::tui::view::widgets::empty_state_lines(
                 "No members loaded",
@@ -63,6 +71,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 t,
             ),
             legend: &[
+                ("/", "filter"),
                 ("a", "add"),
                 ("x", "remove"),
                 ("F5", "refresh"),

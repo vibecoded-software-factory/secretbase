@@ -270,6 +270,10 @@ pub struct App {
     pub channel_creating: bool,
     /// New-channel name typed in create/rename mode (shared input).
     pub channel_new_name: LineEditor,
+    /// `/` filter over the channel browser (topic substring).
+    pub channel_filter: LineEditor,
+    /// Whether the channel-browser filter input owns typing.
+    pub channel_filtering: bool,
     /// `Some(old)` while the browser is **renaming** a channel (`r`): the old
     /// channel name; the new name is typed into [`Self::channel_new_name`].
     pub channel_renaming: Option<String>,
@@ -299,6 +303,10 @@ pub struct App {
     pub member_adding: bool,
     /// Comma/space-separated usernames typed in add mode.
     pub member_add_input: LineEditor,
+    /// `/` filter over the Members view (username/full-name substring).
+    pub member_filter: LineEditor,
+    /// Whether the Members filter input owns typing.
+    pub member_filtering: bool,
     /// `Some(username)` while an inline **remove** confirm (`x`) is showing.
     pub member_confirm_remove: Option<String>,
     /// Highlighted button of the inline member-remove confirm (`false` =
@@ -905,6 +913,8 @@ impl App {
             channel_selected: 0,
             channel_creating: false,
             channel_new_name: LineEditor::default(),
+            channel_filter: LineEditor::default(),
+            channel_filtering: false,
             channel_renaming: None,
             channel_confirm_delete: None,
             channel_delete_yes: false,
@@ -916,6 +926,8 @@ impl App {
             members_return: Screen::Inbox,
             member_adding: false,
             member_add_input: LineEditor::default(),
+            member_filter: LineEditor::default(),
+            member_filtering: false,
             member_confirm_remove: None,
             member_remove_yes: false,
             open_conv_id: None,
@@ -1213,6 +1225,42 @@ impl App {
                 SwitcherRow::Header(_) => None,
             })
             .collect()
+    }
+
+    /// Indices into [`Self::channels`] matching the `/` filter — what the
+    /// channel browser renders and `channel_selected` indexes.
+    pub fn channels_filtered(&self) -> Vec<usize> {
+        let q = self.channel_filter.text().trim().to_lowercase();
+        (0..self.channels.len())
+            .filter(|&i| {
+                q.is_empty()
+                    || self.channels[i]
+                        .channel
+                        .topic_name
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&q)
+            })
+            .collect()
+    }
+
+    /// The channel the browser cursor is on, through the filter projection.
+    pub fn selected_channel_idx(&self) -> Option<usize> {
+        self.channels_filtered().get(self.channel_selected).copied()
+    }
+
+    /// Indices into [`Self::members`] matching the `/` filter.
+    pub fn members_filtered(&self) -> Vec<usize> {
+        let q = self.member_filter.text().trim().to_lowercase();
+        (0..self.members.len())
+            .filter(|&i| q.is_empty() || self.members[i].username.to_lowercase().contains(&q))
+            .collect()
+    }
+
+    /// The member the cursor is on, through the filter projection.
+    pub fn selected_member_idx(&self) -> Option<usize> {
+        self.members_filtered().get(self.members_selected).copied()
     }
 
     /// Indices into [`Self::teams`] matching the `/` filter (all when the

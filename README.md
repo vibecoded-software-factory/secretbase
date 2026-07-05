@@ -201,9 +201,9 @@ leave.
 | `r` / `F5`              | Refresh · `Esc` back to inbox |
 
 **Channel browser** (`c` on a team): `Enter` open/join · `n` new · `r` rename ·
-`t` toggle team-default · `m` members · `Shift+L` leave · `x` delete ·
+`/` filter · `t` toggle team-default · `m` members · `Shift+L` leave · `x` delete ·
 `F5` refresh. **Members** (`m` in the browser, or `Alt+P` on an open team
-channel): `a` add · `x` remove · `F5` refresh.
+channel): `/` filter · `a` add · `x` remove · `F5` refresh.
 
 ### Login (signed out)
 
