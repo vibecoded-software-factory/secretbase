@@ -291,9 +291,10 @@ main ──► tui ──► flows ──► ports ◄── adapters
     `InFlight` enums.
   - `action.rs` — `ActionState` (Idle/Running/Done/Error) + `CmdEntry`.
   - `screens.rs` — `Screen`, `Focus` enums.
-  - `flows/` — per-feature `request_*`/`handle_*` pairs (`auth`, `chat`,
-    `teams`, `palette`). `flows::apply_response` routes each `WorkerResponse`
-    to its `handle_*`.
+  - `flows/` — per-feature `request_*`/`handle_*` pairs (`auth`, `teams`,
+    `palette`, and `chat/` split by area: `inbox` · `messages` · `channels`
+    · `attachments` · `search`, re-exported flat as `flows::chat::*`).
+    `flows::apply_response` routes each `WorkerResponse` to its `handle_*`.
   - `input/` — per-screen keyboard handlers (wired in `input/mod.rs`) +
     `mouse.rs`; shared mechanics in `input/common.rs` (`clamp_move`,
     `cycle_focus`, `busy_blocks`, `route_line_editor`, `search_key`,
