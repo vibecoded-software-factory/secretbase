@@ -87,4 +87,20 @@ pub fn draw(frame: &mut Frame, app: &App) {
             },
         );
     }
+    // A failed boot is not a dead end: say how to retry (and how to leave).
+    if matches!(app.action_state, ActionState::Error(_)) && !app.is_busy() {
+        let hint = "r / Enter retry · Ctrl+C quit";
+        let y = (top + LOGO_HEIGHT + 3).min(area.height.saturating_sub(1));
+        let w = hint.chars().count() as u16;
+        let x = area.width.saturating_sub(w) / 2;
+        frame.render_widget(
+            Paragraph::new(Span::styled(hint, Style::default().fg(t.dim))),
+            Rect {
+                x,
+                y,
+                width: w,
+                height: 1,
+            },
+        );
+    }
 }

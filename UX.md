@@ -313,6 +313,9 @@ TTY.
 
 ## Boot & loading
 
+A failed boot (`keybase status` error/timeout) shows the error **plus a
+retry hint** — `r`/`Enter` re-runs the status check; the splash is never a
+dead end that only `Ctrl+C` can leave.
 The **splash doubles as the loading screen** — the app never enters the inbox
 half-loaded. The boot sequence (`flows::auth`): `request_status` shows the
 splash with **"Checking session…"**; on success the splash *stays up* and the

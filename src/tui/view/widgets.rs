@@ -974,7 +974,9 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
     };
 
     if let Some((text, style)) = feedback {
-        let trimmed: String = text.chars().take(area.width as usize).collect();
+        // Fit-or-degrade like every other text surface: a long message ends
+        // in `…`, never a mid-word hard cut.
+        let trimmed = trim_end_ellipsis(&text, area.width as usize);
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(trimmed, style))),
             area,

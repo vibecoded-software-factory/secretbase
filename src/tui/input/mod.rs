@@ -232,7 +232,17 @@ fn handle_key(app: &mut App, key: KeyEvent) {
     }
 
     match app.screen {
-        Screen::Splash => {} // pre-status, no input accepted
+        // Pre-status: the only meaningful input is retrying a failed boot
+        // (`keybase status` timed out / service down) — otherwise the
+        // splash was a dead end that only Ctrl+C could leave.
+        Screen::Splash => {
+            if matches!(key.code, KeyCode::Char('r') | KeyCode::Enter)
+                && !app.is_busy()
+                && matches!(app.action_state, crate::tui::action::ActionState::Error(_))
+            {
+                flows::auth::request_status(app);
+            }
+        }
         Screen::Login => login::handle(app, key),
         Screen::Inbox => inbox::handle(app, key),
         Screen::Teams => teams::handle(app, key),
