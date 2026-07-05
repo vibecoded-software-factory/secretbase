@@ -1677,14 +1677,21 @@ pub fn request_resend_message(app: &mut App) {
         app.set_action(ActionState::Error("No conversation open".into()));
         return;
     };
-    let Some(idx) = app
+    // Oldest failed first — repeated Alt+R walks the queue in order, and
+    // the toast says *which* message went out and how many still wait, so
+    // multiple failures are never a lottery.
+    let failed: Vec<usize> = app
         .outbox
         .iter()
-        .position(|p| p.state == SendState::Failed && p.conv_id == conv_id)
-    else {
+        .enumerate()
+        .filter(|(_, p)| p.state == SendState::Failed && p.conv_id == conv_id)
+        .map(|(i, _)| i)
+        .collect();
+    let Some(&idx) = failed.first() else {
         app.set_action(ActionState::Error("No failed message to resend".into()));
         return;
     };
+    let remaining = failed.len() - 1;
     let Some((_, channel)) = open_channel(app) else {
         return;
     };
@@ -1698,7 +1705,12 @@ pub fn request_resend_message(app: &mut App) {
         return;
     }
     app.outbox[idx].state = SendState::Pending;
-    app.set_action(ActionState::Running("Resending…".into()));
+    let snippet: String = body.lines().next().unwrap_or("").chars().take(24).collect();
+    app.set_action(ActionState::Running(if remaining > 0 {
+        format!("Resending “{snippet}…” ({remaining} more failed)")
+    } else {
+        format!("Resending “{snippet}…”")
+    }));
     let _ = app.worker_tx.send(WorkerRequest::SendMessage {
         channel,
         body,
