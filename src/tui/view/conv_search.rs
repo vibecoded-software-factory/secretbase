@@ -51,10 +51,18 @@ pub fn draw(frame: &mut Frame, app: &App) {
         })
         .collect();
 
-    let empty_msg = if app.conv_search.text().trim().is_empty() {
-        "type a query, then Enter"
+    let empty = if app.conv_search.text().trim().is_empty() {
+        crate::tui::view::widgets::empty_state_lines(
+            "Search this conversation (full history)",
+            &["type a query, then Enter", "n / N cycle hits after a jump"],
+            t,
+        )
     } else {
-        "no matches — Enter to search"
+        crate::tui::view::widgets::empty_state_lines(
+            "No matches",
+            &["Enter re-search", "edit the query", "Esc close"],
+            t,
+        )
     };
     draw_picker_modal(
         frame,
@@ -69,10 +77,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 .conv_search_selected
                 .min(app.conv_search_results.len().saturating_sub(1)),
             rows,
-            empty: vec![Line::from(Span::styled(
-                format!("  {empty_msg}"),
-                Style::default().fg(t.dim),
-            ))],
+            empty,
             legend: &[
                 ("Enter", "search / jump"),
                 ("↑↓", "pick"),

@@ -32,10 +32,18 @@ pub fn giphy_search_input(frame: &mut Frame, app: &App) {
             ])])
         })
         .collect();
-    let empty_msg = if app.giphy_input.text().trim().is_empty() {
-        "type a query, then Enter"
+    let empty = if app.giphy_input.text().trim().is_empty() {
+        crate::tui::view::widgets::empty_state_lines(
+            "Search giphy",
+            &["type a query, then Enter", "Enter on a hit sends the GIF"],
+            t,
+        )
     } else {
-        "no GIFs — Enter to search"
+        crate::tui::view::widgets::empty_state_lines(
+            "No GIFs",
+            &["Enter re-search", "edit the query", "Esc close"],
+            t,
+        )
     };
     draw_picker_modal(
         frame,
@@ -47,10 +55,7 @@ pub fn giphy_search_input(frame: &mut Frame, app: &App) {
                 .giphy_selected
                 .min(app.giphy_results.len().saturating_sub(1)),
             rows,
-            empty: vec![Line::from(Span::styled(
-                format!("  {empty_msg}"),
-                Style::default().fg(t.dim),
-            ))],
+            empty,
             legend: &[
                 ("Enter", "search / send GIF"),
                 ("↑↓", "pick"),
@@ -87,12 +92,20 @@ pub fn react_input(frame: &mut Frame, app: &App) {
             ])])
         })
         .collect();
-    let empty_msg = if app.emojis_loading {
-        "loading emojis…"
+    let empty = if app.emojis_loading {
+        crate::tui::view::widgets::empty_state_lines("Loading emojis…", &[], t)
     } else if app.react.text().trim().is_empty() {
-        "type to search, or a :shortcode:"
+        crate::tui::view::widgets::empty_state_lines(
+            "Pick an emoji",
+            &["type to search", "empty query = your most-used"],
+            t,
+        )
     } else {
-        "no match — Enter sends it as a custom :shortcode:"
+        crate::tui::view::widgets::empty_state_lines(
+            "No match",
+            &["Enter sends it as a custom :shortcode:"],
+            t,
+        )
     };
     draw_picker_modal(
         frame,
@@ -102,10 +115,7 @@ pub fn react_input(frame: &mut Frame, app: &App) {
             query: Some((&app.react, "type to search…")),
             selected: app.react_selected.min(filtered.len().saturating_sub(1)),
             rows,
-            empty: vec![Line::from(Span::styled(
-                format!("  {empty_msg}"),
-                Style::default().fg(t.dim),
-            ))],
+            empty,
             legend: if app.react_to_compose {
                 &[
                     ("↑↓", "select"),
@@ -185,10 +195,11 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
             query: Some((&app.switcher, "type to search…")),
             selected: app.switcher_selected,
             rows,
-            empty: vec![Line::from(Span::styled(
-                "  no conversation matches",
-                Style::default().fg(t.dim),
-            ))],
+            empty: crate::tui::view::widgets::empty_state_lines(
+                "No conversation matches",
+                &["edit the query", "Esc close"],
+                t,
+            ),
             legend: &[
                 ("↑↓", "select"),
                 ("Enter", "go"),

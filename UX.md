@@ -709,6 +709,9 @@ whole modal family now shares the single rounded chrome — position (the
   and inline legend routes here.
 - `widgets::empty_state_lines(head, hints, theme)` — the shared empty-state
   body (bold headline + dim hints), the pattern the tree notices established.
+  **Every empty state teaches**: it names the 2-3 keys that would fill the
+  panel (lazygit's rule) — all pickers/searches now use it; a bare dim line
+  is not an acceptable empty state anymore.
 - `Theme::emphasis()` / `Theme::danger_title()` — the semantic styles behind
   accent+bold and error+bold, instead of inline assemblies.
 - `widgets::key_style(theme)` — the **keybind-letter** style (`accent` + bold).

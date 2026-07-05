@@ -58,10 +58,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
             query: Some((&app.palette, "type a command…")),
             selected: app.palette_selected,
             rows,
-            empty: vec![Line::from(Span::styled(
-                "  no matching command",
-                Style::default().fg(t.dim),
-            ))],
+            empty: crate::tui::view::widgets::empty_state_lines(
+                "No matching command",
+                &["edit the query", "Esc close"],
+                t,
+            ),
             legend: &[("↑↓", "select"), ("Enter", "run"), ("Esc", "cancel")],
             footer: None,
         },
