@@ -153,7 +153,7 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
                 Style::default().fg(t.dim).add_modifier(Modifier::BOLD),
             ))),
             crate::tui::app::SwitcherRow::Conv(ci) => {
-                let selected = conv_i == app.switcher_selected;
+                let selected = conv_i == app.switcher.selected;
                 conv_i += 1;
                 // Effective unread (mute-gated) + the shared dot span, so the
                 // switcher can't drift from the tree's emphasis.
@@ -236,8 +236,8 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
         t,
         PickerModal {
             title: format!("Go to a conversation · {}", app.switcher_selectable().len()),
-            query: Some((&app.switcher, "type to search…")),
-            selected: app.switcher_selected,
+            query: Some((&app.switcher.query, "type to search…")),
+            selected: app.switcher.selected,
             rows,
             empty: crate::tui::view::widgets::empty_state_lines(
                 "No conversation matches",

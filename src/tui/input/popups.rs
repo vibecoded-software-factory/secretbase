@@ -389,14 +389,14 @@ pub fn quick_switcher(app: &mut App, key: KeyEvent) {
     // Alt+1..9 — instant pick-and-activate of the Nth row.
     if let Some(i) = common::alt_digit(&key) {
         if i < app.switcher_selectable().len() {
-            app.switcher_selected = i;
+            app.switcher.selected = i;
             chat::quick_switcher_open_selected(app);
         }
         return;
     }
     let len = app.switcher_selectable().len();
-    if common::list_nav_arrows(&key, len, app.switcher_selected, |i| {
-        app.switcher_selected = i
+    if common::list_nav_arrows(&key, len, app.switcher.selected, |i| {
+        app.switcher.selected = i
     }) {
         return;
     }
@@ -404,10 +404,10 @@ pub fn quick_switcher(app: &mut App, key: KeyEvent) {
         KeyCode::Esc => chat::close_quick_switcher(app),
         KeyCode::Enter => chat::quick_switcher_open_selected(app),
         _ => {
-            let before = app.switcher.text().to_string();
-            common::route_line_editor(&mut app.switcher, key);
-            if app.switcher.text() != before {
-                app.switcher_selected = 0;
+            let before = app.switcher.query.text().to_string();
+            common::route_line_editor(&mut app.switcher.query, key);
+            if app.switcher.query.text() != before {
+                app.switcher.selected = 0;
             }
         }
     }

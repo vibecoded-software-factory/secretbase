@@ -81,8 +81,8 @@ pub fn handle_paste(app: &mut App, text: &str) {
         }
         Screen::SearchGlobal => app.search_global_input.insert_str(&flat()),
         Screen::QuickSwitcher => {
-            app.switcher.insert_str(&flat());
-            app.switcher_selected = 0;
+            app.switcher.query.insert_str(&flat());
+            app.switcher.selected = 0;
         }
         Screen::CommandPalette => {
             app.palette.insert_str(&flat());
