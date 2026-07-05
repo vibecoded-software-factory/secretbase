@@ -254,6 +254,30 @@ pub fn request_reload_messages(app: &mut App) {
     request_load_messages_num(app, loaded.clamp(MESSAGES_PER_PAGE, RELOAD_DEPTH_MAX));
 }
 
+/// Minimum **visible** (post-projection) messages a load should leave on
+/// screen before the handlers stop chaining older pages automatically.
+const BACKFILL_VISIBLE_FLOOR: usize = MESSAGES_PER_PAGE as usize;
+/// Cap on auto-chained older pages per load — bounds the raw fetch at
+/// `BACKFILL_MAX_PAGES × MESSAGES_PER_PAGE` slots even in a conversation
+/// that is almost entirely folded envelopes.
+const BACKFILL_MAX_PAGES: u8 = 8;
+
+/// Chains one more older-page fetch when the projected history is still
+/// too thin to scroll/select over (see [`App::backfill_pages`]). Called by
+/// both read handlers after they merge + reproject.
+fn maybe_backfill(app: &mut App) {
+    if app.messages.len() >= BACKFILL_VISIBLE_FLOOR
+        || app.messages_next.is_none()
+        || app.backfill_pages == 0
+        || app.messages_loading_older
+    {
+        return;
+    }
+    app.backfill_pages -= 1;
+    app.messages_loading_older = true;
+    request_load_older_messages(app);
+}
+
 fn request_load_messages_num(app: &mut App, num: u32) {
     let Some(conv_id) = app.open_conv_id.clone() else {
         app.set_action(ActionState::Error("No conversation open".into()));
@@ -275,6 +299,7 @@ fn request_load_messages_num(app: &mut App, num: u32) {
     // conversation's history).
     app.messages_next = None;
     app.messages_loading_older = false;
+    app.backfill_pages = BACKFILL_MAX_PAGES;
     let peek = !app.settings_cache.auto_mark_read;
     app.submit(
         InFlight::LoadMessages,
@@ -364,6 +389,7 @@ pub fn handle_load_messages_response(
             app.set_action(ActionState::Done(format!("Loaded {n} messages")));
             app.push_cmd("keybase chat api read", true, format!("{n} messages"));
             try_jump_to_search_target(app);
+            maybe_backfill(app);
         }
         Err(e) => {
             app.messages_loading_older = false;
@@ -412,10 +438,19 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
         // (text, attachment, system, pin, join, …) is appended in place,
         // which is instant and needs no round-trip.
         if is_control {
-            // A live edit/delete/reaction reprojects in place — don't yank the
-            // reader to the bottom, and keep the loaded scrollback depth.
-            app.preserve_msg_scroll = true;
-            request_reload_messages(app);
+            // A read already in flight will reflect this op (it was issued
+            // after the op completed server-side) — re-requesting would just
+            // hit the busy guard and spam the log.
+            if !matches!(
+                app.in_flight,
+                Some(crate::tui::worker::InFlight::LoadMessages)
+                    | Some(crate::tui::worker::InFlight::LoadOlderMessages)
+            ) {
+                // A live edit/delete/reaction reprojects in place — don't
+                // yank the reader to the bottom, and keep the loaded depth.
+                app.preserve_msg_scroll = true;
+                request_reload_messages(app);
+            }
         } else if msg_id != 0 && !app.messages.iter().any(|m| m.id == msg_id) {
             app.messages.push(message);
             app.rebuild_msg_meta();
@@ -535,6 +570,7 @@ pub fn handle_load_older_messages_response(
                 format!("{n} messages"),
             );
             try_jump_to_search_target(app);
+            maybe_backfill(app);
         }
         Err(e) => {
             app.messages_loading_older = false;
