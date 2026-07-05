@@ -163,7 +163,12 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
                     if !visible {
                         continue;
                     }
-                    let unread = app.conversations.get(*ci).is_some_and(|c| c.unread);
+                    // Effective unread (mute-gated) + the shared dot span, so
+                    // the switcher can't drift from the tree's emphasis.
+                    let unread = app
+                        .conversations
+                        .get(*ci)
+                        .is_some_and(|c| app.conv_is_unread(c));
                     let label = app
                         .conversations_lowered
                         .get(*ci)
@@ -174,7 +179,8 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
                         Style::default().fg(t.accent),
                     )];
                     if unread {
-                        spans.push(Span::styled("● ", Style::default().fg(t.conv_unread)));
+                        spans.push(crate::tui::view::widgets::unread_dot(t));
+                        spans.push(Span::raw(" "));
                     }
                     spans.push(Span::styled(
                         label,

@@ -503,7 +503,13 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
     } else {
         String::new()
     };
-    let title = format!("─[{tag}]-Command log{pos}");
+    // An empty tag means the panel has no go-to combo on this screen (e.g.
+    // Teams, where the log is display-only) — a tag must never lie.
+    let title = if tag.is_empty() {
+        format!("Command log{pos}")
+    } else {
+        format!("─[{tag}]-Command log{pos}")
+    };
     let block = titled_block(&title, focused, app);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -557,7 +563,9 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
             if let Some(d) = e.duration {
                 spans.push(Span::styled(
                     format!("  ({})", crate::domain::format_duration(d)),
-                    Style::default().fg(app.theme.placeholder),
+                    // dim, not placeholder — the duration is data the user
+                    // reads, and there are only two tiers on this line.
+                    Style::default().fg(app.theme.dim),
                 ));
             }
             let mut line = Line::from(spans);

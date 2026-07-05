@@ -134,8 +134,8 @@ status strip at the bottom.
   marks messages, `Alt+Shift+K/J` (or `Alt+Shift+↑/↓`) shades a range, `y` copies author + time + body
   and `c` copies bodies only (`chat::do_copy_messages(full)`), separated by a
   blank line / newline; with a selection active the action bar collapses to
-  the reduced copy / react set. **`d` delete and `+` react operate on the whole
-  marked set** (or the cursor if nothing's marked). Because the worker is serial,
+  the reduced copy / react set. **`Shift+X` delete and `+` react operate on the
+  whole marked set** (or the cursor if nothing's marked). Because the worker is serial,
   a multi-message action runs as a **sequential batch** (`App::pending_batch` /
   `chat::PendingBatch`) — one request at a time, advanced by each response —
   *not* N concurrent requests the busy-guard would drop; a `Deleting… 3/10`
@@ -190,7 +190,8 @@ buttons (**Log in** / **Log in in terminal**). Fields render via
 `editor_spans`; the paper key uses `editor_spans_masked` (`●`) unless F2
 reveals it. Focus (`App::login_focus`, [`LoginField`]) is shown by an accent
 label / highlighted button; `Tab`/`↑↓` cycle, `Enter` submits, `F2` reveals,
-`F5` retries status, `Esc`/`Ctrl+C` quit. As a **text-entry** screen it owns
+`F5` retries status, `Esc` clears the focused field, `Ctrl+C` quits (the
+only quit, as everywhere). As a **text-entry** screen it owns
 bare letters as typed text (the gradient rule), so its actions live on
 non-text keys. Layout: a whole-screen `Layout::vertical([Fill(2), Length(20),
 Fill(1), Length(1)])` puts the wordmark up top (2/3 of the stars above the
@@ -308,7 +309,9 @@ on their own:
   `chat::handle_incoming_message`), or `▼ latest · End` when merely scrolled up
   with nothing new. It clears the instant the reader is back at the bottom
   (`effective_back == 0`). Purely a paint over the last viewport row — it doesn't
-  touch the scroll / `spans_map` math.
+  touch the scroll / `spans_map` math. With an **empty compose**, `End` jumps
+  to the latest message and `Home` to the oldest loaded (with draft text they
+  stay compose-cursor keys), so the cue's `End` is honest in the default mode.
 
 Loading states stay honest: the message viewer shows "Loading messages…"
 during the first fetch (not the empty-conversation prompt), and the unread
@@ -426,7 +429,9 @@ Conventions:
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
 its panels `─[Alt+F]-Search`, `─[Alt+C]-Chats`, `─[Alt+M]-Messages`, `─[Alt+L]-Command log`; Teams
-uses `─[1]-Teams`, `─[2]-Command log`. `draw_search_box` adds the `─[/]-` tag
+shows plain `Teams` / `Command log` titles (nothing there is Tab-focusable,
+and a tag must never advertise a key that doesn't work). `draw_search_box`
+adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.
 

@@ -77,6 +77,16 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
             maybe_queue_older(app);
         }
         KeyCode::PageDown => app.messages_scroll = app.messages_scroll.saturating_sub(10),
+        // With an empty compose, Home/End act on the **history** (jump to the
+        // oldest loaded / the latest message) — this is what makes the
+        // "▼ N new · End" cue true in the default mode. With draft text they
+        // stay editor keys (cursor to start/end of the line), so nothing is
+        // lost for typing.
+        KeyCode::End if app.compose.is_empty() => app.messages_scroll = 0,
+        KeyCode::Home if app.compose.is_empty() => {
+            app.messages_scroll = app.messages_max_back;
+            maybe_queue_older(app);
+        }
 
         // ── Ctrl shortcuts (don't collide with printable text) ─────────
         KeyCode::F(5) => chat::request_load_messages(app),

@@ -17,8 +17,15 @@ use crate::tui::input::common;
 pub fn handle(app: &mut App, key: KeyEvent) {
     let field = app.login_focus;
     match key.code {
+        // Esc is never app-fatal ("only Ctrl+C quits") — on the login form it
+        // clears the focused field instead, the closest "one level up".
         KeyCode::Esc => {
-            app.should_quit = true;
+            match field {
+                LoginField::Username => app.login_username.clear(),
+                LoginField::Device => app.login_device.clear(),
+                LoginField::PaperKey => app.login_paperkey.clear(),
+                _ => {}
+            }
             return;
         }
         KeyCode::F(5) => {

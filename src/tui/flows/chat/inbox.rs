@@ -83,6 +83,16 @@ pub fn handle_load_inbox_response(
                     }
                 }
             }
+            // The conversation being read can't be "unread" for its reader:
+            // the server's read pointer may lag a beat behind the silent
+            // mark-read the push path fires, and a resync landing in that
+            // window would re-badge the open chat. Trust the local truth.
+            if app.settings_cache.auto_mark_read
+                && let Some(open) = app.open_conv_id.clone()
+                && let Some(c) = app.conversations.iter_mut().find(|c| c.id == open)
+            {
+                c.unread = false;
+            }
             app.inbox_error = None;
             app.rebuild_lowered();
             app.rebuild_filter_preserving_cursor();

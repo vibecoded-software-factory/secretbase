@@ -3374,11 +3374,17 @@ fn input_login_f5_retries_status_check() {
 }
 
 #[test]
-fn input_login_esc_quits() {
+fn input_login_esc_clears_field_never_quits() {
+    // "Only Ctrl+C quits" — Esc on the login form clears the focused field
+    // (the closest "one level up"), it must never be app-fatal.
+    use crate::tui::app::LoginField;
     let mut rig = build_rig();
     rig.app.screen = Screen::Login;
+    rig.app.login_focus = LoginField::Username;
+    rig.app.login_username.set("typo-user");
     press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
-    assert!(rig.app.should_quit);
+    assert!(!rig.app.should_quit);
+    assert!(rig.app.login_username.text().is_empty());
 }
 
 #[test]

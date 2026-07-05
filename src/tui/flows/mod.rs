@@ -65,6 +65,15 @@ pub fn apply_response(app: &mut App, response: WorkerResponse) {
     // `bg_inflight` (never the user's `in_flight` slot), so they must
     // not consume or collide with a user request in flight.
     let response = match response {
+        // Silent mark-read (read-pointer sync for the viewed conversation):
+        // fire-and-forget — a failure only gets a cmd-log line, and the next
+        // push retries naturally.
+        WorkerResponse::MarkReadSilent(r) => {
+            if let Err(e) = r {
+                app.push_cmd("keybase chat api mark (auto)", false, e.to_string());
+            }
+            return;
+        }
         WorkerResponse::ListConversationsSilent(r) => {
             app.bg_inflight = false;
             // Stamp the background op's elapsed time for its cmd_log row.

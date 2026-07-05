@@ -341,6 +341,21 @@ pub fn handle_incoming_message(app: &mut App, conv_id: String, message: Message)
             // the fold — count it for the floating "▼ N new · End" jump cue.
             if app.messages_scroll > 0 && !from_me {
                 app.new_since_scroll += 1;
+            } else if app.messages_scroll == 0 && app.settings_cache.auto_mark_read {
+                // Reading at the bottom: the message is seen the moment it
+                // renders, but only a server-side `mark` moves the read
+                // pointer — without it the next inbox resync re-marks the
+                // conversation you're literally reading as unread (and the
+                // phone badge keeps counting). Fire-and-forget on the
+                // background lane; no in-flight ticket.
+                if let Some(conv) = app.conversations.iter().find(|c| c.id == conv_id)
+                    && let Ok(channel) = read_channel_from_conv(conv)
+                {
+                    let _ = app.bg_worker_tx.send(WorkerRequest::MarkReadSilent {
+                        channel,
+                        message_id: msg_id,
+                    });
+                }
             }
         }
     }

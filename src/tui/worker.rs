@@ -94,6 +94,14 @@ pub enum WorkerRequest {
     /// lane. Identical to [`Self::ListConversations`] but its response
     /// is routed off the user's in-flight slot so it never gates input.
     ListConversationsSilent,
+    /// Background mark-read fired when a pushed message lands in the
+    /// conversation being viewed at the bottom — keeps the server-side read
+    /// pointer (and the phone badge) in step without touching the user's
+    /// in-flight slot. Routed by variant, like the silent list.
+    MarkReadSilent {
+        channel: ReadChannel,
+        message_id: u64,
+    },
     ReadMessages {
         channel: ReadChannel,
         num: u32,
@@ -229,6 +237,8 @@ pub enum WorkerResponse {
     Logout(Result<(), KeybaseError>),
     LoginPaperkey(Result<(), KeybaseError>),
     ListConversations(Result<ListConversationsOk, KeybaseError>),
+    /// Response for [`WorkerRequest::MarkReadSilent`] — routed by variant.
+    MarkReadSilent(Result<(), KeybaseError>),
     /// Response for [`WorkerRequest::ListConversationsSilent`] — routed
     /// in `apply_response` before the `in_flight` match.
     ListConversationsSilent(Result<ListConversationsOk, KeybaseError>),
@@ -681,6 +691,7 @@ mod tests {
                 Self::LoginPaperkey(r) => write!(f, "LoginPaperkey({r:?})"),
                 Self::ListConversations(_) => f.write_str("ListConversations(..)"),
                 Self::ListConversationsSilent(_) => f.write_str("ListConversationsSilent(..)"),
+                Self::MarkReadSilent(r) => write!(f, "MarkReadSilent({r:?})"),
                 Self::ReadMessages(_) => f.write_str("ReadMessages(..)"),
                 Self::MarkRead(r) => write!(f, "MarkRead({r:?})"),
                 Self::SearchInboxHits(_) => f.write_str("SearchInboxHits(..)"),
@@ -736,6 +747,12 @@ fn run_worker(
             WorkerRequest::ListConversationsSilent => {
                 WorkerResponse::ListConversationsSilent(run_caught(|| keybase.list_conversations()))
             }
+            WorkerRequest::MarkReadSilent {
+                channel,
+                message_id,
+            } => WorkerResponse::MarkReadSilent(run_caught(|| {
+                keybase.mark_read(&channel, message_id)
+            })),
             WorkerRequest::ReadMessages {
                 channel,
                 num,
