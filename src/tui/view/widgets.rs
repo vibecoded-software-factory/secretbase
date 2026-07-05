@@ -4,7 +4,7 @@
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
@@ -309,6 +309,132 @@ pub fn legend_line<'a>(items: &[(&'a str, &'a str)], width: usize, theme: &Theme
         used += extra;
     }
     Line::from(spans)
+}
+
+/// A row of [`draw_picker_modal`]'s list: a selectable **item** (possibly
+/// multi-line — e.g. a two-row search hit) or a fixed, non-selectable
+/// section **header** (the switcher's DRAFTS/UNREAD/RECENT, the palette's
+/// categories).
+pub enum PickerRow {
+    Item(Vec<Line<'static>>),
+    Header(Line<'static>),
+}
+
+/// Parameters for [`draw_picker_modal`] — the **one** implementation of the
+/// centered picker skeleton that eight overlays used to hand-roll (query +
+/// windowed list + selection + legend), each with its own scroll math and
+/// selection styling.
+pub struct PickerModal<'a> {
+    /// Block title (spaces added around it; rendered in [`Theme::emphasis`]).
+    pub title: String,
+    /// Query editor + its placeholder; `None` = browse-only modal.
+    pub query: Option<(&'a LineEditor, &'a str)>,
+    pub rows: Vec<PickerRow>,
+    /// Index among the **Item** rows (headers aren't selectable).
+    pub selected: usize,
+    /// Body when `rows` is empty ([`empty_state_lines`] or a dim message).
+    pub empty: Vec<Line<'static>>,
+    /// Bottom legend, rendered through [`legend_line`] (fitted, centered).
+    pub legend: &'a [(&'a str, &'a str)],
+}
+
+/// Inner content width of the standard picker modal — for callers that
+/// right-align within their rows (the palette's keybinding column).
+pub fn modal_inner_width(frame: &Frame) -> usize {
+    center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area())
+        .width
+        .saturating_sub(4) as usize // borders + the `▶ ` gutter
+}
+
+/// Draws the standard centered picker modal: `Clear`, rounded accent block,
+/// emphasized title, optional `⌕` query row (+spacer), a **windowed** list
+/// that keeps the whole selected item visible, the shared `▶` + `selected_bg`
+/// row treatment, and a width-fitted [`legend_line`] footer. Callers style
+/// their content spans; the widget owns geometry, cursor, shading, windowing
+/// and the footer grammar — so they can't drift apart again.
+pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
+    let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
+    frame.render_widget(Clear, area);
+    let block = rounded_block(Style::default().fg(theme.accent)).title(Span::styled(
+        format!(" {} ", m.title.trim()),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let has_query = m.query.is_some();
+    let chunks = Layout::vertical([
+        Constraint::Length(if has_query { 1 } else { 0 }), // query
+        Constraint::Length(if has_query { 1 } else { 0 }), // spacer
+        Constraint::Min(1),                                // list
+        Constraint::Length(1),                             // legend
+    ])
+    .split(inner);
+
+    if let Some((editor, placeholder)) = m.query {
+        let line = if editor.is_empty() {
+            Line::from(vec![
+                Span::styled("⌕ ", Style::default().fg(theme.accent)),
+                Span::styled(
+                    placeholder.to_string(),
+                    Style::default().fg(theme.placeholder),
+                ),
+            ])
+        } else {
+            let mut spans = vec![Span::styled("⌕ ", Style::default().fg(theme.accent))];
+            spans.extend(editor_spans(editor, true, theme));
+            Line::from(spans)
+        };
+        frame.render_widget(Paragraph::new(line), chunks[0]);
+    }
+
+    let vh = chunks[2].height.max(1) as usize;
+    if m.rows.is_empty() {
+        frame.render_widget(Paragraph::new(m.empty), chunks[2]);
+    } else {
+        let mut display: Vec<Line<'static>> = Vec::new();
+        let mut sel_start = 0usize;
+        let mut sel_len = 1usize;
+        let mut item_i = 0usize;
+        for row in m.rows {
+            match row {
+                PickerRow::Header(l) => display.push(l),
+                PickerRow::Item(ls) => {
+                    let selected = item_i == m.selected;
+                    if selected {
+                        sel_start = display.len();
+                        sel_len = ls.len().max(1);
+                    }
+                    for (li, l) in ls.into_iter().enumerate() {
+                        let prefix = if li == 0 && selected { "▶ " } else { "  " };
+                        let mut spans = vec![Span::styled(prefix.to_string(), theme.emphasis())];
+                        spans.extend(l.spans);
+                        let mut l = Line::from(spans);
+                        if selected {
+                            for s in l.spans.iter_mut() {
+                                s.style = s.style.bg(theme.selected_bg);
+                            }
+                        }
+                        display.push(l);
+                    }
+                    item_i += 1;
+                }
+            }
+        }
+        // Keep every line of the selected item inside the viewport.
+        let sel_end = sel_start + sel_len;
+        let scroll = sel_end.saturating_sub(vh);
+        let visible: Vec<Line<'static>> = display.into_iter().skip(scroll).take(vh).collect();
+        frame.render_widget(Paragraph::new(visible), chunks[2]);
+    }
+
+    frame.render_widget(
+        Paragraph::new(legend_line(m.legend, chunks[3].width as usize, theme))
+            .alignment(Alignment::Center),
+        chunks[3],
+    );
 }
 
 /// The shared empty-state body: a bold headline + dim hint lines, indented

@@ -533,6 +533,15 @@ decision.
   single "unread / attention" emphasis (`conv_unread` + bold) and its `●` / `★`
   marker spans. Every unread affordance (the tree's dot + count, the ★
   favourite) draws through these so the emphasis is identical everywhere.
+- `widgets::draw_picker_modal(frame, theme, PickerModal { .. })` — **the**
+  centered picker skeleton every query/list overlay renders through
+  (reaction picker, quick switcher, command palette, in-conversation
+  search): `Clear` + rounded accent block + emphasized title + optional
+  `⌕` query row + a windowed list (multi-line items supported — the
+  two-row search hits; non-selectable section headers supported — the
+  switcher's DRAFTS/UNREAD/RECENT and the palette's categories) with the
+  one `▶` + `selected_bg` selection treatment, and a width-fitted
+  `legend_line` footer. A new picker overlay **must** use it.
 - `widgets::focus_style(theme, focused)` — the single focused/unfocused
   chrome style (accent+bold vs `inactive`); `titled_block`, the Settings
   block and the Login inputs all consume it, so "what focus looks like" is
