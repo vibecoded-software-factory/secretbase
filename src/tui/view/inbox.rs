@@ -294,10 +294,17 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 // The label gets exactly what the row's own markers leave:
                 // a fixed worst-case subtraction wasted 2–4 columns on every
                 // clean row (most of the tree).
+                // A stashed draft and a local mute both need a *positive*
+                // marker: an unsent draft was invisible outside the quick
+                // switcher, and a muted row (dim, no dot) read the same as
+                // "just read".
+                let has_draft = app.drafts.contains_key(&conv.id);
                 let prefix_w = 2
                     + if fav { 2 } else { 0 }
                     + if unread { 2 } else { 0 }
-                    + if mentioned { 2 } else { 0 };
+                    + if mentioned { 2 } else { 0 }
+                    + if has_draft { 2 } else { 0 }
+                    + if muted { 2 } else { 0 };
                 let label = middle_ellipsis(&raw, budget.saturating_sub(prefix_w));
                 let mut spans = vec![Span::raw("  ")];
                 if fav {
@@ -312,6 +319,16 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 // (Keybase GUI uses red for the same signal).
                 if mentioned {
                     spans.push(Span::styled("@ ", t.danger_title()));
+                }
+                // Unsent draft — accent pencil, the strongest "you left
+                // something here" cue short of the mention badge.
+                if has_draft {
+                    spans.push(Span::styled("✎ ", Style::default().fg(t.accent)));
+                }
+                // Local mute — a positive glyph, not just the absence of a
+                // dot (matches the [M]-marker convention of chat TUIs).
+                if muted {
+                    spans.push(Span::styled("⊘ ", Style::default().fg(t.dim)));
                 }
                 spans.push(Span::styled(label, style));
                 // Compact relative age in the `#` column (empty on group

@@ -76,6 +76,9 @@ status strip at the bottom.
     and conversations are **bold** (plus a `●` / unread count) so they stand
     out; an unseen **@mention of you** adds a red `@` (session-local, from
     the push stream — cleared on open; collapsed groups aggregate it), and
+    a conversation with a **stashed draft** carries an accent `✎` and a
+    **locally muted** one a dim `⊘` (a positive marker — dim text alone read
+    the same as "just read"), and
     each conversation row carries a dim **relative age** (`5m`, `2h`) in the
     table's second column — sized to the widest age actually shown, and the
     name label is capped per row by its *own* markers (star/dot/`@`), so
