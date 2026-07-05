@@ -22,7 +22,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // No identity bar on the Home — the user knows who they're logged in as.
     let main = Layout::vertical([
         Constraint::Min(8), // tree column | chat column (both full-height here)
-        Constraint::Length(cmdlog_height(area.height)), // command log (responsive)
+        Constraint::Length(cmdlog_height(area.height, app.settings_cache.cmdlog_rows)), // command log (responsive)
         Constraint::Length(1), // status strip
     ])
     .split(area);

@@ -1149,6 +1149,13 @@ impl App {
             SettingId::DeviceType => or_dash(&self.identity.device_type),
             SettingId::AutoMarkRead => if s.auto_mark_read { "on" } else { "off" }.to_string(),
             SettingId::InboxRefresh => secs_off(s.inbox_refresh_secs),
+            SettingId::CmdlogRows => {
+                if s.cmdlog_rows == 0 {
+                    "hidden".to_string()
+                } else {
+                    s.cmdlog_rows.to_string()
+                }
+            }
             SettingId::ClipboardClear => secs_off(s.clipboard_clear_secs),
             SettingId::ListTimeout => format!("{}s", s.list_inbox_timeout_secs),
             SettingId::DownloadTimeout => format!("{}s", s.download_timeout_secs),
@@ -1177,6 +1184,11 @@ impl App {
                 let n = step_clamp(self.settings_cache.inbox_refresh_secs, delta, 30, 0, 3600);
                 self.settings_cache.inbox_refresh_secs = n;
                 ("inbox_refresh_secs", n.to_string())
+            }
+            SettingId::CmdlogRows => {
+                let n = step_clamp(self.settings_cache.cmdlog_rows, delta, 1, 0, 6);
+                self.settings_cache.cmdlog_rows = n;
+                ("cmdlog_rows", n.to_string())
             }
             SettingId::ClipboardClear => {
                 let n = step_clamp(self.settings_cache.clipboard_clear_secs, delta, 5, 0, 600);

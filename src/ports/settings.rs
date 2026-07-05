@@ -32,6 +32,10 @@ pub struct UserSettings {
     /// devices, deletions, status changes), so it can be infrequent.
     /// `0` disables it.
     pub inbox_refresh_secs: u64,
+    /// Height cap for the command-log panel (rows incl. borders); `0`
+    /// hides it entirely (errors still surface via the sticky toasts).
+    /// The responsive floor logic still shrinks it on short terminals.
+    pub cmdlog_rows: u64,
     /// Which terminal image protocol to use for inline image attachments:
     /// `auto` (detect), `kitty`, `sixel`, `iterm`, `symbols` (chafa ANSI), or
     /// `off` to disable. Every path shells out to `chafa`.
@@ -69,6 +73,7 @@ impl Default for UserSettings {
             download_timeout_secs: 300,
             auto_mark_read: true,
             inbox_refresh_secs: 180,
+            cmdlog_rows: 6,
             image_protocol: "auto".to_string(),
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
