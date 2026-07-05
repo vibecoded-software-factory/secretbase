@@ -24,6 +24,7 @@ pub mod image;
 pub mod input;
 pub mod mouse_areas;
 pub mod screens;
+pub mod settings_model;
 pub mod syntax;
 pub mod theme;
 pub mod view;
