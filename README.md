@@ -178,7 +178,8 @@ range, `v` again clears it (`Shift+↑/↓` still shades too) · `{` / `}` jump 
 the whole marked set** (or the cursor if nothing's marked) — a multi-message
 action runs one at a time and you stay in Select mode with the shading cleared.
 `y` copy selection (author + time + body) · `c` copy bodies only · `o` / `u`
-open / copy the first link · `[` / `]` previous / next @mention of you · `Enter` (or clicking the selected row again) on
+open / copy the first link · `[` / `]` previous / next @mention of you ·
+`w` who reacted · `Enter` (or clicking the selected row again) on
 a **reply** jumps to the quoted message — older pages load automatically if
 it's outside the loaded window; on anything else it returns to compose. **Fast react:** `Esc` (or `Alt+V`) `+` `Enter` —
 three keys — reacts to the latest message with your most-used emoji (the

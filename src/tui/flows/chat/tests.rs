@@ -2292,6 +2292,39 @@ fn channel_filter_projects_selection_for_actions() {
 }
 
 #[test]
+fn show_reactors_lists_names_per_emoji() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    let mut m = text_msg(7, "alice", "jaja");
+    m.reactions = vec![
+        crate::domain::Reaction {
+            emoji: "❤".into(),
+            usernames: vec!["bob".into(), "eve".into()],
+        },
+        crate::domain::Reaction {
+            emoji: "👍".into(),
+            usernames: vec!["carol".into()],
+        },
+    ];
+    rig.app.messages = vec![m];
+    rig.app.rebuild_msg_meta();
+    rig.app.selected_msg_idx = Some(0);
+    show_reactors(&mut rig.app);
+    match &rig.app.action_state {
+        ActionState::Done(s) => {
+            assert!(s.contains("❤ bob, eve"), "was: {s}");
+            assert!(s.contains("👍 carol"), "was: {s}");
+        }
+        other => panic!("expected Done, got {other:?}"),
+    }
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers
