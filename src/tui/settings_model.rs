@@ -67,7 +67,7 @@ impl SettingsSection {
         match self {
             SettingsSection::Identity => &[Username, Device, DeviceType],
             SettingsSection::Theme => &[],
-            SettingsSection::Chat => &[AutoMarkRead, InboxRefresh],
+            SettingsSection::Chat => &[AutoMarkRead, InboxRefresh, CmdlogRows],
             SettingsSection::Emoji => &[EmojiStyle, IconStyle],
             SettingsSection::Clipboard => &[ClipboardClear],
             SettingsSection::Network => &[ListTimeout, DownloadTimeout],
@@ -86,6 +86,7 @@ pub enum SettingId {
     DeviceType,
     AutoMarkRead,
     InboxRefresh,
+    CmdlogRows,
     ClipboardClear,
     ListTimeout,
     DownloadTimeout,
@@ -134,6 +135,7 @@ impl SettingId {
             SettingId::DeviceType => "Device type",
             SettingId::AutoMarkRead => "Mark read on open",
             SettingId::InboxRefresh => "Inbox resync",
+            SettingId::CmdlogRows => "Command log rows",
             SettingId::ClipboardClear => "Clipboard auto-clear",
             SettingId::ListTimeout => "Inbox list timeout",
             SettingId::DownloadTimeout => "Download timeout",
@@ -149,6 +151,11 @@ impl SettingId {
         match self {
             SettingId::Username | SettingId::Device | SettingId::DeviceType => SettingKind::Info,
             SettingId::AutoMarkRead => SettingKind::Toggle,
+            SettingId::CmdlogRows => SettingKind::Number {
+                step: 1,
+                min: 0,
+                max: 6,
+            },
             SettingId::InboxRefresh => SettingKind::Number {
                 step: 30,
                 min: 0,

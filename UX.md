@@ -813,7 +813,8 @@ panel's "Applies live…" note — so descriptions never float in the middle. Th
 sections (`SettingsSection`): **Identity**
 (read-only — your username + device + device type, from `keybase status`),
 **Theme** (the live preset picker), **Chat** (`auto_mark_read`,
-`inbox_refresh_secs`), **Emoji** — two glyph-appearance levers (a TUI can't set
+`inbox_refresh_secs`, `cmdlog_rows` — the command-log height cap, `0` hides
+the panel entirely; Tab and `Alt+L` skip it while hidden), **Emoji** — two glyph-appearance levers (a TUI can't set
 the terminal's font, so the only knob is *which glyph* to emit): `emoji_style`
 (`glyph` vs `:shortcode:`, reaction display) and `icon_style` (`unicode` — the
 headless-safe default that renders on any font — vs `nerd` for nerd-font glyphs,
@@ -843,7 +844,8 @@ one is backed by code; the file/function is named so you can find it.
 
 **Vertical stack:** `header (3) · body (Min 5) · cmdlog · status (1)`. The
 **body flexes**; the **command log is height-responsive** —
-`widgets::cmdlog_height(area.height)` yields rows to the body as the terminal
+`widgets::cmdlog_height(area.height, cmdlog_rows)` (the second argument is
+the user's height cap; `0` = hidden) yields rows to the body as the terminal
 gets short (6 when roomy → 3 at the floor) **monotonically** (a taller terminal
 never shrinks the body). Neither the Home (`view::inbox`) nor **Teams**
 (`view::teams`) reserves an identity row — the username/device live in

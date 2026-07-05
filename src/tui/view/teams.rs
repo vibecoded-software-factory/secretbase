@@ -23,7 +23,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(5),
-            Constraint::Length(cmdlog_height(area.height)), // responsive command log
+            Constraint::Length(cmdlog_height(area.height, app.settings_cache.cmdlog_rows)), // responsive command log
             Constraint::Length(1),
         ])
         .split(area);

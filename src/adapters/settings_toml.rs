@@ -164,6 +164,7 @@ impl SettingsPort for TomlSettingsAdapter {
             download_timeout_secs: DEFAULT_DOWNLOAD_TIMEOUT_SECS,
             auto_mark_read: true,
             inbox_refresh_secs: DEFAULT_INBOX_REFRESH_SECS,
+            cmdlog_rows: 6,
             image_protocol: "auto".to_string(),
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
@@ -229,6 +230,11 @@ impl SettingsPort for TomlSettingsAdapter {
                 }
                 "auto_mark_read" => {
                     cfg.auto_mark_read = value == "true";
+                }
+                "cmdlog_rows" => {
+                    if let Ok(n) = value.parse::<u64>() {
+                        cfg.cmdlog_rows = n.min(6);
+                    }
                 }
                 "inbox_refresh_secs" => {
                     if let Ok(n) = value.parse::<u64>() {

@@ -19,9 +19,16 @@ const FOCUS_ORDER: [Focus; 4] = [Focus::Search, Focus::Tree, Focus::Chat, Focus:
 
 /// Cycles focus, skipping the chat panel when no conversation is open.
 fn cycle(app: &App, forward: bool) -> Focus {
-    let f = common::cycle_focus(&FOCUS_ORDER, app.focus, forward);
-    if f == Focus::Chat && app.open_conv_id.is_none() {
-        return common::cycle_focus(&FOCUS_ORDER, f, forward);
+    let mut f = common::cycle_focus(&FOCUS_ORDER, app.focus, forward);
+    // Skip unreachable panels: a closed chat, and the command log when the
+    // `cmdlog_rows` setting hides it.
+    for _ in 0..FOCUS_ORDER.len() {
+        let skip = (f == Focus::Chat && app.open_conv_id.is_none())
+            || (f == Focus::CmdLog && app.settings_cache.cmdlog_rows == 0);
+        if !skip {
+            break;
+        }
+        f = common::cycle_focus(&FOCUS_ORDER, f, forward);
     }
     f
 }
@@ -141,7 +148,11 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::Char('l') | KeyCode::Char('L') if alt => {
-            set_focus(app, Focus::CmdLog);
+            // Gated when the `cmdlog_rows` setting hides the panel — a
+            // go-to combo must never land on an invisible target.
+            if app.settings_cache.cmdlog_rows > 0 {
+                set_focus(app, Focus::CmdLog);
+            }
             return;
         }
         KeyCode::Char('g') | KeyCode::Char('G') if ctrl => {

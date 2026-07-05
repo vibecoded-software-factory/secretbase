@@ -73,8 +73,11 @@ pub fn tree_pane_width(total: u16) -> u16 {
 /// body (chat / list) never starves on a short terminal. Full 6 rows when
 /// there's room; it yields rows to the body as height gets tight, monotonically
 /// (a taller terminal never shrinks the body). Used by every signed-in stack.
-pub fn cmdlog_height(total: u16) -> u16 {
-    if total >= 28 {
+pub fn cmdlog_height(total: u16, cap: u64) -> u16 {
+    if cap == 0 {
+        return 0; // hidden by the `cmdlog_rows` setting
+    }
+    let responsive = if total >= 28 {
         6
     } else if total >= 22 {
         5
@@ -82,7 +85,8 @@ pub fn cmdlog_height(total: u16) -> u16 {
         4
     } else {
         3
-    }
+    };
+    responsive.min(cap.min(u16::MAX as u64) as u16)
 }
 
 /// One row of the help popup (key + description).
@@ -1170,11 +1174,14 @@ mod tests {
 
     #[test]
     fn cmdlog_height_yields_to_body_without_starving_it() {
-        assert_eq!(cmdlog_height(18), 3); // floor → smallest log
-        assert_eq!(cmdlog_height(40), 6); // roomy → full log
+        assert_eq!(cmdlog_height(18, 6), 3); // floor → smallest log
+        assert_eq!(cmdlog_height(40, 6), 6); // roomy → full log
+        // The user's cap wins under the responsive size; 0 hides the panel.
+        assert_eq!(cmdlog_height(40, 4), 4);
+        assert_eq!(cmdlog_height(40, 0), 0);
         // The body (height − 4 fixed chrome − cmdlog) must never shrink as the
         // terminal grows — the regression a naive two-tier split would cause.
-        let body = |h: u16| h.saturating_sub(4).saturating_sub(cmdlog_height(h));
+        let body = |h: u16| h.saturating_sub(4).saturating_sub(cmdlog_height(h, 6));
         let mut prev = 0;
         for h in 18..=60 {
             let b = body(h);
