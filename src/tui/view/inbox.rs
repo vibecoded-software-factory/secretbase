@@ -169,6 +169,10 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
     let icon_set = crate::tui::icons::resolve(&app.settings_cache.icon_style);
+    let now_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let model = app.tree_rows();
     // Conversations exist, but the active filter / search matches none of them.
     if model.is_empty() {
@@ -194,6 +198,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                 is_team,
                 collapsed,
                 unread,
+                mentioned,
                 ..
             } => {
                 let arrow = if *collapsed { "▸" } else { "▾" };
@@ -217,6 +222,10 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                     name_spans[0].style = style;
                     name_spans.push(Span::raw(" "));
                     name_spans.push(unread_dot(&t));
+                }
+                if *mentioned {
+                    name_spans.push(Span::raw(" "));
+                    name_spans.push(Span::styled("@", t.danger_title()));
                 }
                 Row::new(vec![
                     ratatui::widgets::Cell::from(Line::from(name_spans)),
@@ -261,10 +270,24 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
                     spans.push(unread_dot(&t));
                     spans.push(Span::raw(" "));
                 }
+                // Unseen @mention of you — the strongest pull in the tree
+                // (Keybase GUI uses red for the same signal).
+                if app.mentioned.contains(&conv.id) {
+                    spans.push(Span::styled("@ ", t.danger_title()));
+                }
                 spans.push(Span::styled(label, style));
+                // Compact relative age in the `#` column (empty on group
+                // rows): how stale is this conversation, at a glance.
+                let age = if conv.active_at > 0 && now_s >= conv.active_at {
+                    crate::domain::format_duration(std::time::Duration::from_secs(
+                        now_s - conv.active_at,
+                    ))
+                } else {
+                    String::new()
+                };
                 Row::new(vec![
                     ratatui::widgets::Cell::from(Line::from(spans)),
-                    ratatui::widgets::Cell::from(Span::raw("")),
+                    ratatui::widgets::Cell::from(Span::styled(age, Style::default().fg(t.dim))),
                 ])
             }
         })

@@ -1767,6 +1767,46 @@ fn search_hits_are_retained_and_cycled_with_n() {
 }
 
 #[test]
+fn mention_badge_set_by_push_and_cleared_on_open() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![
+            conv("here", "alice", MembersType::ImpTeamNative),
+            conv("other", "bob", MembersType::ImpTeamNative),
+        ],
+        "here",
+    );
+    rig.app.identity.username = "me".into();
+    // A push mentioning me in a conversation I'm NOT viewing → badge.
+    let mut m = text_msg(9, "bob", "hey @me look");
+    m.mentions = vec!["Me".into()]; // resolved mentions are case-insensitive
+    handle_incoming_message(&mut rig.app, "other".into(), m);
+    assert!(rig.app.mentioned.contains("other"));
+    // …and the group row aggregates it while collapsed.
+    let has_flag = rig.app.tree_rows().iter().any(|r| {
+        matches!(
+            r,
+            crate::tui::app::TreeRow::Group {
+                mentioned: true,
+                ..
+            }
+        )
+    });
+    assert!(has_flag, "group header carries the mention flag");
+    // Opening the conversation clears it (the mention is being seen).
+    open_conversation_by_id(&mut rig.app, "other".into());
+    pump_until_idle(&mut rig.app);
+    assert!(!rig.app.mentioned.contains("other"));
+    // A mention in the conversation being viewed never badges.
+    let mut m2 = text_msg(10, "alice", "@me here");
+    m2.mentions = vec!["me".into()];
+    handle_incoming_message(&mut rig.app, "other".into(), m2);
+    assert!(!rig.app.mentioned.contains("other"));
+}
+
+#[test]
 fn ctrl_n_cycles_unread_conversations_by_recency() {
     let mut rig = build_rig();
     let mut a = conv("a", "alice", MembersType::ImpTeamNative);
