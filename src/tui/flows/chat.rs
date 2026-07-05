@@ -32,9 +32,15 @@ pub const MESSAGES_PER_PAGE: u32 = 50;
 ///   originals, so a deleted message disappears rather than leaving a stray
 ///   `(deleted msg #N)` line at deletion time ([`crate::domain::fold_deletes`]).
 fn project_messages(msgs: Vec<Message>) -> Vec<Message> {
+    use crate::domain::MessageContent;
     let mut out: Vec<Message> = msgs
         .into_iter()
-        .filter(|m| !matches!(m.content, crate::domain::MessageContent::Reaction { .. }))
+        .filter(|m| !matches!(m.content, MessageContent::Reaction { .. }))
+        // A giphy unfurl card duplicates what the reader already sees: the
+        // GIF renders inline above it (web previews on) or the giphy URL is
+        // right there in the text (off) — either way, noise. Generic site
+        // cards survive: their title is real information.
+        .filter(|m| !matches!(&m.content, MessageContent::Unfurl { label } if label == "GIPHY"))
         .collect();
     crate::domain::fold_edits(&mut out);
     crate::domain::fold_deletes(&mut out);

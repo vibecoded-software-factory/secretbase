@@ -199,8 +199,10 @@ a grid. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row) and scroll the wheel to page history
 (`mouse_areas` carries the messages viewport rect + a per-message row map).
 Link previews (`unfurl` messages) render as a compact dim card
-(`↳ preview · GIPHY` / the site title) grouped under the URL message that
-triggered them — the re-hosted media in the unfurl is service-encrypted and
+(`↳ preview · <site title>`) grouped under the URL message that
+triggered them — **giphy cards are dropped in projection**: the GIF itself
+renders inline (or the URL is visible when previews are off), so the card
+was pure noise — the re-hosted media in the unfurl is service-encrypted and
 unreachable over the JSON API. As pushes they are **decorations**: appended
 live but never marking unread or bumping recency (the URL message already
 did). **Giphy GIFs render inline** anyway: a text message linking
