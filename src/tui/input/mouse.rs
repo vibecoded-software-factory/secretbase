@@ -198,7 +198,7 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
             if let Some(target) = app.mouse_areas.focus_for(c, r) {
                 app.focus = target;
                 if target == crate::tui::screens::Focus::CmdLog {
-                    app.enter_cmdlog();
+                    app.cmdlog.enter();
                 }
             }
         }
@@ -209,10 +209,10 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
             chat::tree_move(app, 1);
         }
         MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.cmd_log) => {
-            app.cmdlog_move(-1);
+            app.cmdlog.move_cursor(-1);
         }
         MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.cmd_log) => {
-            app.cmdlog_move(1);
+            app.cmdlog.move_cursor(1);
         }
         MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.messages) => {
             wheel_messages(app, -1);

@@ -524,16 +524,17 @@ pub fn do_copy_conversation_label(app: &mut App) {
 /// (dur)`); otherwise just the `detail`. The selection is kept so the user
 /// can copy it both ways.
 pub fn do_copy_cmd_log(app: &mut App, full: bool) {
-    let len = app.cmd_log.len();
+    let len = app.cmdlog.entries.len();
     if len == 0 {
         app.set_action(ActionState::Error("Command log is empty".into()));
         return;
     }
-    let idxs: Vec<usize> = if app.cmdlog_marks.is_empty() {
-        vec![app.cmdlog_cursor.min(len - 1)]
+    let idxs: Vec<usize> = if app.cmdlog.marks.is_empty() {
+        vec![app.cmdlog.cursor.min(len - 1)]
     } else {
         let mut v: Vec<usize> = app
-            .cmdlog_marks
+            .cmdlog
+            .marks
             .iter()
             .copied()
             .filter(|&i| i < len)
@@ -543,7 +544,7 @@ pub fn do_copy_cmd_log(app: &mut App, full: bool) {
     };
     let text = idxs
         .iter()
-        .map(|&i| cmd_log_line_text(&app.cmd_log[i], full))
+        .map(|&i| cmd_log_line_text(&app.cmdlog.entries[i], full))
         .collect::<Vec<_>>()
         .join("\n");
     let n = idxs.len();
