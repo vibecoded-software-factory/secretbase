@@ -1711,6 +1711,59 @@ fn collapsed_group_hides_its_conversations() {
 }
 
 #[test]
+fn tree_forward_expands_but_never_collapses() {
+    use crate::tui::app::TreeRow;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("t1", "acme", MembersType::Team)],
+        "t1",
+    );
+    // Cursor on the team group header (collapse it first: preload expands).
+    rig.app.toggle_collapsed("acme");
+    let group_pos = rig
+        .app
+        .tree_rows()
+        .iter()
+        .position(|r| matches!(r, TreeRow::Group { key, .. } if key == "acme"))
+        .expect("group row");
+    rig.app.tree_selected = group_pos;
+    let collapsed_len = rig.app.tree_rows().len();
+    // → on a collapsed group expands it…
+    tree_forward(&mut rig.app);
+    assert!(rig.app.tree_rows().len() > collapsed_len, "expanded");
+    // …and → on an expanded group is a no-op (never collapses — the
+    // documented "l can't loop open↔closed" invariant).
+    let expanded_len = rig.app.tree_rows().len();
+    rig.app.tree_selected = group_pos;
+    tree_forward(&mut rig.app);
+    assert_eq!(rig.app.tree_rows().len(), expanded_len, "no collapse on →");
+}
+
+#[test]
+fn tree_back_collapses_expanded_group() {
+    use crate::tui::app::TreeRow;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("t1", "acme", MembersType::Team)],
+        "t1",
+    );
+    let group_pos = rig
+        .app
+        .tree_rows()
+        .iter()
+        .position(|r| matches!(r, TreeRow::Group { key, .. } if key == "acme"))
+        .expect("group row");
+    rig.app.tree_selected = group_pos;
+    let expanded_len = rig.app.tree_rows().len();
+    tree_back(&mut rig.app);
+    assert!(rig.app.tree_rows().len() < expanded_len, "collapsed");
+}
+
+#[test]
 fn incoming_push_keeps_tree_cursor_on_selected_conversation() {
     use crate::tui::app::TreeRow;
     let mut rig = build_rig();

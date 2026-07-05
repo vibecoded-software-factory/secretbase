@@ -26,7 +26,7 @@
 //! when it doesn't.
 
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::Duration;
 
@@ -264,7 +264,7 @@ fn spawn(family: &str) -> std::io::Result<Live> {
     let stdin = child.stdin.take().expect("stdin piped");
     let stdout = child.stdout.take().expect("stdout piped");
     let (tx, rx) = channel::<ReadItem>();
-    std::thread::spawn(move || reader_loop(stdout, tx));
+    std::thread::spawn(move || reader_loop(BufReader::new(stdout), tx));
     Ok(Live { child, stdin, rx })
 }
 
@@ -272,8 +272,9 @@ fn spawn(family: &str) -> std::io::Result<Live> {
 /// object. Accumulates across lines so a (rare) pretty-printed reply is
 /// still delivered as a single object. Exits on EOF, read error, a
 /// runaway buffer, or once the receiver is gone.
-fn reader_loop(stdout: ChildStdout, tx: Sender<ReadItem>) {
-    let mut reader = BufReader::new(stdout);
+/// Generic over the reader so the framing (accumulate → complete JSON →
+/// one [`ReadItem::Json`]) is unit-testable with an in-memory cursor.
+fn reader_loop<R: BufRead>(mut reader: R, tx: Sender<ReadItem>) {
     let mut line = String::new();
     let mut acc = String::new();
     loop {
@@ -302,5 +303,59 @@ fn reader_loop(stdout: ChildStdout, tx: Sender<ReadItem>) {
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+    use std::sync::mpsc::channel;
+
+    fn frames(input: &str) -> Vec<ReadItem> {
+        let (tx, rx) = channel();
+        reader_loop(BufReader::new(Cursor::new(input.as_bytes().to_vec())), tx);
+        rx.try_iter().collect()
+    }
+
+    #[test]
+    fn reader_emits_one_frame_per_compact_json_line() {
+        let items = frames("{\"result\":1}\n{\"result\":2}\n");
+        match &items[..] {
+            [ReadItem::Json(a), ReadItem::Json(b), ReadItem::Closed] => {
+                assert!(a.contains("\"result\":1"));
+                assert!(b.contains("\"result\":2"));
+            }
+            other => panic!("unexpected frames: {} items", other.len()),
+        }
+    }
+
+    #[test]
+    fn reader_accumulates_pretty_printed_json_into_one_frame() {
+        let items = frames("{\n  \"result\": {\n    \"ok\": true\n  }\n}\n");
+        match &items[..] {
+            [ReadItem::Json(a), ReadItem::Closed] => {
+                assert!(a.contains("\"ok\": true"));
+            }
+            other => panic!("unexpected frames: {} items", other.len()),
+        }
+    }
+
+    #[test]
+    fn reader_reports_closed_on_eof_and_ignores_garbage_prefix() {
+        // Garbage that never parses just accumulates until EOF → Closed
+        // (the runaway-buffer cap guards the pathological case).
+        let items = frames("not json at all\n");
+        assert!(matches!(&items[..], [ReadItem::Closed]));
+    }
+
+    #[test]
+    fn note_failure_disables_after_max_consecutive_failures() {
+        let mut s = ApiSession::new("chat");
+        assert!(!s.disabled);
+        for _ in 0..MAX_FAILURES {
+            s.note_failure();
+        }
+        assert!(s.disabled, "stream must disable after repeated failures");
     }
 }
