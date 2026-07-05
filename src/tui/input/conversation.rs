@@ -106,6 +106,9 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         KeyCode::Char('v') | KeyCode::Char('V') if alt => chat::enter_select_mode(app),
         KeyCode::Char('r') | KeyCode::Char('R') if alt => chat::request_resend_message(app),
         KeyCode::Char('a') | KeyCode::Char('A') if alt => open_attach_picker(app),
+        // Emoji into the draft — the picker in insert mode (also the compose
+        // bar's clickable chip).
+        KeyCode::Char('i') | KeyCode::Char('I') if alt => chat::open_emoji_for_compose(app),
         // Members of the open conversation (team channels only).
         KeyCode::Char('p') | KeyCode::Char('P') if alt => chat::open_members_from_conversation(app),
 

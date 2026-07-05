@@ -152,6 +152,7 @@ collapse a group); the header search fuzzy-filters it.
 | `Ctrl+F`                | Search this conversation (jump to a match) |
 | mouse                   | Click a message to select, scroll to page history |
 | `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
+| `Alt+I`                 | Insert an emoji into the draft |
 | `Alt+U`                 | Unpin channel |
 | `Alt+H`                 | Hide the pin banner (local only) |
 | `Alt+R`                 | Resend failed message |

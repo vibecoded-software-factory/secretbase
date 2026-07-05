@@ -17,11 +17,14 @@ use crate::tui::view::widgets::{PickerModal, PickerRow, draw_picker_modal};
 /// (frecency-sorted), a custom-`:shortcode:` fallback when nothing matches.
 pub fn react_input(frame: &mut Frame, app: &App) {
     let t = &app.theme;
-    let title = app
-        .selected_msg_idx
-        .and_then(|i| app.messages.get(i))
-        .map(|m| format!("React to #{} · by {}", m.id, m.sender))
-        .unwrap_or_else(|| "React".to_string());
+    let title = if app.react_to_compose {
+        "Insert emoji".to_string()
+    } else {
+        app.selected_msg_idx
+            .and_then(|i| app.messages.get(i))
+            .map(|m| format!("React to #{} · by {}", m.id, m.sender))
+            .unwrap_or_else(|| "React".to_string())
+    };
 
     let filtered = app.filtered_emoji_indices();
     let rows: Vec<PickerRow> = filtered
@@ -56,11 +59,19 @@ pub fn react_input(frame: &mut Frame, app: &App) {
                 format!("  {empty_msg}"),
                 Style::default().fg(t.dim),
             ))],
-            legend: &[
-                ("↑↓", "select"),
-                ("Enter", "reacts with ▶ (empty query = most-used)"),
-                ("Esc", "cancel"),
-            ],
+            legend: if app.react_to_compose {
+                &[
+                    ("↑↓", "select"),
+                    ("Enter", "inserts ▶ into the draft"),
+                    ("Esc", "cancel"),
+                ]
+            } else {
+                &[
+                    ("↑↓", "select"),
+                    ("Enter", "reacts with ▶ (empty query = most-used)"),
+                    ("Esc", "cancel"),
+                ]
+            },
             footer: None,
         },
     );

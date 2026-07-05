@@ -90,6 +90,7 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
             ("Ctrl+P", "command palette — run any action"),
             ("mouse", "click a message to select, scroll to page history"),
             ("Alt+V", "select mode — act on a message"),
+            ("Alt+I", "insert an emoji into the draft (picker)"),
             ("Alt+U", "unpin channel"),
             (
                 "Alt+H",

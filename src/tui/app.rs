@@ -360,6 +360,10 @@ pub struct App {
     /// `(conv, msg_id)` pin-body fetches already issued — one attempt per
     /// target, so a failing `get` can't loop on every reload.
     pub pin_fetch_attempted: std::collections::HashSet<(String, u64)>,
+    /// When true, the emoji picker (`Screen::React`) inserts the chosen
+    /// emoji into the **compose draft** instead of reacting to a message —
+    /// the compose bar's emoji button / `Alt+I`.
+    pub react_to_compose: bool,
     /// Id of the newest pin **envelope** in the loaded history (the `pin`
     /// message itself, not its target) — what a local dismiss records.
     pub pin_envelope_id: Option<u64>,
@@ -894,6 +898,7 @@ impl App {
             pinned_local,
             pin_bodies: HashMap::new(),
             pin_fetch_attempted: std::collections::HashSet::new(),
+            react_to_compose: false,
             pin_envelope_id: None,
             pins_dismissed,
             conv_headline: None,

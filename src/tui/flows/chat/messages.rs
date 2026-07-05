@@ -1179,6 +1179,7 @@ pub fn open_react_for_selected(app: &mut App) {
         app.set_action(ActionState::Error("No message selected".into()));
         return;
     }
+    app.react_to_compose = false;
     app.react.clear();
     app.react_selected = 0;
     // Fresh query + possibly new frecency since the last open → refilter.
@@ -1187,6 +1188,23 @@ pub fn open_react_for_selected(app: &mut App) {
     // The standard set is seeded at construction; lazily fetch the team's
     // custom emojis the first time the picker opens (merged on top), cached
     // for the rest of the session.
+    if !app.emojis_loaded {
+        request_emojis(app);
+    }
+}
+
+/// Opens the emoji picker in **insert** mode: the chosen emoji lands in the
+/// compose draft at the cursor (the compose bar's `emoji` chip / `Alt+I`),
+/// instead of reacting to a message. Same picker, same catalogue.
+pub fn open_emoji_for_compose(app: &mut App) {
+    if app.open_conv_id.is_none() {
+        return;
+    }
+    app.react_to_compose = true;
+    app.react.clear();
+    app.react_selected = 0;
+    app.rebuild_emoji_filter();
+    app.screen = crate::tui::screens::Screen::React;
     if !app.emojis_loaded {
         request_emojis(app);
     }
@@ -1247,6 +1265,7 @@ pub fn handle_emojis_response(
 }
 
 pub fn close_react(app: &mut App) {
+    app.react_to_compose = false;
     app.react.clear();
     // Same as delete: cancelling a react launched from Compose returns
     // to Compose, not Select mode.
@@ -1283,6 +1302,12 @@ pub fn request_send_reaction(app: &mut App) {
     };
     if body.is_empty() {
         app.set_action(ActionState::Error("Reaction is empty".into()));
+        return;
+    }
+    // Insert mode: the emoji goes into the draft, nothing is posted.
+    if app.react_to_compose {
+        app.compose.insert_str(&body);
+        close_react(app);
         return;
     }
     let mut ids = selection_target_ids(app, false);

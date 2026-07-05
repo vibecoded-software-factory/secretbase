@@ -1973,6 +1973,32 @@ fn dismissed_pin_banner_stays_hidden_until_a_newer_pin() {
 }
 
 #[test]
+fn emoji_picker_insert_mode_edits_the_draft_and_posts_nothing() {
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.compose.insert_str("hola ");
+    open_emoji_for_compose(&mut rig.app);
+    assert!(matches!(rig.app.screen, Screen::React));
+    assert!(rig.app.react_to_compose);
+    // Pick the first emoji in the (seeded standard) catalogue.
+    request_send_reaction(&mut rig.app);
+    // Back in the conversation, the glyph is in the draft, nothing in flight.
+    assert!(matches!(rig.app.screen, Screen::Inbox));
+    assert!(!rig.app.react_to_compose);
+    assert!(rig.app.compose.text().len() > "hola ".len());
+    assert!(rig.app.in_flight.is_none());
+    // A later real react is unaffected by the insert flag.
+    rig.app.selected_msg_idx = Some(0);
+    open_react_for_selected(&mut rig.app);
+    assert!(!rig.app.react_to_compose);
+}
+
+#[test]
 fn pin_without_payload_shows_presence_and_uses_local_target() {
     // The JSON API strips the pin payload (convertMsgBody omits Pin__), so
     // a real read returns {"type":"pin"} → target_id 0. Presence must still
