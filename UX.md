@@ -673,6 +673,9 @@ whole modal family now shares the single rounded chrome — position (the
   single "unread / attention" emphasis (`conv_unread` + bold) and its `●` / `★`
   marker spans. Every unread affordance (the tree's dot + count, the ★
   favourite) draws through these so the emphasis is identical everywhere.
+- Every picker/search **title carries its live count** (`· N` / `N hits` /
+  `shown of total`) and the in-conversation `n`/`N` cycling toasts
+  `Hit x of y` — the fzf/tig counter discipline, applied uniformly.
 - `widgets::draw_picker_modal(frame, theme, PickerModal { .. })` — **the**
   centered picker skeleton every query/list overlay renders through
   (reaction picker, quick switcher, command palette, in-conversation

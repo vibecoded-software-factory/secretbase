@@ -190,6 +190,14 @@ pub fn conv_search_cycle(app: &mut App, delta: isize) {
     app.focus = crate::tui::screens::Focus::Chat;
     app.pending_search_jump = Some(target);
     try_jump_to_search_target(app);
+    // Position within the hit list, tig/less-style — the jump toast alone
+    // says nothing about how many matches remain.
+    if app.pending_search_jump.is_none() {
+        app.set_action(ActionState::Done(format!(
+            "Hit {} of {len}",
+            app.conv_search_selected + 1
+        )));
+    }
 }
 
 pub fn conv_search_jump_selected(app: &mut App) {

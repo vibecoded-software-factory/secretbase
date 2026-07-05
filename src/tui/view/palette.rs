@@ -51,7 +51,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
         frame,
         t,
         PickerModal {
-            title: "Command palette".to_string(),
+            title: format!(
+                "Command palette · {}",
+                crate::tui::flows::palette::filtered_commands(app).len()
+            ),
             query: Some((&app.palette, "type a command…")),
             selected: app.palette_selected,
             rows,
