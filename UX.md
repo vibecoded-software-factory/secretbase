@@ -205,7 +205,10 @@ status strip at the bottom.
 
 The **conversation** pane uses a custom layout (header ·
 messages · compose · status) because the message stream is a *viewer*, not
-a grid. The screen is mouse-interactive: click a message to select it
+a grid. **Every picker row is clickable** — click selects, clicking the selected
+row activates (open/run/react/jump/join/send, per screen); the hit map is
+recorded by the shared skeleton itself, so a new picker is clickable for
+free. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row), click the **already-selected** row again
 to *activate* it — a reply jumps to the message it quotes (the
 select-then-activate the tree click uses) — and scroll the wheel to page

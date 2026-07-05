@@ -361,6 +361,34 @@ pub fn modal_inner_width(frame: &Frame) -> usize {
 /// row treatment, and a width-fitted [`legend_line`] footer. Callers style
 /// their content spans; the widget owns geometry, cursor, shading, windowing
 /// and the footer grammar — so they can't drift apart again.
+thread_local! {
+    /// Frame-local hit map for the picker modal: the list viewport rect +
+    /// one `Option<item index>` per visible display line (None = header /
+    /// spill line of a multi-line item). Written by [`draw_picker_modal`]
+    /// each frame, read by the mouse handler — the same frame-scoped
+    /// pattern as the message-row map, without threading `&mut App` into
+    /// an otherwise pure widget.
+    static PICKER_HITS: std::cell::RefCell<(Rect, Vec<Option<usize>>)> =
+        const { std::cell::RefCell::new((Rect { x: 0, y: 0, width: 0, height: 0 }, Vec::new())) };
+}
+
+/// The selectable item under `(column, row)` in the last-drawn picker
+/// modal, if any.
+pub fn picker_row_at(column: u16, row: u16) -> Option<usize> {
+    PICKER_HITS.with(|h| {
+        let (rect, ref map) = *h.borrow();
+        if rect.width == 0
+            || column < rect.x
+            || column >= rect.x + rect.width
+            || row < rect.y
+            || row >= rect.y + rect.height
+        {
+            return None;
+        }
+        map.get((row - rect.y) as usize).copied().flatten()
+    })
+}
+
 pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
     let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
@@ -402,14 +430,20 @@ pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
     let vh = chunks[2].height.max(1) as usize;
     if m.rows.is_empty() {
         frame.render_widget(Paragraph::new(m.empty), chunks[2]);
+        PICKER_HITS.with(|h| *h.borrow_mut() = (chunks[2], Vec::new()));
     } else {
         let mut display: Vec<Line<'static>> = Vec::new();
+        // Parallel to `display`: which selectable item each line belongs to.
+        let mut line_items: Vec<Option<usize>> = Vec::new();
         let mut sel_start = 0usize;
         let mut sel_len = 1usize;
         let mut item_i = 0usize;
         for row in m.rows {
             match row {
-                PickerRow::Header(l) => display.push(l),
+                PickerRow::Header(l) => {
+                    display.push(l);
+                    line_items.push(None);
+                }
                 PickerRow::Item(ls) => {
                     let selected = item_i == m.selected;
                     if selected {
@@ -427,6 +461,7 @@ pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
                             }
                         }
                         display.push(l);
+                        line_items.push(Some(item_i));
                     }
                     item_i += 1;
                 }
@@ -436,7 +471,10 @@ pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
         let sel_end = sel_start + sel_len;
         let scroll = sel_end.saturating_sub(vh);
         let visible: Vec<Line<'static>> = display.into_iter().skip(scroll).take(vh).collect();
+        let visible_items: Vec<Option<usize>> =
+            line_items.into_iter().skip(scroll).take(vh).collect();
         frame.render_widget(Paragraph::new(visible), chunks[2]);
+        PICKER_HITS.with(|h| *h.borrow_mut() = (chunks[2], visible_items));
     }
 
     match m.footer {
