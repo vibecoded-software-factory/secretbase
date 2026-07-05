@@ -568,6 +568,10 @@ pub struct App {
     /// The run loop consumes it, suspends the TUI, runs the command, restores,
     /// and re-checks status.
     pub pending_native_login: Option<String>,
+    /// Set by `Ctrl+E` in the compose: the run loop cedes the terminal to
+    /// `$VISUAL`/`$EDITOR` with the draft in a 0600 temp file (wiped after)
+    /// and reads the result back into the compose.
+    pub pending_editor_compose: bool,
 
     // ── Server-side search popup ────────────────────────────────────────
     /// Query box in the Ctrl+G popup.
@@ -978,6 +982,7 @@ impl App {
             login_focus: LoginField::Username,
             login_reveal: false,
             pending_native_login: None,
+            pending_editor_compose: false,
             search_global_input: LineEditor::default(),
             search_global_results: Vec::new(),
             search_global_selected: 0,

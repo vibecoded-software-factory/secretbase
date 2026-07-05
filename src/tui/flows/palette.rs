@@ -40,6 +40,7 @@ pub enum PaletteAction {
     GoToReply,
     SearchGif,
     JumpNewMessages,
+    EditorCompose,
     DownloadAttachment,
     CopyMessage,
     DeleteMessage,
@@ -290,6 +291,13 @@ fn palette_commands(app: &App) -> Vec<Command> {
             "Message",
         ));
         v.push(cmd(
+            EditorCompose,
+            "Edit draft in $EDITOR",
+            "Ctrl+E",
+            "long message external",
+            "Compose",
+        ));
+        v.push(cmd(
             DownloadAttachment,
             "Download attachment",
             "s",
@@ -446,6 +454,7 @@ pub fn run_palette_action(app: &mut App, action: PaletteAction) {
         GoToReply => chat::select_activate(app),
         SearchGif => chat::open_giphy_search(app),
         JumpNewMessages => chat::jump_to_new_messages(app),
+        EditorCompose => app.pending_editor_compose = true,
         DownloadAttachment => chat::open_download_for_selected(app),
         CopyMessage => chat::do_copy_messages(app, true),
         DeleteMessage => chat::open_delete_for_selected(app),

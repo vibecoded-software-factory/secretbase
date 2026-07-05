@@ -335,11 +335,137 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<()
             done_ticks = 0;
         }
 
+        // Compose in $EDITOR: cede the terminal between frames, hand the
+        // draft over, read it back. Same suspend/restore as the login.
+        if app.pending_editor_compose {
+            app.pending_editor_compose = false;
+            run_editor_compose(app);
+            drain_pending_events();
+            terminal.clear()?;
+            done_ticks = 0;
+        }
+
         if app.should_quit {
             break;
         }
     }
     Ok(())
+}
+
+/// Cedes the terminal to `$VISUAL`/`$EDITOR` (fallback `vi`) with the
+/// current draft in a **0600** temp file; on return the file's content
+/// replaces the draft and the file is overwritten with spaces, then
+/// removed — chat text touches disk only for the editor round-trip, as
+/// short-lived as we can make it. A missing editor or I/O error leaves the
+/// draft untouched and surfaces on the feedback strip.
+fn run_editor_compose(app: &mut app::App) {
+    use crossterm::terminal::{
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    };
+    use std::io::Write;
+
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".to_string());
+    let mut parts = editor.split_whitespace();
+    let Some(program) = parts.next() else {
+        app.set_action(crate::tui::action::ActionState::Error(
+            "$EDITOR is empty".into(),
+        ));
+        return;
+    };
+    let args: Vec<&str> = parts.collect();
+
+    // Hand-rolled unique path (tempfile is a dev-dependency only); 0600
+    // from the first byte via create_new + mode.
+    let path = std::env::temp_dir().join(format!(
+        "secretbase-draft-{}-{}.md",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let draft = app.compose.text().to_string();
+    let write = (|| -> std::io::Result<()> {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&path)?;
+        f.write_all(draft.as_bytes())
+    })();
+    if let Err(e) = write {
+        app.set_action(crate::tui::action::ActionState::Error(format!(
+            "draft file: {e}"
+        )));
+        return;
+    }
+
+    let kitty_keys = matches!(
+        crossterm::terminal::supports_keyboard_enhancement(),
+        Ok(true)
+    );
+    if kitty_keys {
+        let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
+    }
+    let _ = execute!(
+        std::io::stdout(),
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        LeaveAlternateScreen
+    );
+    let _ = disable_raw_mode();
+
+    let status = std::process::Command::new(program)
+        .args(&args)
+        .arg(&path)
+        .status();
+
+    let _ = enable_raw_mode();
+    let _ = execute!(
+        std::io::stdout(),
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    );
+    if kitty_keys {
+        let _ = execute!(
+            std::io::stdout(),
+            event::PushKeyboardEnhancementFlags(
+                event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            )
+        );
+    }
+
+    match status {
+        Ok(s) if s.success() => {
+            if let Ok(mut text) = std::fs::read_to_string(&path) {
+                while text.ends_with('\n') {
+                    text.pop();
+                }
+                app.compose.clear();
+                app.compose.insert_str(&text);
+                app.set_action(crate::tui::action::ActionState::Done(
+                    "Draft updated from editor".into(),
+                ));
+            }
+        }
+        Ok(_) => app.set_action(crate::tui::action::ActionState::Done(
+            "Editor exited without saving — draft unchanged".into(),
+        )),
+        Err(e) => app.set_action(crate::tui::action::ActionState::Error(format!(
+            "{program}: {e}"
+        ))),
+    }
+    // Best-effort wipe: the draft was chat content on disk.
+    if let Ok(meta) = std::fs::metadata(&path) {
+        let _ = std::fs::write(&path, " ".repeat(meta.len() as usize));
+    }
+    let _ = std::fs::remove_file(&path);
 }
 
 /// Cedes the terminal to interactive `keybase login [username]` — the only

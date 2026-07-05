@@ -142,6 +142,9 @@ fn handle_compose(app: &mut App, key: KeyEvent) {
         // ── Ctrl shortcuts (don't collide with printable text) ─────────
         KeyCode::F(5) => chat::request_load_messages(app),
         KeyCode::Char('r') if ctrl => chat::request_load_messages(app),
+        // Long-form drafts: hand the compose to $VISUAL/$EDITOR (the run
+        // loop cedes the terminal between frames, like the native login).
+        KeyCode::Char('e') if ctrl => app.pending_editor_compose = true,
         KeyCode::Char('y') if ctrl => chat::do_copy_conversation_label(app),
         KeyCode::Char('f') if ctrl => chat::open_conv_search(app),
 

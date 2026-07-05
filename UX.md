@@ -246,6 +246,12 @@ whichever input owns typing — the compose keeps embedded newlines (before
 this, each pasted newline hit Enter and sent the message mid-paste), every
 single-line editor gets them flattened to spaces, query editors run their
 changed-query side effects, and control characters are stripped.
+**`Ctrl+E` hands the draft to `$VISUAL`/`$EDITOR`** (fallback `vi`): the
+run loop cedes the terminal between frames — the same suspend/restore as
+the native login — with the draft in a **0600 temp file** that is
+overwritten with spaces and removed after the round-trip (the one place
+chat text touches disk, as short-lived as possible; an editor that exits
+non-zero leaves the draft unchanged).
 The compose box is **multi-line**: `Alt+Enter` inserts a newline — as does
 `Shift+Enter`, the Discord/Slack reflex, on terminals that speak the kitty
 keyboard protocol (legacy terminals can't distinguish it from Enter, so
