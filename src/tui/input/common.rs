@@ -6,6 +6,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::domain::LineEditor;
+use crate::tui::app::App;
 use crate::tui::screens::Focus;
 
 /// Clamps a list-selection move: `current + delta` bounded to
@@ -192,6 +193,38 @@ pub fn confirm_key(key: KeyEvent) -> ConfirmInput {
         KeyCode::Right | KeyCode::Char('l') => ConfirmInput::No,
         KeyCode::Tab | KeyCode::BackTab => ConfirmInput::Toggle,
         _ => ConfirmInput::Ignore,
+    }
+}
+
+/// Drives one navigable y/n confirm from a classified key. `yes` projects
+/// the highlighted-button flag out of `App` (kept `false` by default so
+/// **cancel** is highlighted for a destructive action); `commit` / `cancel`
+/// are the two exits. Every confirm — the centered overlays *and* the
+/// inline browser/member ones — routes here, so they can't drift apart.
+pub fn run_confirm(
+    app: &mut App,
+    key: KeyEvent,
+    yes: impl Fn(&mut App) -> &mut bool,
+    commit: impl Fn(&mut App),
+    cancel: impl Fn(&mut App),
+) {
+    match confirm_key(key) {
+        ConfirmInput::Commit => commit(app),
+        ConfirmInput::Cancel => cancel(app),
+        ConfirmInput::Activate => {
+            if *yes(app) {
+                commit(app);
+            } else {
+                cancel(app);
+            }
+        }
+        ConfirmInput::Yes => *yes(app) = true,
+        ConfirmInput::No => *yes(app) = false,
+        ConfirmInput::Toggle => {
+            let y = yes(app);
+            *y = !*y;
+        }
+        ConfirmInput::Ignore => {}
     }
 }
 

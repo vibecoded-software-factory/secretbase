@@ -467,6 +467,9 @@ pub struct App {
     /// `Some(topic)` while an inline **delete** confirm (`d`) is showing —
     /// destructive + irreversible, so `y` confirms / `n`/`Esc` cancels.
     pub channel_confirm_delete: Option<String>,
+    /// Highlighted button of the inline channel-delete confirm (`false` =
+    /// cancel — the destructive default, same as every confirm overlay).
+    pub channel_delete_yes: bool,
     /// The team's **default channels** (new members auto-join these), fetched
     /// alongside the browser list; `#general` is always default and omitted.
     /// `t` toggles the selected channel's membership in this set.
@@ -489,6 +492,9 @@ pub struct App {
     pub member_add_input: LineEditor,
     /// `Some(username)` while an inline **remove** confirm (`x`) is showing.
     pub member_confirm_remove: Option<String>,
+    /// Highlighted button of the inline member-remove confirm (`false` =
+    /// cancel — the destructive default).
+    pub member_remove_yes: bool,
 
     // ── Conversation detail ──────────────────────────────────────────────
     /// Conversation id currently open on the detail screen. `None`
@@ -985,6 +991,7 @@ impl App {
             channel_new_name: LineEditor::default(),
             channel_renaming: None,
             channel_confirm_delete: None,
+            channel_delete_yes: false,
             default_channels: Vec::new(),
             members_channel: None,
             members_label: String::new(),
@@ -994,6 +1001,7 @@ impl App {
             member_adding: false,
             member_add_input: LineEditor::default(),
             member_confirm_remove: None,
+            member_remove_yes: false,
             open_conv_id: None,
             conv_last_seen: HashMap::new(),
             unread_boundary: None,
