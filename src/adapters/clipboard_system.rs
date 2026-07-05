@@ -10,7 +10,6 @@
 //! describing the missing tool.
 
 use std::io::Write;
-use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -44,6 +43,17 @@ impl SystemClipboardAdapter {
     /// Returns `None` when no backend is detectable so the caller can
     /// surface a clear error to the user instead of guessing.
     fn choose_backend() -> Option<Backend> {
+        /// Whether `name` resolves to an executable anywhere on `PATH` —
+        /// not just the two historical hardcoded locations, so a Nix /
+        /// ~/.local install is found before falling through to `xsel`
+        /// (which may not be installed at all).
+        fn binary_on_path(name: &str) -> bool {
+            let Some(paths) = std::env::var_os("PATH") else {
+                return false;
+            };
+            std::env::split_paths(&paths).any(|dir| dir.join(name).is_file())
+        }
+
         if std::env::var("WAYLAND_DISPLAY").is_ok() {
             return Some(Backend {
                 write_argv: vec!["wl-copy"],
@@ -51,7 +61,7 @@ impl SystemClipboardAdapter {
             });
         }
         if std::env::var("DISPLAY").is_ok() {
-            if Path::new("/usr/bin/xclip").exists() || Path::new("/usr/local/bin/xclip").exists() {
+            if binary_on_path("xclip") {
                 return Some(Backend {
                     write_argv: vec!["xclip", "-selection", "clipboard"],
                     read_argv: vec!["xclip", "-selection", "clipboard", "-o"],

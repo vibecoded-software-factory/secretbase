@@ -303,9 +303,12 @@ impl KeybasePort for KeybaseCliAdapter {
         // paper key via `PromptPasswordMaybeScripted`). A trailing newline
         // terminates the prompt read. Provisioning contacts the server, so
         // it gets the generous login timeout, not the quick-op one.
+        // The formatted prompt line holds the paper key — keep it in a
+        // wiped buffer like every other stop on the key's path.
+        let line = Zeroizing::new(format!("{paperkey}\n"));
         let out = keybase_run_with_stdin_timeout(
             &["login", "--devicename", device, username],
-            &format!("{paperkey}\n"),
+            &line,
             LOGIN_TIMEOUT,
         )?;
         if !out.status.success() {
