@@ -592,12 +592,16 @@ pub fn draw_confirm_popup(
     body: Vec<Line<'static>>,
     confirmed: bool,
 ) {
-    let w = 66u16.min(area.width);
-    let h = (body.len() as u16 + 4).min(area.height);
+    // Align with the modal family: same horizontal band and same top edge
+    // as every `MODAL_*` overlay (Settings, the pickers), so the confirm
+    // reads as part of the system instead of a free-floating strip. Height
+    // stays compact (body + chrome), clamped to the band.
+    let band = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, area);
+    let h = (body.len() as u16 + 4).min(band.height.max(4));
     let popup = Rect {
-        x: area.x + area.width.saturating_sub(w) / 2,
-        y: area.y + area.height.saturating_sub(h) / 2,
-        width: w,
+        x: band.x,
+        y: band.y,
+        width: band.width,
         height: h,
     };
     frame.render_widget(Clear, popup);
