@@ -281,7 +281,7 @@ fn handle_select(app: &mut App, key: KeyEvent) {
         KeyCode::Char('d') | KeyCode::Char('D')
             if key.modifiers.contains(KeyModifiers::CONTROL) =>
         {
-            let max = app.messages.len().saturating_sub(1);
+            let max = app.thread.messages.len().saturating_sub(1);
             if let Some(i) = app.select.cursor {
                 app.select.cursor = Some((i + crate::tui::app::PAGE_STEP).min(max));
                 chat::select_resync_anchor_marks(app);
@@ -299,7 +299,7 @@ fn handle_select(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::PageDown => {
-            let max = app.messages.len().saturating_sub(1);
+            let max = app.thread.messages.len().saturating_sub(1);
             if let Some(i) = app.select.cursor {
                 app.select.cursor = Some((i + crate::tui::app::PAGE_STEP).min(max));
                 chat::select_resync_anchor_marks(app);
@@ -310,7 +310,7 @@ fn handle_select(app: &mut App, key: KeyEvent) {
             chat::select_resync_anchor_marks(app);
         }
         KeyCode::End | KeyCode::Char('G') => {
-            app.select.cursor = Some(app.messages.len().saturating_sub(1));
+            app.select.cursor = Some(app.thread.messages.len().saturating_sub(1));
             chat::select_resync_anchor_marks(app);
         }
         // Multi-select + copy (reduced action set).

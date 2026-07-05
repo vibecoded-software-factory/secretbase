@@ -608,7 +608,7 @@ mod tests {
         let mut m = Message::default();
         m.id = 1;
         m.content = MessageContent::Text("hi".into());
-        app.messages.push(m);
+        app.thread.messages.push(m);
 
         // Open (team, not selecting): Conversation group + Members, no Message group.
         let a = actions(&app);
