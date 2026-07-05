@@ -168,7 +168,9 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         Focus::Tree => handle_tree(app, key),
         Focus::Chat => crate::tui::input::conversation::handle(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
-        Focus::Search => unreachable!("handled above"),
+        // Search returns early above; keep this a no-op (not a panic) so a
+        // future reorder of the routing can't crash the TUI on a keypress.
+        Focus::Search => {}
     }
 }
 
