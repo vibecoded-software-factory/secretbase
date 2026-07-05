@@ -347,7 +347,7 @@ pub fn handle_load_messages_response(
                 .and_then(|i| app.messages.get(i))
                 .map(|m| m.id);
             msgs.reverse();
-            app.messages = project_messages(msgs);
+            app.messages = project_messages(msgs, app.settings_cache.smart_joins);
             app.rebuild_conv_members(); // add the people who've spoken
             let n = app.messages.len();
             app.messages_next = next;
@@ -581,7 +581,7 @@ pub fn handle_load_older_messages_response(
     match result {
         Ok((mut older, next)) => {
             older.reverse();
-            older = project_messages(older);
+            older = project_messages(older, app.settings_cache.smart_joins);
             let n = older.len();
             older.extend(std::mem::take(&mut app.messages));
             app.messages = older;

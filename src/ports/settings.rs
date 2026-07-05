@@ -52,6 +52,10 @@ pub struct UserSettings {
     /// renders on any font, the right choice for a headless/SSH terminal without
     /// a patched font) or `nerd` (prettier nerd-font glyphs where available).
     pub icon_style: String,
+    /// weechat-style smart join/leave filter: hide membership messages
+    /// except from people who spoke in the loaded window. `true` by
+    /// default — the noise they remove drowns busy team channels.
+    pub smart_joins: bool,
     /// Whether to fetch **public web media** (currently: giphy GIFs linked
     /// in messages) directly from the web for inline rendering. The GUI
     /// shows these from Keybase's encrypted re-host, which the JSON API
@@ -105,6 +109,7 @@ impl Default for UserSettings {
             image_symbols: "sextant+block+space".to_string(),
             emoji_style: "glyph".to_string(),
             icon_style: "unicode".to_string(),
+            smart_joins: true,
             web_previews: true,
             giphy_api_key: String::new(),
             favorites: Vec::new(),

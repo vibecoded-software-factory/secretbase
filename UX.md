@@ -217,6 +217,11 @@ row map). In Select mode, `Enter` is the same activation: on a **reply** it
 jumps to the quoted message (the search-jump machinery pages older history
 in automatically when the parent is outside the loaded window), on anything
 else it returns to Compose (`i`/`a` always do).
+**Join/leave noise is smart-filtered** (weechat's model, `smart_joins`,
+Settings → Chat, default on): membership messages show only when the actor
+spoke in the loaded window — hidden at projection time, not deleted, and
+toggling the setting reloads the open conversation so the change is
+immediate.
 Link previews (`unfurl` messages) render as a compact dim card
 (`↳ preview · <site title>`) grouped under the URL message that
 triggered them — **giphy cards are dropped in projection**: the GIF itself

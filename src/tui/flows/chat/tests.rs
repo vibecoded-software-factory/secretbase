@@ -918,7 +918,7 @@ fn reaction_events_are_dropped_from_the_message_stream() {
         target_id: 91,
         body: ":+1:".into(),
     };
-    let kept = project_messages(vec![text_msg(1, "alice", "hi"), reaction]);
+    let kept = project_messages(vec![text_msg(1, "alice", "hi"), reaction], true);
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].id, 1);
 }
@@ -1846,7 +1846,7 @@ fn giphy_unfurl_cards_are_dropped_everywhere() {
     unfurl.content = MessageContent::Unfurl {
         label: "GIPHY".into(),
     };
-    let projected = project_messages(vec![text_msg(89, "bob", "url"), unfurl]);
+    let projected = project_messages(vec![text_msg(89, "bob", "url"), unfurl], true);
     assert_eq!(projected.len(), 1);
     // Push: a live giphy card must not append either.
     let mut rig = build_rig();
@@ -2322,6 +2322,31 @@ fn show_reactors_lists_names_per_emoji() {
         }
         other => panic!("expected Done, got {other:?}"),
     }
+}
+
+#[test]
+fn smart_joins_hides_silent_members_keeps_speakers() {
+    let join = |id: u64, who: &str| {
+        let mut m = text_msg(id, who, "");
+        m.content = MessageContent::Join {
+            joiner: who.to_string(),
+        };
+        m
+    };
+    let msgs = vec![
+        text_msg(1, "alice", "hola"),
+        join(2, "alice"),  // spoke → kept
+        join(3, "lurker"), // silent → hidden
+    ];
+    let smart = project_messages(msgs.clone(), true);
+    assert_eq!(smart.len(), 2);
+    assert!(
+        !smart
+            .iter()
+            .any(|m| matches!(&m.content, MessageContent::Join { joiner } if joiner == "lurker"))
+    );
+    // Off: everything shows.
+    assert_eq!(project_messages(msgs, false).len(), 3);
 }
 
 #[test]

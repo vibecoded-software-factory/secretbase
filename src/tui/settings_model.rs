@@ -67,7 +67,7 @@ impl SettingsSection {
         match self {
             SettingsSection::Identity => &[Username, Device, DeviceType],
             SettingsSection::Theme => &[],
-            SettingsSection::Chat => &[AutoMarkRead, InboxRefresh, CmdlogRows],
+            SettingsSection::Chat => &[AutoMarkRead, SmartJoins, InboxRefresh, CmdlogRows],
             SettingsSection::Emoji => &[EmojiStyle, IconStyle],
             SettingsSection::Clipboard => &[ClipboardClear],
             SettingsSection::Network => &[ListTimeout, DownloadTimeout],
@@ -85,6 +85,7 @@ pub enum SettingId {
     Device,
     DeviceType,
     AutoMarkRead,
+    SmartJoins,
     InboxRefresh,
     CmdlogRows,
     ClipboardClear,
@@ -139,6 +140,7 @@ impl SettingId {
             SettingId::Device => "Device",
             SettingId::DeviceType => "Device type",
             SettingId::AutoMarkRead => "Mark read on open",
+            SettingId::SmartJoins => "Hide silent joins/leaves",
             SettingId::InboxRefresh => "Inbox resync",
             SettingId::CmdlogRows => "Command log rows",
             SettingId::ClipboardClear => "Clipboard auto-clear",
@@ -157,7 +159,9 @@ impl SettingId {
     pub fn kind(self) -> SettingKind {
         match self {
             SettingId::Username | SettingId::Device | SettingId::DeviceType => SettingKind::Info,
-            SettingId::AutoMarkRead | SettingId::WebPreviews => SettingKind::Toggle,
+            SettingId::AutoMarkRead | SettingId::SmartJoins | SettingId::WebPreviews => {
+                SettingKind::Toggle
+            }
             SettingId::GiphyApiKey => SettingKind::Secret,
             SettingId::CmdlogRows => SettingKind::Number {
                 step: 1,
