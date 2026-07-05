@@ -173,7 +173,7 @@ fn draw_emoji_ac_popup(frame: &mut Frame, app: &App, compose_area: Rect) {
     let h = (matches.len() as u16 + 2).min(8);
     let longest = matches
         .iter()
-        .filter_map(|&ci| app.emojis.get(ci))
+        .filter_map(|&ci| app.emoji.all.get(ci))
         .map(|e| e.alias.chars().count() + e.display.chars().count() + 5)
         .max()
         .unwrap_or(12) as u16;
@@ -194,7 +194,7 @@ fn draw_emoji_ac_popup(frame: &mut Frame, app: &App, compose_area: Rect) {
         .enumerate()
         .take(rows)
         .filter_map(|(i, &ci)| {
-            let e = app.emojis.get(ci)?;
+            let e = app.emoji.all.get(ci)?;
             let selected = i == sel;
             let prefix = if selected { "▶ " } else { "  " };
             let style = if selected {
@@ -1672,7 +1672,7 @@ fn reaction_display(app: &App, key: &str) -> String {
     let alias = key.trim_matches(':');
     // Match by alias (shortcode key) or by display glyph (stock emoji sent
     // raw) — O(1) via the catalogue index.
-    let entry = app.emoji_for_reaction(key);
+    let entry = app.emoji.for_reaction(key);
     if app.settings_cache.emoji_style == "shortcode" {
         match entry {
             Some(e) => format!(":{}:", e.alias),

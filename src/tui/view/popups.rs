@@ -68,7 +68,7 @@ pub fn giphy_search_input(frame: &mut Frame, app: &App) {
 
 pub fn react_input(frame: &mut Frame, app: &App) {
     let t = &app.theme;
-    let n = app.filtered_emoji_indices().len();
+    let n = app.emoji.filtered().len();
     let title = if app.react_to_compose {
         format!("Insert emoji · {n}")
     } else {
@@ -78,11 +78,11 @@ pub fn react_input(frame: &mut Frame, app: &App) {
             .unwrap_or_else(|| format!("React · {n}"))
     };
 
-    let filtered = app.filtered_emoji_indices();
+    let filtered = app.emoji.filtered();
     let rows: Vec<PickerRow> = filtered
         .iter()
         .map(|&ei| {
-            let e = &app.emojis[ei];
+            let e = &app.emoji.all[ei];
             PickerRow::Item(vec![Line::from(vec![
                 Span::styled(
                     format!("{}  ", e.display),
@@ -92,7 +92,7 @@ pub fn react_input(frame: &mut Frame, app: &App) {
             ])])
         })
         .collect();
-    let empty = if app.emojis_loading {
+    let empty = if app.emoji.loading {
         crate::tui::view::widgets::empty_state_lines("Loading emojis…", &[], t)
     } else if app.react.text().trim().is_empty() {
         crate::tui::view::widgets::empty_state_lines(

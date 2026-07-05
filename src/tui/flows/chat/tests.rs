@@ -1169,7 +1169,8 @@ fn react_with_empty_query_sends_the_highlighted_emoji() {
     // reacts with that glyph (Discord-style) rather than erroring.
     let expected = rig
         .app
-        .emojis
+        .emoji
+        .all
         .first()
         .expect("seeded emojis")
         .display

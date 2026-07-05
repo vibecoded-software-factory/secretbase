@@ -821,7 +821,7 @@ pub fn accept_emoji_ac(app: &mut App, catalogue_idx: usize) {
     else {
         return;
     };
-    let Some(e) = app.emojis.get(catalogue_idx) else {
+    let Some(e) = app.emoji.all.get(catalogue_idx) else {
         return;
     };
     let insert = if e.display.starts_with(':') {
@@ -1321,7 +1321,7 @@ pub fn open_react_for_selected(app: &mut App) {
     // The standard set is seeded at construction; lazily fetch the team's
     // custom emojis the first time the picker opens (merged on top), cached
     // for the rest of the session.
-    if !app.emojis_loaded {
+    if !app.emoji.loaded {
         request_emojis(app);
     }
 }
@@ -1338,7 +1338,7 @@ pub fn open_emoji_for_compose(app: &mut App) {
     app.react_selected = 0;
     app.rebuild_emoji_filter();
     app.screen = crate::tui::screens::Screen::React;
-    if !app.emojis_loaded {
+    if !app.emoji.loaded {
         request_emojis(app);
     }
 }
@@ -1348,10 +1348,10 @@ pub fn open_emoji_for_compose(app: &mut App) {
 /// picker is usable as a custom-shortcode entry while it loads. Guarded by
 /// `emojis_loading`/`emojis_loaded` so it fires at most once.
 pub fn request_emojis(app: &mut App) {
-    if app.emojis_loaded || app.emojis_loading {
+    if app.emoji.loaded || app.emoji.loading {
         return;
     }
-    app.emojis_loading = true;
+    app.emoji.loading = true;
     app.emojis_started = Some(std::time::Instant::now());
     let _ = app.bg_worker_tx.send(WorkerRequest::ListEmojis);
 }
@@ -1360,7 +1360,7 @@ pub fn handle_emojis_response(
     app: &mut App,
     result: Result<Vec<crate::domain::Emoji>, KeybaseError>,
 ) {
-    app.emojis_loading = false;
+    app.emoji.loading = false;
     match result {
         Ok(custom) => {
             // Keybase returns only the team's custom emojis; merge them with
@@ -1375,14 +1375,13 @@ pub fn handle_emojis_response(
                     merged.push(e);
                 }
             }
-            app.emojis = merged;
-            app.rebuild_emoji_index();
+            app.emoji.set(merged);
             // The picker may be open (the fetch is async) — refilter so the
             // merged custom emojis appear without a keystroke.
             app.rebuild_emoji_filter();
             // Reaction chips resolve glyphs through the catalogue.
             app.invalidate_msg_render_cache();
-            app.emojis_loaded = true;
+            app.emoji.loaded = true;
             app.push_cmd(
                 "keybase chat api emojilist",
                 true,
@@ -1416,13 +1415,13 @@ pub fn request_send_reaction(app: &mut App) {
     app.rebuild_emoji_filter();
     // Prefer the highlighted emoji from the picker; fall back to the typed
     // text as a literal custom `:shortcode:` when nothing matches the query.
-    let filtered = app.filtered_emoji_indices();
+    let filtered = app.emoji.filtered();
     let body = match filtered
         .get(app.react_selected)
         .or_else(|| filtered.first())
     {
         Some(&ei) => {
-            let e = &app.emojis[ei];
+            let e = &app.emoji.all[ei];
             // Stock emojis send their raw glyph (works for the whole Unicode
             // set, no shortcode lookup); custom ones must send `:alias:`.
             if e.display.starts_with(':') {
@@ -1455,7 +1454,7 @@ pub fn request_send_reaction(app: &mut App) {
     // Frecency bump once for the chosen emoji.
     let alias = body.trim_matches(':').to_string();
     if !alias.is_empty() {
-        *app.emoji_uses.entry(alias).or_insert(0) += 1;
+        app.emoji.bump_use(&alias);
     }
     let first = ids.remove(0);
     app.pending_batch = Some(PendingBatch::React {

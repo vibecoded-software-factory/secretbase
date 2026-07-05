@@ -11,8 +11,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    ChatEvent, ChatMember, Conversation, Emoji, IdentityInfo, InboxHit, LineEditor,
-    LoweredConversation, MemberStatus, Message, TeamMembership, fuzzy_score_lowered,
+    ChatEvent, ChatMember, Conversation, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
+    MemberStatus, Message, TeamMembership, fuzzy_score_lowered,
 };
 use crate::ports::keybase::ReadChannel;
 use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
@@ -495,29 +495,15 @@ pub struct App {
     /// [`Self::compose`] so the message draft is preserved.
     pub react: LineEditor,
     /// Selected row in the reaction picker (indexes the *filtered* emoji
-    /// list — see [`Self::filtered_emoji_indices`]).
+    /// list — see [`crate::tui::emoji_catalog::EmojiCatalog::filtered`]).
     pub react_selected: usize,
-    /// Sendable emojis from `emojilist`, fetched once and cached for the
-    /// reaction picker.
-    pub emojis: Vec<Emoji>,
-    /// Whether [`Self::emojis`] has been loaded (so we fetch only once).
-    pub emojis_loaded: bool,
-    /// Whether an `emojilist` fetch is in flight (de-dupes the request).
-    pub emojis_loading: bool,
-    /// Lookup index over [`Self::emojis`]: both the `alias` and the `display`
-    /// glyph map to the entry's index (earliest catalogue entry wins, matching
-    /// the linear-scan semantics it replaces). Rebuilt whenever `emojis` is
-    /// assigned — reaction chips resolve through this instead of scanning the
-    /// ~1.9k-entry catalogue per chip per frame.
-    pub emoji_index: HashMap<String, usize>,
-    /// Cached reaction-picker rows: indices into [`Self::emojis`] surviving
-    /// the current query, frecency-sorted. Rebuilt by
-    /// [`Self::rebuild_emoji_filter`] on keystroke / catalogue change — never
-    /// per frame.
-    pub emoji_filtered: Vec<usize>,
-    /// Per-alias reaction usage this session — floats the most-used emojis
-    /// to the top of the picker (Discord-style frecency).
-    pub emoji_uses: HashMap<String, u32>,
+    /// The emoji picker's catalogue, lookup index and frecency ranking —
+    /// extracted into its own cohesive type (see
+    /// [`crate::tui::emoji_catalog`]). The `emojilist` fetch that fills the
+    /// team's custom emojis lives in the flow layer (it needs the worker),
+    /// and the picker query stays on [`Self::react`]; see
+    /// [`Self::rebuild_emoji_filter`].
+    pub emoji: crate::tui::emoji_catalog::EmojiCatalog,
 
     // ── Quick switcher (Ctrl+K) ──────────────────────────────────────────
     /// `@`-token whose mention popup was Esc-dismissed — the popup stays
@@ -871,7 +857,7 @@ impl App {
             .or(Some(theme::Preset::DEFAULT))
             .and_then(|p| theme::Preset::ALL.iter().position(|&q| q == p))
             .unwrap_or(0);
-        let mut app = Self {
+        Self {
             screen: Screen::Splash,
             focus: Focus::Tree,
             expanded: HashSet::new(),
@@ -952,15 +938,10 @@ impl App {
             mention_selected: 0,
             react: LineEditor::default(),
             react_selected: 0,
-            // Seed the bundled standard set so the picker has content and
-            // reactions resolve to glyphs immediately; the emojilist fetch
-            // merges the team's custom emojis on top.
-            emojis: crate::domain::emoji::standard(),
-            emojis_loaded: false,
-            emojis_loading: false,
-            emoji_index: HashMap::new(),
-            emoji_filtered: Vec::new(),
-            emoji_uses: HashMap::new(),
+            // Seeds the bundled standard set (so the picker has content and
+            // reactions resolve to glyphs immediately) and builds its index +
+            // filter; the emojilist fetch merges the team's custom emojis on top.
+            emoji: crate::tui::emoji_catalog::EmojiCatalog::new(),
             mention_dismissed_token: None,
             emoji_ac_selected: 0,
             emoji_ac_dismissed_token: None,
@@ -1041,73 +1022,18 @@ impl App {
             clipboard,
             opener,
             settings,
-        };
-        app.rebuild_emoji_index();
-        app.rebuild_emoji_filter();
-        app
-    }
-
-    /// Rebuilds [`Self::emoji_index`] from [`Self::emojis`]. Call after every
-    /// assignment to `emojis`.
-    pub fn rebuild_emoji_index(&mut self) {
-        self.emoji_index = HashMap::with_capacity(self.emojis.len() * 2);
-        for (i, e) in self.emojis.iter().enumerate() {
-            self.emoji_index.entry(e.alias.clone()).or_insert(i);
-            self.emoji_index.entry(e.display.clone()).or_insert(i);
         }
     }
 
-    /// Resolves a stored reaction key — a `:shortcode:` or a raw glyph — to
-    /// its catalogue entry: matches by alias (colons trimmed) or by display
-    /// glyph, earliest catalogue entry winning, in O(1) via
-    /// [`Self::emoji_index`].
-    pub fn emoji_for_reaction(&self, key: &str) -> Option<&Emoji> {
-        let alias = key.trim_matches(':');
-        let a = self.emoji_index.get(alias).copied();
-        let d = self.emoji_index.get(key).copied();
-        let idx = match (a, d) {
-            (Some(x), Some(y)) => x.min(y),
-            (Some(x), None) | (None, Some(x)) => x,
-            (None, None) => return None,
-        };
-        self.emojis.get(idx)
-    }
-
-    /// Indices into [`Self::emojis`] matching the reaction-picker query —
-    /// the cached result of [`Self::rebuild_emoji_filter`]. The picker view
-    /// reads this per frame; the filter/sort over the ~1.9k-entry catalogue
-    /// runs only on a keystroke / catalogue change, not per draw.
-    pub fn filtered_emoji_indices(&self) -> &[usize] {
-        &self.emoji_filtered
-    }
-
-    /// Recomputes [`Self::emoji_filtered`] from the reaction-picker query
-    /// (case-insensitive substring on the keywords; all when empty). Call
-    /// whenever the query, the catalogue, or the frecency ranking changes.
+    /// Refilters the emoji catalogue against the live reaction-picker query.
+    /// The thin bridge between the picker input (`react`, an `App` field) and
+    /// the query-agnostic [`crate::tui::emoji_catalog::EmojiCatalog`]: it hands
+    /// the query in so the coupling to the picker lives in exactly one place.
+    /// Callers keep calling `app.rebuild_emoji_filter()` — the query plumbing
+    /// stays here.
     pub fn rebuild_emoji_filter(&mut self) {
-        let q = self.react.text().trim().to_lowercase();
-        let mut idx: Vec<usize> = self
-            .emojis
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| q.is_empty() || e.keywords.contains(&q))
-            .map(|(i, _)| i)
-            .collect();
-        // Most-used first; `sort_by` is stable, so ties keep catalogue order.
-        idx.sort_by(|&a, &b| {
-            let ua = self
-                .emoji_uses
-                .get(&self.emojis[a].alias)
-                .copied()
-                .unwrap_or(0);
-            let ub = self
-                .emoji_uses
-                .get(&self.emojis[b].alias)
-                .copied()
-                .unwrap_or(0);
-            ub.cmp(&ua)
-        });
-        self.emoji_filtered = idx;
+        let query = self.react.text().to_string();
+        self.emoji.rebuild_filter(&query);
     }
 
     /// Conversations matching the quick-switcher query, as indices into
@@ -1987,7 +1913,8 @@ impl App {
         else {
             return Vec::new();
         };
-        self.emojis
+        self.emoji
+            .all
             .iter()
             .enumerate()
             .filter(|(_, e)| e.alias.to_ascii_lowercase().starts_with(&prefix))
@@ -2566,27 +2493,28 @@ mod tests {
         // shortcode is `+1` (the whole point of the keywords field).
         app.react.set("thumb");
         app.rebuild_emoji_filter();
-        let hits = app.filtered_emoji_indices();
+        let hits = app.emoji.filtered();
         assert!(!hits.is_empty(), "keyword search must match");
         assert!(
             hits.iter()
-                .any(|&i| app.emojis[i].alias == "+1" || app.emojis[i].keywords.contains("thumb")),
+                .any(|&i| app.emoji.all[i].alias == "+1"
+                    || app.emoji.all[i].keywords.contains("thumb")),
             "thumb should surface the thumbs-up family"
         );
         // Frecency: bump an arbitrary matching alias — it must float first.
         let last = *hits.last().expect("non-empty");
-        let bumped = app.emojis[last].alias.clone();
-        *app.emoji_uses.entry(bumped.clone()).or_insert(0) += 3;
+        let bumped = app.emoji.all[last].alias.clone();
+        *app.emoji.uses.entry(bumped.clone()).or_insert(0) += 3;
         app.rebuild_emoji_filter();
-        let first = app.filtered_emoji_indices()[0];
+        let first = app.emoji.filtered()[0];
         assert_eq!(
-            app.emojis[first].alias, bumped,
+            app.emoji.all[first].alias, bumped,
             "most-used floats to the top"
         );
         // Empty query → the whole catalogue.
         app.react.clear();
         app.rebuild_emoji_filter();
-        assert_eq!(app.filtered_emoji_indices().len(), app.emojis.len());
+        assert_eq!(app.emoji.filtered().len(), app.emoji.all.len());
     }
 
     #[test]
