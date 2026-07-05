@@ -302,7 +302,7 @@ src/
     ├── theme.rs            # color palette
     ├── mouse_areas.rs      # hit-test rectangles
     ├── debug_log.rs        # opt-in ~/.secretbase.log
-    ├── flows/              # auth, chat, copy
+    ├── flows/              # auth, teams, palette + chat/{inbox,messages,channels,attachments,search}
     ├── input/              # per-screen keyboard + mouse
     └── view/               # per-screen Ratatui renderers
 ```
