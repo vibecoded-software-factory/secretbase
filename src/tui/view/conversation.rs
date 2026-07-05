@@ -480,6 +480,11 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             app.web_image_urls.entry(path).or_insert(url);
         }
         let symbol_imgs = symbol_image_lines(app, img_w);
+        let quote_thumbs = quote_thumb_lines(app);
+        let pre_rendered = PreRendered {
+            symbols: &symbol_imgs,
+            quote_thumbs: &quote_thumbs,
+        };
         // Grouping / day-divider / unread-marker state (F3). Dividers are pushed
         // BEFORE each message's `start` is captured, so they fall outside every
         // `spans_map` / image range and stay non-selectable.
@@ -543,7 +548,10 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
             // every other content kind is a pure function of the message +
             // epoch-guarded inputs and renders once per (history, width, theme).
             let cacheable = !matches!(m.content, MessageContent::Attachment(_))
-                && giphy_url_for(app, m).is_none();
+                && giphy_url_for(app, m).is_none()
+                // A reply quoting an image grows when its thumbnail readies
+                // (async) — keep it out of the block cache.
+                && quote_target_image_path(app, m).is_none();
             if cacheable {
                 let pinned = app.pinned_msg_id == Some(m.id);
                 let hit = cache
@@ -553,7 +561,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 if !hit {
                     let mut no_img: Vec<ImgReservation> = Vec::new();
                     let block =
-                        message_lines(m, app, &t, body_width, &mut no_img, &symbol_imgs, !grouped);
+                        message_lines(m, app, &t, body_width, &mut no_img, &pre_rendered, !grouped);
                     cache.blocks.insert(
                         m.id,
                         MsgBlock {
@@ -580,7 +588,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                     &t,
                     body_width,
                     &mut local_img,
-                    &symbol_imgs,
+                    &pre_rendered,
                     !grouped,
                 );
                 // Block-relative row ranges occupied by image thumbnails — these
@@ -1055,6 +1063,71 @@ fn symbol_image_lines(
     map
 }
 
+/// The image cache path a reply's *quoted target* renders as a thumbnail —
+/// an image attachment's preview file or a giphy text's fetched media.
+fn quote_target_image_path(app: &App, m: &Message) -> Option<String> {
+    let target = app
+        .msg_index
+        .get(&m.reply_to?)
+        .and_then(|&i| app.messages.get(i))?;
+    let conv_id = app.open_conv_id.as_deref()?;
+    match &target.content {
+        MessageContent::Attachment(a) if crate::tui::image::is_image(&a.mime_type, &a.filename) => {
+            Some(crate::tui::flows::chat::image_path_for(
+                conv_id,
+                target.id,
+                &a.filename,
+            ))
+        }
+        MessageContent::Text(b) => Some(crate::tui::flows::chat::web_image_path_for(
+            &crate::domain::giphy_gif_url(b)?,
+        )),
+        _ => None,
+    }
+}
+
+/// Pre-renders a **small** chafa thumbnail (first frame for GIFs) for every
+/// reply whose quoted target is an already-cached image — the reply quote's
+/// "little square". In-buffer ANSI symbols regardless of the active
+/// protocol, so it needs no reservation/paint pass. No fetches are queued
+/// from here: the target message's own render does that; the quote simply
+/// picks the file up once it's on disk.
+fn quote_thumb_lines(
+    app: &mut App,
+) -> std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>> {
+    let mut map = std::collections::HashMap::new();
+    if app.image_proto.is_none() {
+        return map;
+    }
+    let items: Vec<(u64, String)> = app
+        .messages
+        .iter()
+        .filter_map(|m| {
+            let path = quote_target_image_path(app, m)?;
+            app.image_ready.contains(&path).then_some((m.id, path))
+        })
+        .collect();
+    for (id, path) in items {
+        // First frame for GIFs: decoded frame 0 when available, else chafa
+        // takes the still of the raw file.
+        let render_path = match app.gif_anims.get(&path) {
+            Some(Some(g)) => g.frame_at(0).to_string(),
+            _ => path.clone(),
+        };
+        let lines = app.image_render_cache.symbol_lines(
+            crate::tui::image::ImgProto::Symbols,
+            &render_path,
+            14,
+            3,
+            5,
+        );
+        if !lines.is_empty() {
+            map.insert(id, lines);
+        }
+    }
+    map
+}
+
 /// Messages within this many seconds of the previous one (same sender) collapse
 /// into a group — the follow-ups hide their header (Discord/Slack-style).
 const GROUP_WINDOW_SECS: u64 = 300;
@@ -1108,13 +1181,21 @@ fn divider_line(label: &str, color: Color, width: usize) -> Line<'static> {
     ))
 }
 
+/// Pre-rendered chafa line maps handed into [`message_lines`]: full-size
+/// symbol images (symbols protocol) and the reply-quote mini thumbnails —
+/// both computed once per frame with `&mut App` before the immutable pass.
+struct PreRendered<'a> {
+    symbols: &'a std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>>,
+    quote_thumbs: &'a std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>>,
+}
+
 fn message_lines(
     m: &Message,
     app: &App,
     t: &crate::tui::theme::Theme,
     width: usize,
     img_res: &mut Vec<ImgReservation>,
-    symbol_imgs: &std::collections::HashMap<u64, std::rc::Rc<[Line<'static>]>>,
+    pre: &PreRendered<'_>,
     show_header: bool,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(3);
@@ -1160,9 +1241,16 @@ fn message_lines(
         }
         lines.push(Line::from(header_spans));
     }
-    // Threaded reply: quote the message being replied to, above the body.
+    // Threaded reply: quote block (sender line + gutter body + optional
+    // image thumbnail) above the reply's own body.
     if let Some(target) = m.reply_to {
-        lines.push(reply_quote_line(target, app, t, width));
+        lines.extend(reply_quote_lines(
+            target,
+            app,
+            t,
+            width,
+            pre.quote_thumbs.get(&m.id),
+        ));
     }
     // Inline image attachment: the filename above, then reserved rows the run
     // loop paints the thumbnail into (kitty / sixel / chafa). Falls back to the
@@ -1192,7 +1280,7 @@ fn message_lines(
                 format!("      {} · {mime}", format_size(att.size)),
                 Style::default().fg(t.dim),
             )));
-            if let Some(sym) = symbol_imgs.get(&m.id) {
+            if let Some(sym) = pre.symbols.get(&m.id) {
                 // Symbols, ready: the pre-rendered lines *are* the image — push
                 // them directly at their real height (no reserved blank gap).
                 // Recorded in `img_res` only so the selection shading skips
@@ -1253,7 +1341,7 @@ fn message_lines(
                     .fg(t.conv_team)
                     .add_modifier(Modifier::BOLD),
             )));
-            if let Some(sym) = symbol_imgs.get(&m.id) {
+            if let Some(sym) = pre.symbols.get(&m.id) {
                 let block_offset = lines.len();
                 lines.extend(sym.iter().cloned());
                 img_res.push(ImgReservation {
@@ -1307,41 +1395,114 @@ fn message_lines(
 /// A dim, italic quote of the message a reply targets (`↩ sender · snippet`),
 /// rendered just above the reply's own body. Falls back to `↩ #id` when the
 /// parent isn't in the loaded history.
-fn reply_quote_line(
+/// Max quoted body lines shown in a reply block before it ellipsizes.
+const QUOTE_BODY_MAX: usize = 3;
+
+/// Projects a quoted body into up to `max` display lines, stripping code
+/// fences: fence markers (```lang / ```) vanish and the code inside is
+/// flagged so the renderer can style it as code (plain gray, no italics)
+/// while normal text keeps the quote italics. Returns `(lines, truncated)`.
+fn quote_body_lines(body: &str, max: usize) -> (Vec<(String, bool)>, bool) {
+    let mut out: Vec<(String, bool)> = Vec::new();
+    let mut in_code = false;
+    let mut truncated = false;
+    for raw in body.lines() {
+        let trimmed = raw.trim_end();
+        if trimmed.trim_start().starts_with("```") {
+            in_code = !in_code;
+            continue; // the fence itself is markup, not content
+        }
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        if out.len() == max {
+            truncated = true;
+            break;
+        }
+        out.push((trimmed.to_string(), in_code));
+    }
+    (out, truncated)
+}
+
+/// The reply-quote **block** rendered above a reply's own body: the quoted
+/// sender on its own line, then the quoted body under a `│` gutter —
+/// code-block content de-fenced and shown as plain gray, an image/GIF
+/// target shown as its filename plus (when the file is already cached) a
+/// small chafa thumbnail (`thumb`, first frame for GIFs). Falls back to a
+/// single `↩ …` line when the parent isn't in the loaded window.
+fn reply_quote_lines(
     target: u64,
     app: &App,
     t: &crate::tui::theme::Theme,
     width: usize,
-) -> Line<'static> {
-    let label = app
+    thumb: Option<&std::rc::Rc<[Line<'static>]>>,
+) -> Vec<Line<'static>> {
+    let Some(m) = app
         .msg_index
         .get(&target)
         .and_then(|&i| app.messages.get(i))
-        .map(|m| {
-            let body = match &m.content {
-                MessageContent::Text(b) => b.as_str(),
-                MessageContent::Edit { body, .. } => body.as_str(),
-                MessageContent::Attachment(a) => a.filename.as_str(),
-                _ => "",
-            };
-            let snippet = body.lines().next().unwrap_or("");
-            if snippet.is_empty() {
-                format!("{} · …", m.sender)
-            } else {
-                format!("{} · {snippet}", m.sender)
+    else {
+        // Parent not in the loaded window — no raw message id, an ellipsis.
+        return vec![Line::from(Span::styled(
+            "   ↩ …".to_string(),
+            Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
+        ))];
+    };
+    let mut lines: Vec<Line<'static>> = Vec::with_capacity(3);
+    // Quoted sender on its own line, in their stable hue (dimmed context
+    // still reads as *that* person).
+    lines.push(Line::from(vec![
+        Span::styled("   ↩ ", Style::default().fg(t.dim)),
+        Span::styled(
+            m.sender.clone(),
+            Style::default().fg(t.user_color(&m.sender)),
+        ),
+    ]));
+    let gutter = || Span::styled("   │ ".to_string(), Style::default().fg(t.muted));
+    let budget = width.saturating_sub(5).max(8);
+    match &m.content {
+        MessageContent::Text(b) | MessageContent::Edit { body: b, .. } => {
+            let (body, truncated) = quote_body_lines(b, QUOTE_BODY_MAX);
+            for (text, is_code) in body {
+                let style = if is_code {
+                    // De-fenced code: plain gray, no italics — legible as
+                    // code without pretending to be part of the reply.
+                    Style::default().fg(t.dim)
+                } else {
+                    Style::default().fg(t.dim).add_modifier(Modifier::ITALIC)
+                };
+                lines.push(Line::from(vec![
+                    gutter(),
+                    Span::styled(trim_end_ellipsis(&text, budget), style),
+                ]));
             }
-        })
-        // Parent not in the loaded window — no raw message id, just an ellipsis.
-        .unwrap_or_else(|| "…".to_string());
-    // A quote is a one-line preview: show it whole if it fits, else trim to
-    // the panel width with a trailing `…` (adapts to the screen, not a fixed
-    // character count).
-    let full = format!("   ↩ {label}");
-    let line = trim_end_ellipsis(&full, width.max(8));
-    Line::from(Span::styled(
-        line,
-        Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
-    ))
+            if truncated {
+                lines.push(Line::from(vec![
+                    gutter(),
+                    Span::styled("…".to_string(), Style::default().fg(t.dim)),
+                ]));
+            }
+        }
+        MessageContent::Attachment(a) => {
+            lines.push(Line::from(vec![
+                gutter(),
+                Span::styled(
+                    trim_end_ellipsis(&format!("🖼 {}", a.filename), budget),
+                    Style::default().fg(t.dim).add_modifier(Modifier::ITALIC),
+                ),
+            ]));
+            if let Some(thumb) = thumb {
+                lines.extend(thumb.iter().cloned());
+            }
+        }
+        _ => {
+            lines.push(Line::from(vec![
+                gutter(),
+                Span::styled("…".to_string(), Style::default().fg(t.dim)),
+            ]));
+        }
+    }
+    lines
 }
 
 /// Reaction chips (`{glyph} {count}`) collapsed under a message, **wrapping**
@@ -2034,6 +2195,24 @@ fn format_size(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::quote_body_lines;
+
+    #[test]
+    fn quote_body_defences_code_and_truncates() {
+        // Fences vanish; the code inside is flagged (rendered plain gray).
+        let (lines, truncated) = quote_body_lines("```json\n{\"ok\": true}\n```", 3);
+        assert_eq!(lines, vec![("{\"ok\": true}".to_string(), true)]);
+        assert!(!truncated);
+        // Mixed text + code keeps order and flags per line.
+        let (lines, _) = quote_body_lines("mirá:\n```rs\nlet x = 1;\n```", 3);
+        assert_eq!(lines[0], ("mirá:".to_string(), false));
+        assert_eq!(lines[1], ("let x = 1;".to_string(), true));
+        // Long bodies cap + report truncation; blank lines don't count.
+        let (lines, truncated) = quote_body_lines("a\n\nb\nc\nd", 3);
+        assert_eq!(lines.len(), 3);
+        assert!(truncated);
+    }
+
     use super::*;
 
     #[test]
