@@ -227,6 +227,11 @@ that silently desyncs `messages_scroll` from the view. The cursor path (and
 `k` at the top row) **paginates at the edge**: older pages load and the
 cursor/anchor indices shift with the prepend so they stay on the same
 messages.
+**Bracketed paste** is enabled: a paste arrives as one event routed to
+whichever input owns typing — the compose keeps embedded newlines (before
+this, each pasted newline hit Enter and sent the message mid-paste), every
+single-line editor gets them flattened to spaces, query editors run their
+changed-query side effects, and control characters are stripped.
 The compose box is **multi-line**: `Alt+Enter` inserts a newline — as does
 `Shift+Enter`, the Discord/Slack reflex, on terminals that speak the kitty
 keyboard protocol (legacy terminals can't distinguish it from Enter, so

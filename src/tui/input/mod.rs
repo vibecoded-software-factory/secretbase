@@ -18,7 +18,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::tui::app::App;
 use crate::tui::flows;
-use crate::tui::screens::Screen;
+use crate::tui::screens::{Focus, Screen};
 
 /// Top-level event dispatch. Called once per event loop tick by
 /// [`crate::tui::run`].
@@ -27,6 +27,87 @@ pub fn handle_events(app: &mut App, event: Event) {
     match event {
         Event::Key(k) if k.kind == KeyEventKind::Press => handle_key(app, k),
         Event::Mouse(m) => mouse::handle(app, m),
+        // Bracketed paste: the whole clipboard arrives as one event instead
+        // of a key stream — without this, each embedded newline hit Enter
+        // and sent the message mid-paste.
+        Event::Paste(text) => handle_paste(app, &text),
+        _ => {}
+    }
+}
+
+/// Routes a bracketed paste to whichever text input currently owns typing,
+/// mirroring the per-screen key routing. The compose keeps the newlines
+/// (multi-line message); every single-line editor gets them flattened to
+/// spaces; query editors run the same changed-query side effects their key
+/// handlers apply. Screens with no active input drop the paste.
+pub fn handle_paste(app: &mut App, text: &str) {
+    // Normalize line endings; strip control chars a hostile paste could
+    // carry (keep \n and \t — real content in code blocks).
+    let clean: String = text
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+        .collect();
+    if clean.is_empty() {
+        return;
+    }
+    let flat = || clean.replace('\n', " ");
+    match app.screen {
+        Screen::Login => {
+            use crate::tui::app::LoginField;
+            match app.login_focus {
+                LoginField::Username => app.login_username.insert_str(&flat()),
+                LoginField::Device => app.login_device.insert_str(&flat()),
+                // The paperkey is the paste target on this screen.
+                LoginField::PaperKey => app.login_paperkey.insert_str(&flat()),
+                _ => {}
+            }
+        }
+        Screen::React => {
+            app.react.insert_str(&flat());
+            app.react_selected = 0;
+            app.rebuild_emoji_filter();
+        }
+        Screen::GiphySearch => {
+            app.giphy_input.insert_str(&flat());
+            app.giphy_results.clear();
+            app.giphy_selected = 0;
+        }
+        Screen::ConvSearch => {
+            app.conv_search.insert_str(&flat());
+            app.conv_search_results.clear();
+            app.conv_search_selected = 0;
+        }
+        Screen::SearchGlobal => app.search_global_input.insert_str(&flat()),
+        Screen::QuickSwitcher => {
+            app.switcher.insert_str(&flat());
+            app.switcher_selected = 0;
+        }
+        Screen::CommandPalette => {
+            app.palette.insert_str(&flat());
+            app.palette_selected = 0;
+        }
+        Screen::NewConversation => app.new_conv.insert_str(&flat()),
+        Screen::UnhideConversation => app.unhide_input.insert_str(&flat()),
+        Screen::ChannelBrowser if app.channel_creating || app.channel_renaming.is_some() => {
+            app.channel_new_name.insert_str(&flat());
+        }
+        Screen::Members if app.member_adding => app.member_add_input.insert_str(&flat()),
+        Screen::Settings if app.settings_editing.is_some() => {
+            app.settings_input.insert_str(&flat());
+        }
+        Screen::Inbox | Screen::Teams => match app.focus {
+            Focus::Search => {
+                app.search.insert_str(&flat());
+                app.rebuild_filter();
+            }
+            // The compose is the one multi-line input: newlines survive.
+            Focus::Chat if app.open_conv_id.is_some() && app.selected_msg_idx.is_none() => {
+                app.compose.insert_str(&clean);
+            }
+            _ => {}
+        },
         _ => {}
     }
 }

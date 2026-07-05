@@ -2036,6 +2036,31 @@ fn giphy_search_gates_on_key_and_send_preserves_draft() {
 }
 
 #[test]
+fn paste_multiline_lands_in_compose_without_sending() {
+    use crate::tui::input::handle_paste;
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Chat;
+    handle_paste(&mut rig.app, "line1\r\nline2\nline3");
+    // Newlines survive, nothing was sent, no request in flight.
+    assert_eq!(rig.app.compose.text(), "line1\nline2\nline3");
+    assert!(rig.app.in_flight.is_none());
+    assert!(rig.app.outbox.is_empty());
+    // A single-line editor flattens the same paste.
+    rig.app.compose.clear();
+    rig.app.screen = Screen::QuickSwitcher;
+    handle_paste(&mut rig.app, "a\nb");
+    assert_eq!(rig.app.switcher.text(), "a b");
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers
