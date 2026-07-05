@@ -563,11 +563,13 @@ doesn't yank the cursor. `tree_selected` only ever indexes `tree_rows()` via
 `BorderType::Rounded` — set once in `titled_block`, `list_table`, the Settings
 `focus_block`, and the file picker, plus the existing `rounded_block` pickers
 (global search, react, quick switcher). A new bordered panel **must** be
-rounded too (reuse `titled_block` / `list_table` and it is, for free). The only
-non-rounded borders are the deliberate `BorderType::Double` modal frames — the
-destructive `draw_confirm_popup`, the Settings outer frame, and the help popup —
-where Double signals "modal overlay"; don't round those without a deliberate
-decision.
+rounded too (reuse `titled_block` / `list_table` and it is, for free).
+**Every border in the app is rounded — no exceptions.** The confirm popup,
+the Settings outer frame and the help popup used to carry a `Double` frame
+as a "modal" signal; in practice one double-bordered popup next to the
+rounded picker family read as a glitch, not a signal (user report), so the
+whole modal family now shares the single rounded chrome — position (the
+`MODAL_*` band) and the title style are what say "overlay".
 
 - `view::mod::titled_block(title, focused, app)` — the bordered block (rounded):
   focused = accent + bold, else `inactive`. Used for every panel.
@@ -646,7 +648,8 @@ under react/delete/download).
 
 - **Confirmations** (`ConfirmLogout`, `ConfirmDeleteMessage`,
   `ConfirmConvAction`) render through `widgets::draw_confirm_popup`
-  (centered, double border) — its `[ confirm ]` / `[ cancel ]` buttons are
+  (centered, the shared rounded chrome on the modal band) — its
+  `[ confirm ]` / `[ cancel ]` buttons are
   `widgets::button` spans, matching the Login form's buttons: `←/→` (or
   `Tab`/`h`/`l`) move between **confirm/cancel**, `Enter` activates the
   highlighted one, `y`/`n`/`Esc` are shortcuts. **Default highlight = cancel** for the destructive action

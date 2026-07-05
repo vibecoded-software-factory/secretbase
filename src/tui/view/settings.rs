@@ -47,7 +47,7 @@ pub fn draw_popup(frame: &mut Frame, app: &App) {
     let outer = Block::default()
         .title(Span::styled(" Settings ", accent))
         .borders(Borders::ALL)
-        .border_type(BorderType::Double)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(t.accent));
     let inner = outer.inner(popup);
     frame.render_widget(outer, popup);
