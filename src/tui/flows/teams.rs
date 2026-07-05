@@ -8,20 +8,28 @@ use crate::ports::KeybaseError;
 use crate::ports::keybase::ListTeamsOk;
 use crate::tui::action::ActionState;
 use crate::tui::app::App;
-use crate::tui::screens::Screen;
+use crate::tui::screens::{Focus, Screen};
 use crate::tui::worker::{InFlight, WorkerRequest};
 
-/// Switches to the teams screen and queues a fresh
-/// `list-self-memberships` load. Selects row 0.
+/// Opens the **Teams section** in the Home shell's right pane (focusing its
+/// list) and queues a fresh `list-self-memberships` load. Selects row 0.
 pub fn open_teams(app: &mut App) {
     app.teams.selected = 0;
     app.screen = Screen::Teams;
+    // The teams list is the right pane's section — focus it.
+    app.focus = Focus::Chat;
     request_load_teams(app);
 }
 
-/// Returns to the inbox.
+/// Leaves the Teams section, back to the Messages section: the open
+/// conversation if there is one, else the conversation tree.
 pub fn close_teams(app: &mut App) {
     app.screen = Screen::Inbox;
+    app.focus = if app.open_conv_id.is_some() {
+        Focus::Chat
+    } else {
+        Focus::Tree
+    };
 }
 
 /// Queues `keybase team api {"method":"list-self-memberships"}`.

@@ -246,8 +246,9 @@ fn handle_key(app: &mut App, key: KeyEvent) {
             }
         }
         Screen::Login => login::handle(app, key),
-        Screen::Inbox => inbox::handle(app, key),
-        Screen::Teams => teams::handle(app, key),
+        // Teams is a section of the Home shell now, routed through the inbox
+        // handler (which dispatches the right pane by the active section).
+        Screen::Inbox | Screen::Teams => inbox::handle(app, key),
         Screen::Help => handle_help(app, key),
         Screen::Settings => settings::handle(app, key),
         Screen::ConfirmLogout => common::run_confirm(

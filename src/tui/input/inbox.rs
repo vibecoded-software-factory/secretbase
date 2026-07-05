@@ -23,7 +23,9 @@ fn cycle(app: &App, forward: bool) -> Focus {
     // Skip unreachable panels: a closed chat, and the command log when the
     // `cmdlog_rows` setting hides it.
     for _ in 0..FOCUS_ORDER.len() {
-        let skip = (f == Focus::Chat && app.open_conv_id.is_none())
+        // Chat is reachable with no open conversation when the right pane holds
+        // the Teams section (its list is the focus target there).
+        let skip = (f == Focus::Chat && app.open_conv_id.is_none() && app.screen != Screen::Teams)
             || (f == Focus::CmdLog && app.settings_cache.cmdlog_rows == 0);
         if !skip {
             break;
@@ -143,8 +145,14 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             set_focus(app, Focus::Tree);
             return;
         }
-        KeyCode::Char('m') | KeyCode::Char('M') if alt && app.open_conv_id.is_some() => {
-            set_focus(app, Focus::Chat);
+        KeyCode::Char('m') | KeyCode::Char('M') if alt => {
+            // Go to the Messages section — leaving the Teams section if we're
+            // in it, else focusing the open conversation.
+            if app.screen == Screen::Teams {
+                crate::tui::flows::teams::close_teams(app);
+            } else if app.open_conv_id.is_some() {
+                set_focus(app, Focus::Chat);
+            }
             return;
         }
         KeyCode::Char('f') | KeyCode::Char('F') if alt => {
@@ -196,6 +204,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
 
     match app.focus {
         Focus::Tree => handle_tree(app, key),
+        // The right pane is contextual: the Teams section's list, or the chat.
+        Focus::Chat if app.screen == Screen::Teams => crate::tui::input::teams::handle(app, key),
         Focus::Chat => crate::tui::input::conversation::handle(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         // Search returns early above; keep this a no-op (not a panic) so a
