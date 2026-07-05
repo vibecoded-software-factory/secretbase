@@ -55,13 +55,13 @@ pub fn request_logout(app: &mut App) {
 /// sensible default. Only fills empty fields so a retry keeps what the
 /// user typed.
 pub fn prepare_login_screen(app: &mut App) {
-    if app.login_username.is_empty() && !app.identity.default_username.is_empty() {
-        app.login_username = LineEditor::from_text(&app.identity.default_username);
+    if app.login.username.is_empty() && !app.identity.default_username.is_empty() {
+        app.login.username = LineEditor::from_text(&app.identity.default_username);
     }
-    if app.login_device.is_empty() {
-        app.login_device = LineEditor::from_text("secretbase");
+    if app.login.device.is_empty() {
+        app.login.device = LineEditor::from_text("secretbase");
     }
-    app.login_focus = LoginField::Username;
+    app.login.focus = LoginField::Username;
 }
 
 /// Fires the non-interactive **paper-key** login from the Login form.
@@ -70,24 +70,24 @@ pub fn prepare_login_screen(app: &mut App) {
 /// account — a failure (e.g. "already provisioned") surfaces in the strip,
 /// pointing the user at the native login.
 pub fn request_login_paperkey(app: &mut App) {
-    let username = app.login_username.text().trim().to_string();
-    let device = app.login_device.text().trim().to_string();
+    let username = app.login.username.text().trim().to_string();
+    let device = app.login.device.text().trim().to_string();
     if username.is_empty() {
         app.set_action(ActionState::Error("Username is required".into()));
-        app.login_focus = LoginField::Username;
+        app.login.focus = LoginField::Username;
         return;
     }
     if device.is_empty() {
         app.set_action(ActionState::Error("Device name is required".into()));
-        app.login_focus = LoginField::Device;
+        app.login.focus = LoginField::Device;
         return;
     }
-    if app.login_paperkey.text().trim().is_empty() {
+    if app.login.paperkey.text().trim().is_empty() {
         app.set_action(ActionState::Error("Paper key is required".into()));
-        app.login_focus = LoginField::PaperKey;
+        app.login.focus = LoginField::PaperKey;
         return;
     }
-    let paperkey = Zeroizing::new(app.login_paperkey.text().trim().to_string());
+    let paperkey = Zeroizing::new(app.login.paperkey.text().trim().to_string());
     app.submit(
         InFlight::LoginPaperkey,
         "Logging in…",
@@ -104,7 +104,7 @@ pub fn request_login_paperkey(app: &mut App) {
 /// present, is passed as the `[username]` argument. The run loop suspends the
 /// TUI, runs the command, restores, and re-checks status.
 pub fn request_native_login(app: &mut App) {
-    let username = app.login_username.text().trim().to_string();
+    let username = app.login.username.text().trim().to_string();
     app.pending_native_login = Some(username);
 }
 
@@ -115,7 +115,7 @@ pub fn request_native_login(app: &mut App) {
 pub fn handle_login_paperkey_response(app: &mut App, result: Result<(), KeybaseError>) {
     match result {
         Ok(()) => {
-            app.login_paperkey = LineEditor::default(); // wipe the secret
+            app.login.paperkey = LineEditor::default(); // wipe the secret
             app.push_cmd("keybase login", true, "logged in");
             // Re-check status: logged in → loads chats and enters the inbox.
             request_status(app);
