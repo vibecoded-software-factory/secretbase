@@ -85,10 +85,16 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Span::styled("   (←/→ · Enter · y/n · Esc)", Style::default().fg(t.muted)),
         ])
     } else {
-        Line::from(Span::styled(
-            " a add · Shift+X remove · F5 refresh · Esc close ",
-            Style::default().fg(t.dim),
-        ))
+        crate::tui::view::widgets::legend_line(
+            &[
+                ("a", "add"),
+                ("Shift+X", "remove"),
+                ("F5", "refresh"),
+                ("Esc", "close"),
+            ],
+            layout[1].width as usize,
+            t,
+        )
     };
     frame.render_widget(Paragraph::new(bottom), layout[1]);
 }

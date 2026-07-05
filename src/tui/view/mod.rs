@@ -227,13 +227,7 @@ fn draw_too_small(frame: &mut Frame, area: Rect, theme: &crate::tui::theme::Them
 /// Common bordered block with a stylised title — accent + bold when
 /// focused, else the inactive tint.
 pub fn titled_block<'a>(title: &'a str, focused: bool, app: &'a App) -> Block<'a> {
-    let style = if focused {
-        Style::default()
-            .fg(app.theme.accent)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(app.theme.inactive)
-    };
+    let style = widgets::focus_style(&app.theme, focused);
     Block::default()
         .borders(Borders::ALL)
         // Rounded corners on every section panel — the single place that decides

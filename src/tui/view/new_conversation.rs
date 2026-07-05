@@ -32,10 +32,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
             spans
         }),
         Line::from(""),
-        Line::from(Span::styled(
-            "Enter: create   |   Esc: cancel   |   (comma-separated usernames)",
-            Style::default().fg(t.dim),
-        ))
+        crate::tui::view::widgets::legend_line(
+            &[
+                ("Enter", "create"),
+                ("Esc", "cancel"),
+                ("", "(comma-separated usernames)"),
+            ],
+            area.width.saturating_sub(2) as usize,
+            t,
+        )
         .alignment(Alignment::Center),
     ];
 

@@ -223,6 +223,22 @@ impl Preset {
 }
 
 impl Theme {
+    /// Emphasis / interaction style — accent + bold (the focused-title /
+    /// key-letter / active-tab weight). One place instead of twenty inline
+    /// `fg(accent).add_modifier(BOLD)` assemblies.
+    pub fn emphasis(&self) -> ratatui::style::Style {
+        ratatui::style::Style::default()
+            .fg(self.accent)
+            .add_modifier(ratatui::style::Modifier::BOLD)
+    }
+
+    /// Destructive / error headline style — error + bold.
+    pub fn danger_title(&self) -> ratatui::style::Style {
+        ratatui::style::Style::default()
+            .fg(self.error)
+            .add_modifier(ratatui::style::Modifier::BOLD)
+    }
+
     /// Builds a full theme from a base [`Palette`]. The core fields map
     /// identically across the three TUIs; the secretbase-specific fields
     /// (the splash starfield + conversation markers) are derived from

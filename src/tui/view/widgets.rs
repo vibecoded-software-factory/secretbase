@@ -249,6 +249,90 @@ pub fn key_style(theme: &Theme) -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
+/// The single focused/unfocused chrome style: accent + bold when focused,
+/// the `inactive` tint otherwise. Every focus-styled border/label routes
+/// here (`titled_block`, the Settings block, the Login inputs, the search
+/// box) so "what focus looks like" is decided exactly once.
+pub fn focus_style(theme: &Theme, focused: bool) -> Style {
+    if focused {
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.inactive)
+    }
+}
+
+/// Builds a hint/legend line from `(key, label)` pairs: keys in
+/// [`key_style`] (the "keybind letters = accent" rule), labels dim,
+/// ` · `-separated — **fitted** to `width` by whole segments (the rest
+/// lives in F1), so no hint can silently clip at the terminal edge. An
+/// empty `key` renders a label-only segment.
+pub fn legend_line<'a>(items: &[(&'a str, &'a str)], width: usize, theme: &Theme) -> Line<'static> {
+    let sep_w = " · ".chars().count();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut used = 0usize;
+    for (i, (key, label)) in items.iter().enumerate() {
+        let seg_w = if key.is_empty() {
+            label.chars().count()
+        } else {
+            key.chars().count() + 1 + label.chars().count()
+        };
+        let extra = if i == 0 { seg_w } else { sep_w + seg_w };
+        // Reserve room for a trailing " …" if this wouldn't be the last one.
+        let reserve = if i + 1 < items.len() { 2 } else { 0 };
+        if used + extra + reserve > width && i > 0 {
+            spans.push(Span::styled(
+                " …".to_string(),
+                Style::default().fg(theme.dim),
+            ));
+            return Line::from(spans);
+        }
+        if i > 0 {
+            spans.push(Span::styled(
+                " · ".to_string(),
+                Style::default().fg(theme.muted),
+            ));
+        }
+        if !key.is_empty() {
+            spans.push(Span::styled((*key).to_string(), key_style(theme)));
+            spans.push(Span::styled(
+                format!(" {label}"),
+                Style::default().fg(theme.dim),
+            ));
+        } else {
+            spans.push(Span::styled(
+                (*label).to_string(),
+                Style::default().fg(theme.dim),
+            ));
+        }
+        used += extra;
+    }
+    Line::from(spans)
+}
+
+/// The shared empty-state body: a bold headline + dim hint lines, indented
+/// two spaces — the pattern the inbox tree notices established. Place it in
+/// a panel or a modal body; the caller owns the surrounding block.
+pub fn empty_state_lines(head: &str, hints: &[&str], theme: &Theme) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            format!("  {head}"),
+            Style::default()
+                .fg(theme.foreground)
+                .add_modifier(Modifier::BOLD),
+        )),
+    ];
+    for h in hints {
+        lines.push(Line::from(Span::styled(
+            format!("  {h}"),
+            Style::default().fg(theme.dim),
+        )));
+    }
+    lines
+}
+
 /// The shared **unread / attention** emphasis style: the golden `conv_unread`
 /// colour plus BOLD. Every unread affordance uses it (the dot, the count, the
 /// favourite star, the identity bar's "N unread"), so the emphasis reads
@@ -713,6 +797,45 @@ pub fn draw_hint_bar(frame: &mut Frame, area: Rect, footer_hint: &str, t: &Theme
 
 #[cfg(test)]
 mod tests {
+    fn line_text(l: &Line<'_>) -> String {
+        l.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn legend_line_keeps_whole_segments_and_ellipsizes() {
+        let t = Theme::default();
+        let items = [("Enter", "open"), ("n", "new"), ("Shift+X", "delete")];
+        // Plenty of room: everything present, keys + labels + separators.
+        let full = line_text(&legend_line(&items, 80, &t));
+        assert_eq!(full, "Enter open · n new · Shift+X delete");
+        // Tight: whole segments only, then an ellipsis — never a clipped key.
+        let tight = line_text(&legend_line(&items, 20, &t));
+        assert_eq!(tight, "Enter open · n new …");
+        // Even tighter: the ellipsis reservation drops the second segment
+        // whole rather than clipping it.
+        let tighter = line_text(&legend_line(&items, 18, &t));
+        assert_eq!(tighter, "Enter open …");
+        // Key spans carry the accent emphasis (the gradient rule).
+        let l = legend_line(&items, 80, &t);
+        assert_eq!(l.spans[0].style, key_style(&t));
+    }
+
+    #[test]
+    fn legend_line_label_only_segments() {
+        let t = Theme::default();
+        let l = line_text(&legend_line(&[("", "(read-only)")], 40, &t));
+        assert_eq!(l, "(read-only)");
+    }
+
+    #[test]
+    fn empty_state_lines_shape() {
+        let t = Theme::default();
+        let lines = empty_state_lines("No chats", &["n to start one"], &t);
+        assert_eq!(lines.len(), 3); // spacer + head + one hint
+        assert_eq!(line_text(&lines[1]), "  No chats");
+        assert_eq!(line_text(&lines[2]), "  n to start one");
+    }
+
     use super::*;
 
     #[test]

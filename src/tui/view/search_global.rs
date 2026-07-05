@@ -98,10 +98,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
     );
 
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            " Enter: jump to message   |   ↑/↓: navigate   |   Esc: close ",
-            Style::default().fg(t.dim),
-        ))),
+        Paragraph::new(crate::tui::view::widgets::legend_line(
+            &[
+                ("Enter", "jump to message"),
+                ("↑/↓", "navigate"),
+                ("Esc", "close"),
+            ],
+            layout[2].width as usize,
+            t,
+        )),
         layout[2],
     );
 }
