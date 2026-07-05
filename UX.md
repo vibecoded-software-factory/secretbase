@@ -77,7 +77,9 @@ status strip at the bottom.
     out; an unseen **@mention of you** adds a red `@` (session-local, from
     the push stream — cleared on open; collapsed groups aggregate it), and
     each conversation row carries a dim **relative age** (`5m`, `2h`) in the
-    table's second column. The tree **starts fully collapsed** — `App::expanded` holds the
+    table's second column — sized to the widest age actually shown, and the
+    name label is capped per row by its *own* markers (star/dot/`@`), so
+    clean rows don't pay a worst-case reservation. The tree **starts fully collapsed** — `App::expanded` holds the
     *expanded* groups (empty = all folded, so it persists across refreshes); a
     non-empty search force-expands all. The border count is the **visible rows**
     (headers + the conversations of expanded groups) of the total. `↑/↓` move
