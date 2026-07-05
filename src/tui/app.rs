@@ -11,10 +11,9 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use crate::domain::{
-    ChatEvent, ChatMember, Conversation, IdentityInfo, InboxHit, LineEditor, LoweredConversation,
-    MemberStatus, Message, fuzzy_score_lowered,
+    ChatEvent, Conversation, IdentityInfo, InboxHit, LineEditor, LoweredConversation, MemberStatus,
+    Message, fuzzy_score_lowered,
 };
-use crate::ports::keybase::ReadChannel;
 use crate::ports::{ClipboardPort, OpenerPort, SettingsPort, UserSettings};
 use crate::tui::action::{ActionState, CmdEntry};
 use crate::tui::file_picker::FilePicker;
@@ -291,29 +290,12 @@ pub struct App {
     pub default_channels: Vec<String>,
 
     // ── Members view (Screen::Members) ──────────────────────────────────
-    /// Channel/conversation whose members the Members view is showing.
-    pub members_channel: Option<ReadChannel>,
-    /// Display label for the Members title (e.g. `team#channel`).
-    pub members_label: String,
-    /// Members of `members_channel` (from `listmembers`), sorted by role.
-    pub members: Vec<ChatMember>,
-    /// Selected row in the Members view.
-    pub members_selected: usize,
-    /// Screen to return to when the Members view closes (browser or inbox).
-    pub members_return: Screen,
-    /// Whether the Members view is in **add** mode (`a`) — a username input.
-    pub member_adding: bool,
-    /// Comma/space-separated usernames typed in add mode.
-    pub member_add_input: LineEditor,
-    /// `/` filter over the Members view (username/full-name substring).
-    pub member_filter: LineEditor,
-    /// Whether the Members filter input owns typing.
-    pub member_filtering: bool,
-    /// `Some(username)` while an inline **remove** confirm (`x`) is showing.
-    pub member_confirm_remove: Option<String>,
-    /// Highlighted button of the inline member-remove confirm (`false` =
-    /// cancel — the destructive default).
-    pub member_remove_yes: bool,
+    /// The Members modal's state — its target channel + label, the member
+    /// list and cursor, the return screen, and the inline add / filter /
+    /// remove-confirm modes — extracted into its own cohesive type (see
+    /// [`crate::tui::members_state`]). The `listmembers` / `addtochannel` /
+    /// `removefromchannel` calls live in the flow layer (they need the worker).
+    pub members: crate::tui::members_state::MembersState,
 
     // ── Conversation detail ──────────────────────────────────────────────
     /// Conversation id currently open on the detail screen. `None`
@@ -875,17 +857,7 @@ impl App {
             channel_confirm_delete: None,
             channel_delete_yes: false,
             default_channels: Vec::new(),
-            members_channel: None,
-            members_label: String::new(),
-            members: Vec::new(),
-            members_selected: 0,
-            members_return: Screen::Inbox,
-            member_adding: false,
-            member_add_input: LineEditor::default(),
-            member_filter: LineEditor::default(),
-            member_filtering: false,
-            member_confirm_remove: None,
-            member_remove_yes: false,
+            members: crate::tui::members_state::MembersState::default(),
             open_conv_id: None,
             conv_last_seen: HashMap::new(),
             unread_boundary: None,
@@ -1135,19 +1107,6 @@ impl App {
     /// The channel the browser cursor is on, through the filter projection.
     pub fn selected_channel_idx(&self) -> Option<usize> {
         self.channels_filtered().get(self.channel_selected).copied()
-    }
-
-    /// Indices into [`Self::members`] matching the `/` filter.
-    pub fn members_filtered(&self) -> Vec<usize> {
-        let q = self.member_filter.text().trim().to_lowercase();
-        (0..self.members.len())
-            .filter(|&i| q.is_empty() || self.members[i].username.to_lowercase().contains(&q))
-            .collect()
-    }
-
-    /// The member the cursor is on, through the filter projection.
-    pub fn selected_member_idx(&self) -> Option<usize> {
-        self.members_filtered().get(self.members_selected).copied()
     }
 
     /// Opens the Settings overlay over the current screen, focus on the
@@ -1544,7 +1503,7 @@ impl App {
                 }
             }
             Screen::Members => {
-                if self.member_adding {
+                if self.members.adding {
                     UiMode::Search
                 } else {
                     UiMode::Normal

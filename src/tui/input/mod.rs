@@ -93,7 +93,7 @@ pub fn handle_paste(app: &mut App, text: &str) {
         Screen::ChannelBrowser if app.channel_creating || app.channel_renaming.is_some() => {
             app.channel_new_name.insert_str(&flat());
         }
-        Screen::Members if app.member_adding => app.member_add_input.insert_str(&flat()),
+        Screen::Members if app.members.adding => app.members.add_input.insert_str(&flat()),
         Screen::Settings if app.settings_editing.is_some() => {
             app.settings_input.insert_str(&flat());
         }

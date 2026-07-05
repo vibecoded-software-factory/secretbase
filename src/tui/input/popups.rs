@@ -122,37 +122,37 @@ pub fn channel_browser(app: &mut App, key: KeyEvent) {
 
 pub fn members(app: &mut App, key: KeyEvent) {
     // Add mode: the username input owns the keys.
-    if app.member_adding {
+    if app.members.adding {
         match key.code {
             KeyCode::Esc => chat::cancel_member_add(app),
             KeyCode::Enter => chat::request_add_members(app),
             _ => {
-                common::route_line_editor(&mut app.member_add_input, key);
+                common::route_line_editor(&mut app.members.add_input, key);
             }
         }
         return;
     }
     // Inline remove confirm — same navigable mechanics as every confirm.
-    if app.member_confirm_remove.is_some() {
+    if app.members.confirm_remove.is_some() {
         common::run_confirm(
             app,
             key,
-            |a| &mut a.member_remove_yes,
+            |a| &mut a.members.remove_yes,
             chat::confirm_remove_member,
             chat::cancel_member_remove,
         );
         return;
     }
     // `/` filter input owns typing while active (tree-search contract).
-    if app.member_filtering {
-        match common::search_key(&mut app.member_filter, key) {
+    if app.members.filtering {
+        match common::search_key(&mut app.members.filter, key) {
             common::SearchAction::ClearAndExit | common::SearchAction::Exit => {
-                app.member_filtering = false;
+                app.members.filtering = false;
             }
-            common::SearchAction::Rebuild => app.members_selected = 0,
+            common::SearchAction::Rebuild => app.members.selected = 0,
             common::SearchAction::ToList(k) => {
-                let len = app.members_filtered().len();
-                common::list_nav(&k, len, app.members_selected, |i| app.members_selected = i);
+                let len = app.members.filtered().len();
+                common::list_nav(&k, len, app.members.selected, |i| app.members.selected = i);
             }
             common::SearchAction::Idle => {}
         }
@@ -162,17 +162,17 @@ pub fn members(app: &mut App, key: KeyEvent) {
     // channel browser (Ctrl+D/U, unified page step).
     if common::list_nav(
         &key,
-        app.members_filtered().len(),
-        app.members_selected,
-        |i| app.members_selected = i,
+        app.members.filtered().len(),
+        app.members.selected,
+        |i| app.members.selected = i,
     ) {
         return;
     }
     match key.code {
-        KeyCode::Char('/') => app.member_filtering = true,
-        KeyCode::Esc if !app.member_filter.is_empty() => {
-            app.member_filter.clear();
-            app.members_selected = 0;
+        KeyCode::Char('/') => app.members.filtering = true,
+        KeyCode::Esc if !app.members.filter.is_empty() => {
+            app.members.filter.clear();
+            app.members.selected = 0;
         }
         KeyCode::Esc => chat::close_members(app),
         // Add member(s) — bare (safe/common).

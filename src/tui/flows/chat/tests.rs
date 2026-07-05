@@ -1427,7 +1427,7 @@ fn open_members_rig() -> Rig {
             role: TeamRole::Owner,
         },
     ];
-    rig.app.members_channel = Some(ReadChannel {
+    rig.app.members.channel = Some(ReadChannel {
         name: "phoenix".into(),
         members_type: "team".into(),
         topic_name: Some("general".into()),
@@ -1441,32 +1441,32 @@ fn open_members_rig() -> Rig {
 fn members_load_sorts_by_role_then_name() {
     let rig = open_members_rig();
     // Owner (alice) before Writer (zoe) regardless of input order.
-    assert_eq!(rig.app.members.len(), 2);
-    assert_eq!(rig.app.members[0].username, "alice");
-    assert_eq!(rig.app.members[0].role, TeamRole::Owner);
-    assert_eq!(rig.app.members[1].username, "zoe");
+    assert_eq!(rig.app.members.list.len(), 2);
+    assert_eq!(rig.app.members.list[0].username, "alice");
+    assert_eq!(rig.app.members.list[0].role, TeamRole::Owner);
+    assert_eq!(rig.app.members.list[1].username, "zoe");
 }
 
 #[test]
 fn members_add_parses_usernames_and_calls_adapter() {
     let mut rig = open_members_rig();
     open_member_add(&mut rig.app);
-    assert!(rig.app.member_adding);
-    rig.app.member_add_input.set("Bob, charlie");
+    assert!(rig.app.members.adding);
+    rig.app.members.add_input.set("Bob, charlie");
     request_add_members(&mut rig.app);
     pump_until_idle(&mut rig.app);
     assert_eq!(
         rig.mock.st().added_members,
         vec![vec!["bob".to_string(), "charlie".to_string()]]
     );
-    assert!(!rig.app.member_adding);
+    assert!(!rig.app.members.adding);
 }
 
 #[test]
 fn members_add_rejects_invalid_username() {
     let mut rig = open_members_rig();
     open_member_add(&mut rig.app);
-    rig.app.member_add_input.set("not a valid!!name");
+    rig.app.members.add_input.set("not a valid!!name");
     request_add_members(&mut rig.app);
     pump_until_idle(&mut rig.app);
     // Nothing dispatched — the invalid username short-circuits.
@@ -1476,9 +1476,9 @@ fn members_add_rejects_invalid_username() {
 #[test]
 fn members_remove_needs_confirm_then_calls_adapter() {
     let mut rig = open_members_rig();
-    rig.app.members_selected = 0; // alice
+    rig.app.members.selected = 0; // alice
     open_member_remove_confirm(&mut rig.app);
-    assert_eq!(rig.app.member_confirm_remove.as_deref(), Some("alice"));
+    assert_eq!(rig.app.members.confirm_remove.as_deref(), Some("alice"));
     assert!(rig.mock.st().removed_members.is_empty());
     confirm_remove_member(&mut rig.app);
     pump_until_idle(&mut rig.app);
@@ -1486,7 +1486,7 @@ fn members_remove_needs_confirm_then_calls_adapter() {
         rig.mock.st().removed_members,
         vec![vec!["alice".to_string()]]
     );
-    assert!(rig.app.member_confirm_remove.is_none());
+    assert!(rig.app.members.confirm_remove.is_none());
 }
 
 // ── do_create_new_conversation → request_create_new_conversation ─────

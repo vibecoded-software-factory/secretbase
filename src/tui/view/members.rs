@@ -17,10 +17,10 @@ use crate::tui::view::widgets::{
 pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
 
-    let filtered = app.members_filtered();
+    let filtered = app.members.filtered();
     let rows: Vec<PickerRow> = filtered
         .iter()
-        .filter_map(|&i| app.members.get(i))
+        .filter_map(|&i| app.members.list.get(i))
         .map(|m| {
             PickerRow::Item(vec![Line::from(vec![
                 Span::styled(m.username.clone(), Style::default().fg(t.foreground)),
@@ -29,20 +29,20 @@ pub fn draw(frame: &mut Frame, app: &App) {
         })
         .collect();
 
-    let footer = if app.member_adding {
+    let footer = if app.members.adding {
         Some(inline_input_line(
             "add (comma/space): ",
-            &app.member_add_input,
+            &app.members.add_input,
             "add",
             t,
         ))
     } else {
-        app.member_confirm_remove.as_ref().map(|username| {
+        app.members.confirm_remove.as_ref().map(|username| {
             inline_confirm_line(
                 &format!("Remove {username}?"),
                 "",
                 "remove",
-                app.member_remove_yes,
+                app.members.remove_yes,
                 t,
             )
         })
@@ -54,16 +54,16 @@ pub fn draw(frame: &mut Frame, app: &App) {
         PickerModal {
             title: format!(
                 "Members — {} · {} of {}",
-                app.members_label,
+                app.members.label,
                 filtered.len(),
-                app.members.len()
+                app.members.list.len()
             ),
-            query: if app.member_filtering || !app.member_filter.is_empty() {
-                Some((&app.member_filter, "filter members…"))
+            query: if app.members.filtering || !app.members.filter.is_empty() {
+                Some((&app.members.filter, "filter members…"))
             } else {
                 None
             },
-            selected: app.members_selected.min(filtered.len().saturating_sub(1)),
+            selected: app.members.selected.min(filtered.len().saturating_sub(1)),
             rows,
             empty: crate::tui::view::widgets::empty_state_lines(
                 "No members loaded",
