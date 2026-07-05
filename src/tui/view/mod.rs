@@ -71,7 +71,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // from — use `help_from`, not an open-conversation heuristic, so
         // e.g. Teams isn't drawn as Inbox underneath.
         Screen::Help => app.help_from,
-        Screen::Settings => app.settings_from,
+        Screen::Settings => app.settings_ui.from,
         other => other,
     };
     draw_screen(frame, app, base);

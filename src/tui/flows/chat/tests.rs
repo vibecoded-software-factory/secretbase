@@ -3846,10 +3846,10 @@ fn settings_screen_renders_every_section_without_panicking() {
 
     let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("backend");
     for section in 0..SettingsSection::ALL.len() {
-        rig.app.settings_section = section;
-        rig.app.settings_item = 0;
+        rig.app.settings_ui.section = section;
+        rig.app.settings_ui.item = 0;
         for focus in [SettingsFocus::Sidebar, SettingsFocus::Panel] {
-            rig.app.settings_focus = focus;
+            rig.app.settings_ui.focus = focus;
             terminal
                 .draw(|f| crate::tui::view::draw(f, &mut rig.app))
                 .expect("draw must not panic");
@@ -4667,10 +4667,10 @@ fn settings_esc_steps_panel_to_sidebar_then_closes() {
     rig.app.open_settings(); // Settings overlay, focus on the section sidebar
     // Enter a section's panel.
     press(&mut rig.app, KeyCode::Enter, KeyModifiers::NONE);
-    assert_eq!(rig.app.settings_focus, SettingsFocus::Panel);
+    assert_eq!(rig.app.settings_ui.focus, SettingsFocus::Panel);
     // First Esc steps back to the sidebar (does NOT close the overlay).
     press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);
-    assert_eq!(rig.app.settings_focus, SettingsFocus::Sidebar);
+    assert_eq!(rig.app.settings_ui.focus, SettingsFocus::Sidebar);
     assert_eq!(rig.app.screen, Screen::Settings);
     // Second Esc (on the sidebar) closes, returning to where it was opened.
     press(&mut rig.app, KeyCode::Esc, KeyModifiers::NONE);

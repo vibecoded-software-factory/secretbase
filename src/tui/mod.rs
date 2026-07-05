@@ -34,6 +34,7 @@ pub mod pin_state;
 pub mod screens;
 pub mod select_state;
 pub mod settings_model;
+pub mod settings_ui_state;
 pub mod syntax;
 pub mod teams_state;
 pub mod theme;

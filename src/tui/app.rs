@@ -253,12 +253,6 @@ pub struct App {
     /// [`crate::tui::pin_state`]). The persisting `set_local_pin` /
     /// `set_pin_dismissed` and the background pin-body fetch stay outside it.
     pub pins: crate::tui::pin_state::PinState,
-    /// Secret setting being edited in the input popup (`SettingKind::
-    /// Secret`), if any — with [`Self::settings_input`] as its editor.
-    pub settings_editing: Option<SettingId>,
-    /// Editor for the secret-setting popup. `ZeroizeOnDrop` like every
-    /// other input — it holds an API key while open.
-    pub settings_input: crate::domain::LineEditor,
     /// GIF-search popup state: the query editor, the fetched hits and the
     /// picker cursor. Reset when the popup closes.
     pub giphy_input: crate::domain::LineEditor,
@@ -494,19 +488,12 @@ pub struct App {
     pub muted: HashSet<String>,
 
     // ── Settings overlay (F10) ─────────────────────────────────────────────
-    /// Which pane of the Settings overlay holds focus.
-    pub settings_focus: SettingsFocus,
-    /// Highlighted section in the sidebar (index into
-    /// [`SettingsSection::ALL`]).
-    pub settings_section: usize,
-    /// Highlighted row within the active section's panel (index into
-    /// [`SettingsSection::rows`]). Unused by the Theme section.
-    pub settings_item: usize,
-    /// Highlighted preset in the Theme panel (index into
-    /// [`theme::Preset::ALL`]). Applies live as it moves.
-    pub settings_theme_idx: usize,
-    /// Screen the Settings overlay was opened from (returned to on close).
-    pub settings_from: Screen,
+    /// The Settings overlay's navigation + secret-editing state — which
+    /// pane/section/row has focus, the live theme-picker index, the return
+    /// screen and the secret-input popup — extracted into its own cohesive
+    /// type (see [`crate::tui::settings_ui_state`]). The applying methods
+    /// (`settings_adjust`, `apply_theme_idx`, …) stay on `App`.
+    pub settings_ui: crate::tui::settings_ui_state::SettingsUiState,
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     pub should_quit: bool,
@@ -667,6 +654,10 @@ impl App {
             .or(Some(theme::Preset::DEFAULT))
             .and_then(|p| theme::Preset::ALL.iter().position(|&q| q == p))
             .unwrap_or(0);
+        let settings_ui = crate::tui::settings_ui_state::SettingsUiState {
+            theme_idx: settings_theme_idx,
+            ..Default::default()
+        };
         Self {
             screen: Screen::Splash,
             focus: Focus::Tree,
@@ -692,8 +683,6 @@ impl App {
             giphy_input: crate::domain::LineEditor::default(),
             giphy_results: Vec::new(),
             giphy_selected: 0,
-            settings_editing: None,
-            settings_input: crate::domain::LineEditor::default(),
             react_to_compose: false,
             conv_headline: None,
             msg_index: HashMap::new(),
@@ -757,11 +746,7 @@ impl App {
             muted,
             images,
             theme,
-            settings_focus: SettingsFocus::Sidebar,
-            settings_section: 0,
-            settings_item: 0,
-            settings_theme_idx,
-            settings_from: Screen::Inbox,
+            settings_ui,
             should_quit: false,
             worker_dead: false,
             prev_conv_id: None,
@@ -890,21 +875,21 @@ impl App {
     /// section sidebar. Every change applies (and persists) immediately, so
     /// there is nothing to stash for a cancel.
     pub fn open_settings(&mut self) {
-        self.settings_from = self.screen;
-        self.settings_focus = SettingsFocus::Sidebar;
-        self.settings_section = 0;
-        self.settings_item = 0;
+        self.settings_ui.from = self.screen;
+        self.settings_ui.focus = SettingsFocus::Sidebar;
+        self.settings_ui.section = 0;
+        self.settings_ui.item = 0;
         self.screen = Screen::Settings;
     }
 
     /// Closes the Settings overlay, returning to where it was opened.
     pub fn close_settings(&mut self) {
-        self.screen = self.settings_from;
+        self.screen = self.settings_ui.from;
     }
 
     /// The section currently highlighted in the sidebar.
     pub fn settings_section_obj(&self) -> SettingsSection {
-        SettingsSection::ALL[self.settings_section.min(SettingsSection::ALL.len() - 1)]
+        SettingsSection::ALL[self.settings_ui.section.min(SettingsSection::ALL.len() - 1)]
     }
 
     /// Applies (and persists) the theme preset at `idx`, live. The Theme
@@ -914,7 +899,7 @@ impl App {
         let Some(&p) = theme::Preset::ALL.get(idx) else {
             return;
         };
-        self.settings_theme_idx = idx;
+        self.settings_ui.theme_idx = idx;
         self.theme = theme::adapt(
             Theme::from_palette(&p.palette()),
             theme::ColorCaps::detect(),
@@ -1004,8 +989,8 @@ impl App {
             }
             // Secrets aren't stepped — adjust opens the input editor.
             SettingId::GiphyApiKey => {
-                self.settings_editing = Some(id);
-                self.settings_input =
+                self.settings_ui.editing = Some(id);
+                self.settings_ui.input =
                     crate::domain::LineEditor::from_text(self.settings_cache.giphy_api_key.clone());
                 return;
             }
@@ -1215,10 +1200,10 @@ impl App {
     /// value to the cache + config and closes the editor. The value never
     /// reaches the command log.
     pub fn settings_secret_save(&mut self) {
-        let Some(id) = self.settings_editing.take() else {
+        let Some(id) = self.settings_ui.editing.take() else {
             return;
         };
-        let value = self.settings_input.text().trim().to_string();
+        let value = self.settings_ui.input.text().trim().to_string();
         #[allow(clippy::single_match_else)]
         let key = match id {
             SettingId::GiphyApiKey => {
@@ -1227,7 +1212,7 @@ impl App {
             }
             _ => return,
         };
-        self.settings_input = crate::domain::LineEditor::default();
+        self.settings_ui.input = crate::domain::LineEditor::default();
         if !self.settings.write_setting(key, &toml_quoted(&value)) {
             self.set_action(ActionState::Error(
                 "setting applied but not saved (config not writable)".into(),
@@ -1927,7 +1912,7 @@ mod tests {
         app.screen = Screen::Inbox;
         app.open_settings();
         assert_eq!(app.screen, Screen::Settings);
-        assert_eq!(app.settings_from, Screen::Inbox);
+        assert_eq!(app.settings_ui.from, Screen::Inbox);
         app.close_settings();
         assert_eq!(app.screen, Screen::Inbox);
     }
@@ -1942,7 +1927,7 @@ mod tests {
             .position(|p| *p == theme::Preset::Dracula)
             .unwrap();
         app.apply_theme_idx(dracula);
-        assert_eq!(app.settings_theme_idx, dracula);
+        assert_eq!(app.settings_ui.theme_idx, dracula);
         assert_eq!(
             app.theme.accent,
             Theme::from_palette(&theme::Preset::Dracula.palette()).accent
