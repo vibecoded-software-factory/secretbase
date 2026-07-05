@@ -1152,7 +1152,19 @@ impl App {
         let mut unread: Vec<usize> = (0..self.conversations.len())
             .filter(|&i| self.conv_is_unread(&self.conversations[i]) && !drafts.contains(&i))
             .collect();
-        by_recency(&mut unread);
+        // Same priority the hotlist / Ctrl+N use: unseen mentions first,
+        // then DMs, then team channels — recency within each tier.
+        unread.sort_by_key(|&i| {
+            let c = &self.conversations[i];
+            let tier: u8 = if self.mentioned.contains(&c.id) {
+                0
+            } else if c.channel.members_type.is_team() {
+                2
+            } else {
+                1
+            };
+            (tier, std::cmp::Reverse(c.active_at_ms))
+        });
         let shown: HashSet<usize> = drafts.iter().chain(unread.iter()).copied().collect();
         let mut recent: Vec<usize> = (0..self.conversations.len())
             .filter(|i| !shown.contains(i))

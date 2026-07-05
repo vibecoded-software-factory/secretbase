@@ -445,7 +445,10 @@ badge clears as soon as a conversation is read (not on the next resync).
 Discord-style jump-to-conversation modal (`Screen::QuickSwitcher`), opened
 with `Ctrl+K` from the inbox or an open conversation (returns to wherever it
 was opened — `App::switcher_from`). With an **empty** query it shows
-Discord-style sections — **Drafts**, **Unread**, **Recent** — each by
+Discord-style sections — **Drafts**, **Unread**, **Recent** — the Unread
+section priority-ordered like the hotlist / `Ctrl+N` (unseen mentions
+first — flagged with the same red `@` badge as the tree — then DMs, then
+team channels), the others by
 recency, no conversation repeated (`App::switcher_rows` →
 `SwitcherRow::{Header,Conv}`); **typing** collapses to a flat fuzzy list
 (`fuzzy_score_lowered`). Unread rows carry a `●`. `↑/↓` select (over the

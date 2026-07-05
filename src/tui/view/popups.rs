@@ -151,6 +151,14 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
                     .map(|l| l.display_label.clone())
                     .unwrap_or_default();
                 let mut spans = Vec::new();
+                // Unseen @mention — the same red badge the tree shows.
+                if app
+                    .conversations
+                    .get(*ci)
+                    .is_some_and(|c| app.mentioned.contains(&c.id))
+                {
+                    spans.push(Span::styled("@ ", t.danger_title()));
+                }
                 if unread {
                     spans.push(crate::tui::view::widgets::unread_dot(t));
                     spans.push(Span::raw(" "));
