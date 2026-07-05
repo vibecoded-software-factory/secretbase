@@ -69,7 +69,7 @@ fn footer_hint(app: &App) -> &'static str {
         Focus::Search => "type to filter chats · Enter/Esc leave",
         // Only panel-local actions here — the go-to keys already live in each
         // section's border tag, so don't repeat them.
-        Focus::Tree => "↑/↓ nav · l open · n new · r refresh · Shift+I ignore · / filter · Tab",
+        Focus::Tree => "↑/↓ nav · l open · n new · e read · r refresh · / filter · Tab",
         Focus::Chat => "Enter send · Ctrl+F search · Alt+V select · Esc back · Tab",
         Focus::CmdLog => "↑/↓ move · Alt+Shift+K/J range · Space mark · y/c copy · Tab",
     }
@@ -77,7 +77,10 @@ fn footer_hint(app: &App) -> &'static str {
 
 fn render_search(frame: &mut Frame, app: &App, area: Rect) {
     // draw_search_box prepends the `─[Alt+S]-` panel tag itself.
-    let title = format!("Search · {} results", app.filtered_cache.len());
+    // No counter here — the Chats border's `X of Y` is the single source
+    // (two counters in different units, 3 rows apart, answered the same
+    // question).
+    let title = "Search".to_string();
     draw_search_box(
         frame,
         app,
@@ -341,16 +344,25 @@ fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
     // dimmer than `placeholder`, blended toward the border's `muted`, but kept
     // clear of `muted` itself so it stays legible.
     let legend = blend(t.placeholder, t.muted, 0.5);
+    let mut key_hint = vec![Span::raw("  ")];
+    key_hint.extend(
+        crate::tui::view::widgets::legend_line(
+            &[("Tab", "to Chats"), ("↑/↓", "pick"), ("Enter", "open")],
+            inner.width.saturating_sub(2) as usize,
+            t,
+        )
+        .spans,
+    );
     let lines = vec![
         Line::from(Span::raw("")),
         Line::from(Span::styled(
             "  Select a conversation to start chatting",
             Style::default().fg(legend),
         )),
-        Line::from(Span::styled(
-            "  Tab to Chats · ↑/↓ pick · Enter to open",
-            Style::default().fg(legend),
-        )),
+        // The *instructions* must not recede with the disabled chrome —
+        // "never put content a user must read in the recessive band". Keys
+        // through the shared legend (accent keys, dim labels).
+        Line::from(key_hint),
     ];
     frame.render_widget(Paragraph::new(lines), inner);
 }

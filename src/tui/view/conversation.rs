@@ -47,8 +47,14 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
                     MessageContent::Attachment(a) => format!("[{}]", a.filename),
                     _ => String::new(),
                 };
-                // Leave room for the sender + the `Alt+U unpin` affordance.
-                let budget = w.saturating_sub(m.sender.chars().count() + 22).max(8);
+                // Leave room for the fixed chrome around the snippet —
+                // measured from the real strings (` 📌 `, ` · `, the quotes,
+                // `  ·  Alt+U unpin`) instead of a magic cap.
+                let suffix_w = " 📌 ".chars().count()
+                    + " · ".chars().count()
+                    + 2 // the “” quotes
+                    + "  ·  Alt+U unpin".chars().count();
+                let budget = w.saturating_sub(m.sender.chars().count() + suffix_w).max(8);
                 let snippet = trim_end_ellipsis(body.lines().next().unwrap_or(""), budget);
                 s.push(Span::styled(
                     m.sender.clone(),
@@ -1185,7 +1191,10 @@ fn reaction_lines(
 ) -> Vec<Line<'static>> {
     const INDENT: usize = 4;
     const SEP: usize = 2; // spaces between chips
-    let style = Style::default().fg(t.conv_unread);
+    // dim, not conv_unread: yellow is the *attention* colour (unread dot,
+    // new-messages divider, pin) — reaction chips are social garnish and
+    // were training the eye to false alarms.
+    let style = Style::default().fg(t.dim);
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut spans: Vec<Span<'static>> = vec![Span::raw(" ".repeat(INDENT))];
     let mut used = INDENT;
@@ -1308,6 +1317,16 @@ fn select_actions_lines(
         spans.push(Span::styled(format!(" {label}"), label_style));
         line_w += piece;
         first = false;
+    }
+    // The cursor message's exact clock, dim at the end of the bar — grouped
+    // follow-ups have no header timestamp, and the bar under the cursor is
+    // the natural (hover-equivalent) place to answer "when exactly?".
+    if m.sent_at > 0 {
+        let when = format!("· {}", crate::domain::clock_time(m.sent_at));
+        if line_w + 2 + when.chars().count() <= width {
+            spans.push(Span::raw("  "));
+            spans.push(Span::styled(when, label_style));
+        }
     }
     lines.push(Line::from(spans));
     lines

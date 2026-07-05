@@ -310,7 +310,11 @@ on their own:
   replace them. `o` opens the first `http(s)` link
   (`domain::extract_urls` → `ports::OpenerPort`, the `xdg-open`/`open` adapter).
   The bar **packs onto one line when it fits and wraps onto continuation lines
-  otherwise** (`select_actions_lines`) — never truncated. The same
+  otherwise** (`select_actions_lines`) — never truncated — and ends with the
+  cursor message's dim clock (grouped follow-ups have no header timestamp;
+  the bar is the hover-equivalent answer to "when exactly?"). Reaction chips
+  render **dim** — `conv_unread` yellow is reserved for genuine attention
+  marks (the dot, the new-messages divider, the pin, the ★). The same
   fit-or-wrap rule governs **attachments**: the file type sits next to the size
   (`size · type`) when there's room, else it drops to a dim line below
   (`render_attachment`).
