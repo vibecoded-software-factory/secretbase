@@ -2204,6 +2204,36 @@ fn ctrl_n_drains_by_priority_mentions_then_dms_then_channels() {
 }
 
 #[test]
+fn up_on_empty_compose_edits_last_own_message() {
+    use crate::tui::screens::Focus;
+    let mut rig = build_rig();
+    preload_inbox(
+        &mut rig.app,
+        &rig.mock,
+        vec![conv("c1", "alice", MembersType::ImpTeamNative)],
+        "c1",
+    );
+    rig.app.identity.username = "me".into();
+    rig.app.messages = vec![text_msg(10, "alice", "hola"), text_msg(11, "me", "mío")];
+    rig.app.rebuild_msg_meta();
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = Focus::Chat;
+    // Empty compose, at the bottom → Up enters edit of my last message.
+    press(&mut rig.app, KeyCode::Up, KeyModifiers::NONE);
+    assert_eq!(rig.app.edit_target_id, Some(11));
+    assert_eq!(rig.app.compose.text(), "mío");
+    // With draft text, Up scrolls instead — the draft is untouched.
+    cancel_edit(&mut rig.app);
+    rig.app.compose.clear();
+    rig.app.compose.insert_str("borrador");
+    rig.app.messages_max_back = 5; // as if the render measured scrollback
+    press(&mut rig.app, KeyCode::Up, KeyModifiers::NONE);
+    assert_eq!(rig.app.edit_target_id, None);
+    assert_eq!(rig.app.compose.text(), "borrador");
+    assert_eq!(rig.app.messages_scroll, 1);
+}
+
+#[test]
 fn projection_collapse_triggers_bounded_backfill() {
     // A `read` page counts RAW slots; in an envelope-heavy conversation the
     // projection can fold 50 slots to zero visible messages. The handlers
