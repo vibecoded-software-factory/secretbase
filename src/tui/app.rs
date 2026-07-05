@@ -2229,6 +2229,90 @@ mod tests {
     }
 
     #[test]
+    fn rebuild_conv_members_unions_dm_participants_and_senders() {
+        use crate::domain::{Channel, Conversation, MemberStatus, MembersType, Message};
+        let mut app = fresh_app();
+        app.conversations = vec![Conversation {
+            id: "dm1".into(),
+            channel: Channel {
+                name: "alice, bob ,me".into(), // messy spacing must be trimmed
+                members_type: MembersType::ImpTeamNative,
+                topic_name: None,
+            },
+            unread: false,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: MemberStatus::Active,
+            creator_info: None,
+        }];
+        app.open_conv_id = Some("dm1".into());
+        let mut m = Message::default();
+        m.sender = "carol".into(); // spoke in the thread but isn't in the name
+        app.messages = vec![m, Message::default()]; // empty sender is dropped
+        app.rebuild_conv_members();
+        // Participants from the DM name + people who've spoken, sorted, no
+        // blanks — the @-mention candidate pool.
+        assert_eq!(app.conv_members, vec!["alice", "bob", "carol", "me"]);
+    }
+
+    #[test]
+    fn rebuild_conv_members_team_channel_uses_only_senders() {
+        use crate::domain::{Channel, Conversation, MemberStatus, MembersType, Message};
+        let mut app = fresh_app();
+        app.conversations = vec![Conversation {
+            id: "t1".into(),
+            channel: Channel {
+                // A team's `name` is the team, not a participant list — it
+                // must NOT leak into the mention candidates.
+                name: "phoenix".into(),
+                members_type: MembersType::Team,
+                topic_name: Some("general".into()),
+            },
+            unread: false,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: MemberStatus::Active,
+            creator_info: None,
+        }];
+        app.open_conv_id = Some("t1".into());
+        let mut m = Message::default();
+        m.sender = "dave".into();
+        app.messages = vec![m];
+        app.rebuild_conv_members();
+        assert_eq!(app.conv_members, vec!["dave"]);
+    }
+
+    #[test]
+    fn emoji_filter_matches_keywords_and_floats_most_used() {
+        let mut app = fresh_app();
+        // Substring over the keywords: "thumb" finds 👍 even though its
+        // shortcode is `+1` (the whole point of the keywords field).
+        app.react.set("thumb");
+        app.rebuild_emoji_filter();
+        let hits = app.filtered_emoji_indices();
+        assert!(!hits.is_empty(), "keyword search must match");
+        assert!(
+            hits.iter()
+                .any(|&i| app.emojis[i].alias == "+1" || app.emojis[i].keywords.contains("thumb")),
+            "thumb should surface the thumbs-up family"
+        );
+        // Frecency: bump an arbitrary matching alias — it must float first.
+        let last = *hits.last().expect("non-empty");
+        let bumped = app.emojis[last].alias.clone();
+        *app.emoji_uses.entry(bumped.clone()).or_insert(0) += 3;
+        app.rebuild_emoji_filter();
+        let first = app.filtered_emoji_indices()[0];
+        assert_eq!(
+            app.emojis[first].alias, bumped,
+            "most-used floats to the top"
+        );
+        // Empty query → the whole catalogue.
+        app.react.clear();
+        app.rebuild_emoji_filter();
+        assert_eq!(app.filtered_emoji_indices().len(), app.emojis.len());
+    }
+
+    #[test]
     fn toggle_muted_is_local_and_affects_effective_unread() {
         use crate::domain::{Channel, Conversation, MemberStatus, MembersType};
         let mut app = fresh_app();

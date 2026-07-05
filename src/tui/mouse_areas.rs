@@ -76,3 +76,49 @@ fn rect_contains(r: Rect, col: u16, row: u16) -> bool {
     }
     col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn r(x: u16, y: u16, w: u16, h: u16) -> Rect {
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
+    }
+
+    #[test]
+    fn rect_containment_is_inclusive_left_top_exclusive_right_bottom() {
+        let rect = r(2, 3, 4, 2); // cols 2..6, rows 3..5
+        assert!(hit_test(2, 3, rect));
+        assert!(hit_test(5, 4, rect));
+        assert!(!hit_test(6, 3, rect), "right edge is exclusive");
+        assert!(!hit_test(2, 5, rect), "bottom edge is exclusive");
+        assert!(!hit_test(1, 3, rect));
+    }
+
+    #[test]
+    fn empty_rect_never_matches() {
+        assert!(!hit_test(0, 0, r(0, 0, 0, 5)));
+        assert!(!hit_test(0, 0, r(0, 0, 5, 0)));
+    }
+
+    #[test]
+    fn focus_for_maps_rects_to_targets() {
+        let m = MouseAreas {
+            search: r(0, 0, 10, 3),
+            source: r(0, 3, 10, 5),
+            list: r(10, 3, 10, 5),
+            cmd_log: r(0, 8, 20, 3),
+            ..Default::default()
+        };
+        assert_eq!(m.focus_for(1, 1), Some(Focus::Search));
+        assert_eq!(m.focus_for(1, 4), Some(Focus::Tree));
+        assert_eq!(m.focus_for(11, 4), Some(Focus::Chat));
+        assert_eq!(m.focus_for(5, 9), Some(Focus::CmdLog));
+        assert_eq!(m.focus_for(19, 1), None, "outside every rect");
+    }
+}
