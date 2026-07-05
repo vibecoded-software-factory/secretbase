@@ -33,7 +33,9 @@ pub mod worker;
 pub use app::App;
 
 use color_eyre::Result;
-use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture};
+use crossterm::event::{
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+};
 use crossterm::execute;
 use std::time::Duration;
 
@@ -90,7 +92,7 @@ pub fn run(
             settings,
         );
 
-        execute!(std::io::stdout(), EnableMouseCapture)?;
+        execute!(std::io::stdout(), EnableMouseCapture, EnableBracketedPaste)?;
 
         // Kitty keyboard protocol (where the terminal supports it): makes
         // the modifier chords this app leans on — Alt+Shift ranges,
@@ -127,7 +129,11 @@ pub fn run(
             if kitty_keys {
                 let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
             }
-            let _ = execute!(std::io::stdout(), DisableMouseCapture);
+            let _ = execute!(
+                std::io::stdout(),
+                DisableMouseCapture,
+                DisableBracketedPaste
+            );
             prev_hook(info);
         }));
 
@@ -140,7 +146,11 @@ pub fn run(
         if kitty_keys {
             let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
         }
-        let _ = execute!(std::io::stdout(), DisableMouseCapture);
+        let _ = execute!(
+            std::io::stdout(),
+            DisableMouseCapture,
+            DisableBracketedPaste
+        );
         drain_pending_events();
         // Drop order: app first (closes its `worker_tx`), then
         // `worker` triggers Shutdown + join.
@@ -353,7 +363,12 @@ fn run_native_login(terminal: &mut ratatui::DefaultTerminal, username: &str) {
     if kitty_keys {
         let _ = execute!(std::io::stdout(), event::PopKeyboardEnhancementFlags);
     }
-    let _ = execute!(std::io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
+    let _ = execute!(
+        std::io::stdout(),
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        LeaveAlternateScreen
+    );
     let _ = disable_raw_mode();
 
     let suffix = if username.is_empty() {
@@ -373,7 +388,12 @@ fn run_native_login(terminal: &mut ratatui::DefaultTerminal, username: &str) {
     // Restore the TUI (re-pushing the keyboard flags — the alternate
     // screen's flag stack isn't guaranteed to survive the round-trip).
     let _ = enable_raw_mode();
-    let _ = execute!(std::io::stdout(), EnterAlternateScreen, EnableMouseCapture);
+    let _ = execute!(
+        std::io::stdout(),
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    );
     if kitty_keys {
         let _ = execute!(
             std::io::stdout(),
