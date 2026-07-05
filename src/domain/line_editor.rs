@@ -89,6 +89,89 @@ impl LineEditor {
         self.cursor = 0;
     }
 
+    /// Byte offset of the start of the word before the cursor —
+    /// readline-style: skip any whitespace back, then a whitespace-delimited
+    /// word. Newlines count as whitespace, so word ops cross draft lines.
+    fn prev_word_boundary(&self) -> usize {
+        let mut i = self.cursor;
+        while i > 0 {
+            let Some((j, c)) = self.text[..i].char_indices().next_back() else {
+                break;
+            };
+            if c.is_whitespace() {
+                i = j;
+            } else {
+                break;
+            }
+        }
+        while i > 0 {
+            let Some((j, c)) = self.text[..i].char_indices().next_back() else {
+                break;
+            };
+            if c.is_whitespace() {
+                break;
+            }
+            i = j;
+        }
+        i
+    }
+
+    /// Byte offset just past the end of the word after the cursor —
+    /// readline `forward-word`: skip whitespace, then the word.
+    fn next_word_boundary(&self) -> usize {
+        let mut i = self.cursor;
+        while i < self.text.len() {
+            let Some(c) = self.text[i..].chars().next() else {
+                break;
+            };
+            if c.is_whitespace() {
+                i += c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        while i < self.text.len() {
+            let Some(c) = self.text[i..].chars().next() else {
+                break;
+            };
+            if c.is_whitespace() {
+                break;
+            }
+            i += c.len_utf8();
+        }
+        i
+    }
+
+    /// Moves the cursor to the start of the previous word (`Ctrl+←`).
+    pub fn word_left(&mut self) {
+        self.cursor = self.prev_word_boundary();
+    }
+
+    /// Moves the cursor past the end of the next word (`Ctrl+→`).
+    pub fn word_right(&mut self) {
+        self.cursor = self.next_word_boundary();
+    }
+
+    /// Deletes the word before the cursor (`Ctrl+W`, readline
+    /// `unix-word-rubout` / vim insert-mode `Ctrl+W`).
+    pub fn delete_word_back(&mut self) {
+        let start = self.prev_word_boundary();
+        self.text.replace_range(start..self.cursor, "");
+        self.cursor = start;
+    }
+
+    /// Deletes from the start of the current **line** to the cursor
+    /// (`Ctrl+U`). Line-aware so it does the right thing in a multi-line
+    /// draft; on single-line inputs it kills to the start of the buffer.
+    pub fn kill_to_start(&mut self) {
+        let start = self.text[..self.cursor]
+            .rfind('\n')
+            .map(|p| p + 1)
+            .unwrap_or(0);
+        self.text.replace_range(start..self.cursor, "");
+        self.cursor = start;
+    }
+
     pub fn end(&mut self) {
         self.cursor = self.text.len();
     }
@@ -131,6 +214,56 @@ impl LineEditor {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn word_ops_readline_semantics() {
+        let mut e = LineEditor::from_text("hola mundo  cruel");
+        e.end();
+        e.delete_word_back(); // "cruel" + the run of spaces before it
+        assert_eq!(e.text(), "hola mundo  ");
+        e.delete_word_back();
+        assert_eq!(e.text(), "hola ");
+        e.word_left();
+        assert_eq!(e.cursor(), 0);
+        e.word_right(); // past "hola"
+        assert_eq!(e.cursor(), 4);
+    }
+
+    #[test]
+    fn word_ops_are_utf8_safe() {
+        let mut e = LineEditor::from_text("café über");
+        e.end();
+        e.delete_word_back();
+        assert_eq!(e.text(), "café ");
+        e.word_left();
+        assert_eq!(e.cursor(), 0);
+        e.word_right();
+        assert_eq!(e.cursor(), "café".len());
+    }
+
+    #[test]
+    fn kill_to_start_is_line_aware() {
+        let mut e = LineEditor::from_text("line one\nline two tail");
+        e.end();
+        e.kill_to_start(); // kills only the second line's content
+        assert_eq!(e.text(), "line one\n");
+        assert_eq!(e.cursor(), e.text().len());
+        e.kill_to_start(); // at a line start: no-op (nothing before it on the line)
+        assert_eq!(e.text(), "line one\n");
+    }
+
+    #[test]
+    fn word_ops_no_op_at_edges() {
+        let mut e = LineEditor::from_text("x");
+        e.home();
+        e.delete_word_back();
+        assert_eq!(e.text(), "x");
+        e.word_left();
+        assert_eq!(e.cursor(), 0);
+        e.end();
+        e.word_right();
+        assert_eq!(e.cursor(), 1);
+    }
+
     use super::*;
 
     #[test]

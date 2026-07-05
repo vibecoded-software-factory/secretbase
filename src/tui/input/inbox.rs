@@ -100,8 +100,17 @@ pub fn handle(app: &mut App, key: KeyEvent) {
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     if ctrl && matches!(key.code, KeyCode::Char('w') | KeyCode::Char('W')) {
-        app.pending_pane_nav = true;
-        return;
+        // Ctrl+W is "delete word back" in any typing surface (readline /
+        // vim insert) — the pane-nav leader would eat it *and* the h/j/k/l
+        // that follow, yanking focus mid-sentence. The leader only arms
+        // where nothing types (tree, cmdlog, Chat in Select mode); in
+        // typing surfaces the key falls through to `route_line_editor`.
+        let typing = app.focus == Focus::Search
+            || (app.focus == Focus::Chat && app.selected_msg_idx.is_none());
+        if !typing {
+            app.pending_pane_nav = true;
+            return;
+        }
     }
 
     // Only the truly cross-focus keys live here — the pane jumps (Alt), the
