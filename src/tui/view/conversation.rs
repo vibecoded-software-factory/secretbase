@@ -22,114 +22,9 @@ use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{editor_lines, tabbed_block, trim_end_ellipsis};
 
-/// Whether the chat draws its **adaptive** header — a pin or a channel
-/// topic (`App::conv_headline`, cached per load). When neither exists the
-/// header collapses to **0 rows** and the message history takes the space, so
-/// no chrome is reserved for nothing (the name lives on the Messages panel
-/// title either way).
-fn has_adaptive_header(app: &App) -> bool {
-    app.pins.present || app.thread.conv_headline.is_some()
-}
-
-/// The adaptive header: a proper bordered **section** (the same rounded
-/// [`titled_block`] chrome as every other panel — an unstyled floating line
-/// broke the app's visual grammar) titled `📌 Pinned` when the conversation
-/// has a pin, else `~ Topic` for the channel headline. Content line:
-/// `sender · “body”` (no key hints — F1 documents `Alt+U`/`Alt+H`, the
-/// width belongs to the snippet). Only called when
-/// [`has_adaptive_header`] is true.
-fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
-    let title = if app.pins.present {
-        "📌 Pinned"
-    } else {
-        "~ Topic"
-    };
-    // Not a focusable panel — the standard unfocused chrome, like every
-    // other section that isn't under the cursor.
-    let block = titled_block(title, false, app);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    let w = inner.width as usize;
-    let spans: Vec<Span<'static>> = if app.pins.present {
-        let mut s = vec![Span::styled(" ", Style::default())];
-        // Resolve the pinned message: from the loaded window when present,
-        // else from the background-fetched body cache (targets older than
-        // the window, `maybe_fetch_pin_body`).
-        let resolved = app.pins.msg_id.and_then(|pid| {
-            app.thread
-                .msg_index
-                .get(&pid)
-                .copied()
-                .and_then(|i| app.thread.messages.get(i))
-                .or_else(|| {
-                    app.open_conv_id
-                        .as_ref()
-                        .and_then(|c| app.pins.bodies.get(c))
-                        .filter(|m| m.id == pid)
-                })
-        });
-        match resolved {
-            Some(m) => {
-                let body = match &m.content {
-                    MessageContent::Text(b) => b.clone(),
-                    MessageContent::Edit { body, .. } => body.clone(),
-                    MessageContent::Attachment(a) => format!("[{}]", a.filename),
-                    _ => String::new(),
-                };
-                // Leave room for the fixed chrome around the snippet —
-                // measured from the real strings (the lead space, ` · `, the
-                // quotes) instead of a magic cap. No key hints here: they
-                // live in F1, and the width belongs to the pinned message.
-                let suffix_w = 1 + " · ".chars().count() + 2; // the “” quotes
-                let budget = w.saturating_sub(m.sender.chars().count() + suffix_w).max(8);
-                let snippet = trim_end_ellipsis(body.lines().next().unwrap_or(""), budget);
-                s.push(Span::styled(
-                    m.sender.clone(),
-                    Style::default()
-                        .fg(t.user_color(&m.sender))
-                        .add_modifier(Modifier::BOLD),
-                ));
-                s.push(Span::styled(" · ", Style::default().fg(t.muted)));
-                s.push(Span::styled(
-                    format!("\u{201c}{snippet}\u{201d}"),
-                    Style::default().fg(t.foreground),
-                ));
-            }
-            // Target unknown (the JSON API strips the pin payload) or older
-            // than the loaded window — say who pinned, honestly.
-            None => {
-                let who = app.pins.sender.clone().unwrap_or_default();
-                let label = match app.pins.msg_id {
-                    Some(pid) => format!("#{pid}"),
-                    None if !who.is_empty() => format!("{who} pinned a message"),
-                    None => "a message is pinned".to_string(),
-                };
-                s.push(Span::styled(label, Style::default().fg(t.dim)));
-            }
-        }
-        s
-    } else if let Some(topic) = app.thread.conv_headline.as_deref() {
-        let topic = trim_end_ellipsis(
-            topic.lines().next().unwrap_or(""),
-            w.saturating_sub(4).max(8),
-        );
-        vec![
-            Span::styled(" ", Style::default()),
-            Span::styled(
-                format!("\u{201c}{topic}\u{201d}"),
-                Style::default().fg(t.foreground),
-            ),
-        ]
-    } else {
-        return;
-    };
-    frame.render_widget(Paragraph::new(Line::from(spans)), inner);
-}
-
-/// Renders the chat **body** into `area`: an **optional** adaptive header
-/// section (a pin / topic, `has_adaptive_header`) that takes 0 rows when
-/// there's nothing to show, then the message history and the compose box.
+/// Renders the chat **body** into `area`: the message history and the compose
+/// box. The pin / topic header now lives in the global dynamic island above
+/// the pane (`view::island`), not inside the chat.
 pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
     // The wheel scrolls the history from anywhere in the right column — over the
     // header, compose or borders too, not just the message rows — so it never
@@ -139,33 +34,28 @@ pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
         area,
         crate::tui::view::widgets::ScrollTarget::Messages,
     );
-    // The header is a bordered section like every other panel — 3 rows
-    // (border + content + border), 0 when there's nothing to show.
-    let header_h: u16 = if has_adaptive_header(app) { 3 } else { 0 };
+    // The pin / topic header moved to the global dynamic island above the pane;
+    // the chat body is just messages + compose now.
     // Compose grows with its line count (multi-line via Alt+Enter), capped.
     let compose_lines = app.compose.text().split('\n').count().max(1) as u16;
     let compose_h = (compose_lines + 2).clamp(3, 8);
     let layout = Layout::vertical([
-        Constraint::Length(header_h),  // adaptive header (0 or 3 rows)
         Constraint::Min(3),            // messages
         Constraint::Length(compose_h), // compose pane (dynamic)
     ])
     .split(area);
 
-    if header_h > 0 {
-        draw_adaptive_header(frame, app, layout[0]);
-    }
-    render_messages(frame, app, layout[1]);
-    render_compose(frame, app, layout[2]);
+    render_messages(frame, app, layout[0]);
+    render_compose(frame, app, layout[1]);
     // Compute the matches once: `mention_popup_active` recomputes them for
     // its gate, so calling it *and* `mention_matches` doubled the per-frame
     // work while composing.
     if app.mention_popup_gate() {
         let matches = app.mention_matches();
         if !matches.is_empty() {
-            draw_mention_popup(frame, app, layout[2], &matches);
+            draw_mention_popup(frame, app, layout[1], &matches);
         } else if app.emoji_ac_active() {
-            draw_emoji_ac_popup(frame, app, layout[2]);
+            draw_emoji_ac_popup(frame, app, layout[1]);
         }
     }
 }

@@ -48,13 +48,17 @@ status strip at the bottom.
   full height**: no permanent header row is reserved above it. The conversation
   **name** lives on the Messages panel title (`─[Alt+M]-Messages — <name>`,
   `conversation::chat_title`). In-conversation search is a **`Ctrl+F` modal**
-  (`Screen::ConvSearch`). The chat draws an **adaptive header** only when it has
-  something to say (`conversation::has_adaptive_header` / `draw_adaptive_header`):
-  a **pin** or, failing that, the channel **topic** (latest `headline`) — a
-  proper bordered **section** on the standard `titled_block` rounded chrome
-  (3 rows, unfocused tint — a floating borderless line broke the app's visual
-  grammar next to the titled panels). Titled `📌 Pinned` with content
-  `sender · "body"` (when the target isn't knowable — the chat
+  (`Screen::ConvSearch`). Above the right pane sits the **dynamic island**
+  (`view::island`) — a **persistent 3-row bordered band** present in *every*
+  section (Messages / Teams / Find, option A: fixed height, never reflows),
+  one pill whose title and content **morph by priority**: **1.** live action
+  feedback (the running / done / error toast, moved here from the status
+  strip); **2.** a **pin** (open conversation); **3.** the channel **topic**
+  (latest `headline`); **4.** an **attention** summary — `● N unread · @N
+  mentions` when idle (the home of the old status-strip `●N` badge); **5.**
+  per-section context (teams / find counts), else a calm idle line. Content is
+  inset (roomy pill, never glued to the border). Titled `📌 Pinned` with
+  content `sender · "body"` (when the target isn't knowable — the chat
   JSON API strips the pin payload — it degrades honestly to
   `<sender> pinned a message`, resolving for pins set by this client via
   `App::pinned_local`, which is **persisted** to config (`pins` key) so our
@@ -184,19 +188,19 @@ status strip at the bottom.
 - **status** — `widgets::draw_status_strip`: an **nvim-style `-- MODE --`
   badge** on the far left (always visible, coloured per mode — `NORMAL` accent,
   `COMPOSE` success, `SELECT` warm, `SEARCH` cyan — from `App::ui_mode()` /
-  `app::UiMode`), then the **attention hotlist** — `@N` conversations with
-  an unseen mention of you (danger) and `●N` with effective unread (dim),
-  drained by `Ctrl+N` in the same priority order (mentions → DMs → team
-  channels, most recent first within each tier) — then **condition badges**
+  `app::UiMode`), then **condition badges**
   for states that persist as long
   as they're true (`⚠ WORKER DEAD` error+bold; `⇅ reconnecting…` dim while
-  the push stream is down), then feedback (spinner / ✓ / ✗) when an action
-  is in flight, else the per-focus footer hint, with **`F1 help · F10
-  settings` anchored right** (the signed-in `@username` now lives in the
-  identity chip atop the tree, not the footer).
-  **Error toasts are sticky** — they persist until the next keypress
-  (mutt/lazygit); success toasts keep the ~1.5 s fuse. The badge
-  tells the user what a keystroke will do (type vs act vs navigate).
+  the push stream is down), then the per-focus footer hint, with **`F1 help ·
+  F10 settings` anchored right** (the signed-in `@username` lives in the
+  identity chip atop the tree). The **attention badge** (`●N unread · @N
+  mentions`, drained by `Ctrl+N`: mentions → DMs → team channels, most recent
+  first) and the **action feedback** (spinner / ✓ / ✗) moved to the **dynamic
+  island** (see the Conversation section) — the strip stays uncluttered.
+  Attention persists until the conversations are opened; **error toasts are
+  sticky** in the island until the next keypress (mutt/lazygit), success toasts
+  keep the ~1.5 s fuse. The badge tells the user what a keystroke will do
+  (type vs act vs navigate).
 - **List navigation is centralized.** Every list handler routes universal
   movement through `input::common::list_nav` (`↑↓`/`j k`, `PgUp/PgDn`,
   `Ctrl+D/U` half-page, `g/G`, `Home/End`) — **including the channel browser

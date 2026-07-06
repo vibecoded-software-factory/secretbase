@@ -45,8 +45,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // status strip — no tree, no command log — until toggled back.
     if app.pane_zoomed && app.open_conv_id.is_some() {
         let full = Layout::vertical([Constraint::Min(8), Constraint::Length(1)]).split(area);
-        crate::tui::view::conversation::draw_chat(frame, app, full[0]);
-        record_section_tabs(app, full[0]);
+        // The dynamic island stays above the chat even zoomed (option A).
+        let z = Layout::vertical([Constraint::Length(3), Constraint::Min(2)]).split(full[0]);
+        crate::tui::view::island::draw(frame, app, z[0]);
+        crate::tui::view::conversation::draw_chat(frame, app, z[1]);
+        record_section_tabs(app, z[1]);
         let hint = if app.pending_pane_nav {
             "Ctrl+W move: h/j/k/l or arrows · z unzoom · Esc exit"
         } else {
@@ -69,7 +72,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // permanent header row is reserved above it.
     let tree_w = tree_pane_width(area.width);
     let cols = Layout::horizontal([Constraint::Length(tree_w), Constraint::Min(24)]).split(topbody);
-    let (left_col, chat_area) = (cols[0], cols[1]);
+    let (left_col, right_col) = (cols[0], cols[1]);
+
+    // The right column always reserves the dynamic island (a fixed 3-row band)
+    // above the active section — option A: stable height, never reflows.
+    let right = Layout::vertical([Constraint::Length(3), Constraint::Min(2)]).split(right_col);
+    let (island_area, chat_area) = (right[0], right[1]);
+    crate::tui::view::island::draw(frame, app, island_area);
 
     // Left column: the identity chip (3 rows) atop the conversation tree. The
     // chat filter now folds into the Chats panel title (Teams `/query`
@@ -778,5 +787,44 @@ mod tests {
             },
         );
         assert_eq!(app.find_selected, 1, "the wheel moved the Find selection");
+    }
+
+    #[test]
+    fn dynamic_island_shows_attention_when_unread_and_is_padded() {
+        use crate::domain::{Channel, Conversation, MembersType};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.conversations = vec![Conversation {
+            id: "cv1".into(),
+            channel: Channel {
+                name: "me,zoe".into(),
+                members_type: MembersType::ImpTeamNative,
+                topic_name: None,
+            },
+            unread: true,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: crate::domain::MemberStatus::Active,
+            creator_info: None,
+        }];
+        app.rebuild_lowered();
+        app.rebuild_filter_preserving_cursor();
+        app.screen = Screen::Inbox;
+        let text = render_to_text(&mut app);
+        // The island band morphs to the Attention state and reads roomy — the
+        // count is padded away from the border and the dot breathes.
+        assert!(
+            text.contains("Attention"),
+            "island shows the Attention state:\n{text}"
+        );
+        assert!(
+            text.contains("● 1 unread"),
+            "dot + count breathe, not glued:\n{text}"
+        );
+        assert!(
+            text.contains("│  ●") || text.contains("  ● 1 unread"),
+            "content is inset from the left border:\n{text}"
+        );
     }
 }

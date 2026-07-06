@@ -12,11 +12,8 @@ use ratatui::{
 
 use crate::domain::LineEditor;
 use crate::tui::App;
-use crate::tui::action::ActionState;
 use crate::tui::theme::Theme;
 use crate::tui::view::titled_block;
-
-const SPINNER: &[&str] = &["⠋", "⠙", "⠸", "⠴"];
 
 /// The Home shell's **section tab bar** as a title `Line` — `Messages · Teams ·
 /// Find` with the active section (derived from the screen) in accent+bold and
@@ -1335,75 +1332,15 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
             },
         );
     }
-    // Attention hotlist — @N conversations with an unseen mention of you
-    // (danger, the strongest pull), ●N with effective unread (dim). States,
-    // not events: they persist until the conversations are opened. Drain
-    // with Ctrl+N (priority-ordered: mentions → DMs → channels).
-    let mut hot: Vec<Span<'static>> = Vec::new();
-    let mention_n = app.mentioned.len();
-    let unread_n = app
-        .conversations
-        .iter()
-        .filter(|c| c.member_status == crate::domain::MemberStatus::Active)
-        .filter(|c| app.conv_is_unread(c))
-        .count();
-    if mention_n > 0 {
-        hot.push(Span::styled(
-            format!("@{mention_n} "),
-            app.theme.danger_title(),
-        ));
-    }
-    if unread_n > 0 {
-        hot.push(Span::styled(
-            format!("●{unread_n} "),
-            Style::default().fg(app.theme.dim),
-        ));
-    }
-    let hot_w = (hot.iter().map(|s| s.content.chars().count()).sum::<usize>() as u16)
-        .min(full_area.width.saturating_sub(badge_w + cond_w));
-    if !hot.is_empty() && hot_w > 0 {
-        frame.render_widget(
-            Paragraph::new(Line::from(hot)),
-            Rect {
-                x: full_area.x + badge_w + cond_w,
-                y: full_area.y,
-                width: hot_w,
-                height: full_area.height,
-            },
-        );
-    }
-    // Everything else lives to the right of the badge(s).
+    // The attention badge (●N/@N) and the transient action feedback moved to
+    // the dynamic island above the right pane — the strip is now just the mode
+    // badge · condition badges · footer hint · F1/F10 anchor.
     let area = Rect {
-        x: full_area.x + badge_w + cond_w + hot_w,
+        x: full_area.x + badge_w + cond_w,
         y: full_area.y,
-        width: full_area.width.saturating_sub(badge_w + cond_w + hot_w),
+        width: full_area.width.saturating_sub(badge_w + cond_w),
         height: full_area.height,
     };
-    let feedback = match &app.action_state {
-        ActionState::Idle => None,
-        ActionState::Running(msg) => {
-            let spin = SPINNER[app.action_tick as usize % SPINNER.len()];
-            Some((
-                format!("{spin} {msg}"),
-                Style::default().fg(app.theme.accent),
-            ))
-        }
-        ActionState::Done(msg) => Some((msg.clone(), Style::default().fg(app.theme.success))),
-        // The ✗ prefix separates a sticky error from the mode badge it sits
-        // next to — "-- NORMAL -- EOF" read as one cryptic token without it.
-        ActionState::Error(msg) => Some((format!("✗ {msg}"), Style::default().fg(app.theme.error))),
-    };
-
-    if let Some((text, style)) = feedback {
-        // Fit-or-degrade like every other text surface: a long message ends
-        // in `…`, never a mid-word hard cut.
-        let trimmed = trim_end_ellipsis(&text, area.width as usize);
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(trimmed, style))),
-            area,
-        );
-        return;
-    }
 
     // Right side: just the help anchor. The signed-in `@username` now lives in
     // the identity chip atop the conversation tree, not the footer.
