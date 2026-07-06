@@ -34,6 +34,19 @@ pub(crate) fn enter_conversation(app: &mut App, id: String) {
     // session (None on a first-ever open → no divider).
     app.pagination.unread_boundary = app.conv_last_seen.get(&id).copied();
     app.mentioned.remove(&id); // the mention is about to be seen
+    // Optimistically clear the local unread flag when auto-mark-read is on, so
+    // the conversation leaves the unread affordances (the attention island, the
+    // switcher's Unread section, the tree dot + group count) the *moment* it
+    // opens. The server `read` follows and the next inbox list confirms;
+    // without this a just-read conversation lingers unread until the periodic
+    // resync — which reads as "no matter how much I read it, it comes back".
+    if app.settings_cache.auto_mark_read
+        && let Some(c) = app.conversations.iter_mut().find(|c| c.id == id)
+        && c.unread
+    {
+        c.unread = false;
+        app.rebuild_filter_preserving_cursor();
+    }
     app.thread.messages.clear();
     // Reset the per-history projections (pin / headline / id index) so the
     // loading view can't show the previous conversation's pin or topic.
