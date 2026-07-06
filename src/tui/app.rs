@@ -180,6 +180,13 @@ pub struct App {
     /// the spacious search+list the right pane shows when no chat is open. Its
     /// own cursor (not `tree_selected`, which indexes the grouped tree rows).
     pub find_selected: usize,
+    /// When no conversation is open, the right pane shows the **Messages
+    /// overview** (Unread / Mentions activity) by default; `find_active` flips
+    /// it to the **Find** search landing (the `Find` tab, `Alt+F`/`/`, or the
+    /// Chats-header click). Reset when a conversation opens.
+    pub find_active: bool,
+    /// Cursor into the Messages overview's flat entry list ([`App::overview_entries`]).
+    pub overview_selected: usize,
     /// Error from the **last inbox `list`** — kept so the empty tree shows a
     /// persistent "couldn't load, retry" state (the feedback toast expires
     /// after ~1.5 s, leaving nothing but the command log otherwise). `None`
@@ -625,6 +632,8 @@ impl App {
             expanded: HashSet::new(),
             tree_selected: 0,
             find_selected: 0,
+            find_active: false,
+            overview_selected: 0,
             identity: IdentityInfo::default(),
             conversations: Vec::new(),
             conversations_lowered: Vec::new(),
@@ -1240,6 +1249,37 @@ impl App {
 
     pub fn conv_is_unread(&self, conv: &Conversation) -> bool {
         conv.unread && !self.muted.contains(&conv.id)
+    }
+
+    /// Conversations in the current filter that are effectively unread (active
+    /// membership) — the Messages overview's **Unread** section.
+    pub fn overview_unread(&self) -> Vec<usize> {
+        self.filtered_cache
+            .iter()
+            .copied()
+            .filter(|&i| {
+                let c = &self.conversations[i];
+                c.member_status == crate::domain::MemberStatus::Active && self.conv_is_unread(c)
+            })
+            .collect()
+    }
+
+    /// Conversations in the current filter with an unseen mention of you — the
+    /// overview's **Mentions** section.
+    pub fn overview_mentions(&self) -> Vec<usize> {
+        self.filtered_cache
+            .iter()
+            .copied()
+            .filter(|&i| self.mentioned.contains(&self.conversations[i].id))
+            .collect()
+    }
+
+    /// The Messages overview's flat entry list (Unread rows then Mentions rows)
+    /// — [`Self::overview_selected`] indexes it; a pick opens that conversation.
+    pub fn overview_entries(&self) -> Vec<usize> {
+        let mut v = self.overview_unread();
+        v.extend(self.overview_mentions());
+        v
     }
 
     /// Starts a worker request: stamps `in_flight` with `slot` and

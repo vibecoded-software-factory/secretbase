@@ -24,7 +24,9 @@ pub(crate) fn section_tabs_line(app: &App) -> Line<'static> {
     use crate::tui::screens::Screen;
     let t = &app.theme;
     let on_teams = matches!(app.screen, Screen::Teams | Screen::ChannelBrowser);
-    let on_find = app.screen == Screen::Inbox && app.open_conv_id.is_none();
+    // No conversation open shows the Messages overview by default; `find_active`
+    // flips to the Find search landing. With a conversation open, Messages wins.
+    let on_find = app.screen == Screen::Inbox && app.open_conv_id.is_none() && app.find_active;
     let active = [!on_teams && !on_find, on_teams, on_find];
     let tab = |label: &str, active: bool| {
         let style = if active {
@@ -568,6 +570,8 @@ pub enum ScrollTarget {
     Teams,
     /// The Find landing's conversation list.
     Find,
+    /// The Messages overview's Unread/Mentions list.
+    Overview,
     /// The channel-browser list.
     ChannelBrowser,
     /// The team-members list.

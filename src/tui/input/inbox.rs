@@ -158,7 +158,8 @@ pub fn handle(app: &mut App, key: KeyEvent) {
             return;
         }
         KeyCode::Char('f') | KeyCode::Char('F') if alt => {
-            // Alt+F filters the chat list (the left search box).
+            // Alt+F filters the chat list; searching implies the Find landing.
+            app.find_active = true;
             app.focus = Focus::Search;
             return;
         }
@@ -211,9 +212,10 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         Focus::Chat if app.screen == Screen::ChannelBrowser => {
             crate::tui::input::popups::channel_browser(app, key)
         }
-        // No conversation open → the Find landing (a list over the filtered
-        // conversations), not the compose/select conversation handler.
-        Focus::Chat if app.open_conv_id.is_none() => handle_find(app, key),
+        // No conversation open → the Messages overview by default, or the Find
+        // search landing when the Find tab is active — not the compose handler.
+        Focus::Chat if app.open_conv_id.is_none() && app.find_active => handle_find(app, key),
+        Focus::Chat if app.open_conv_id.is_none() => handle_overview(app, key),
         Focus::Chat => crate::tui::input::conversation::handle(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         // Search returns early above; keep this a no-op (not a panic) so a
@@ -263,6 +265,35 @@ fn handle_find(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Char('/') => app.focus = Focus::Search,
+        KeyCode::Char('n') => chat::open_new_conversation(app),
+        KeyCode::Char('t') => crate::tui::flows::teams::open_teams(app),
+        KeyCode::Char(':') => crate::tui::flows::palette::open_command_palette(app),
+        _ => {}
+    }
+}
+
+/// The **Messages overview** landing (right pane, nothing open, default): the
+/// Unread/Mentions activity list. `↑/↓`/`j`/`k` pick, `Enter`/`l` open; `/`
+/// switches to Find search, `n` new, `t` teams, `:` palette.
+fn handle_overview(app: &mut App, key: KeyEvent) {
+    let entries = app.overview_entries();
+    if common::list_nav(&key, entries.len(), app.overview_selected, |i| {
+        app.overview_selected = i
+    }) {
+        return;
+    }
+    match key.code {
+        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+            if let Some(&i) = entries.get(app.overview_selected) {
+                let id = app.conversations[i].id.clone();
+                chat::enter_conversation(app, id);
+            }
+        }
+        // `/` (and Alt+F below) flips to the Find search landing.
+        KeyCode::Char('/') => {
+            app.find_active = true;
+            app.focus = Focus::Search;
+        }
         KeyCode::Char('n') => chat::open_new_conversation(app),
         KeyCode::Char('t') => crate::tui::flows::teams::open_teams(app),
         KeyCode::Char(':') => crate::tui::flows::palette::open_command_palette(app),
