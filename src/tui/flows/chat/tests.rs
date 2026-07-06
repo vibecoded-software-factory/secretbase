@@ -5021,6 +5021,44 @@ fn right_click_on_a_message_opens_the_action_menu() {
 }
 
 #[test]
+fn clicking_the_compose_send_chip_submits_the_draft() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
+
+    crate::tui::view::widgets::reset_scroll_regions(); // clear stale modal/button rects
+
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.screen = Screen::Inbox;
+    // A real conversation so `open_channel` resolves and the send proceeds.
+    rig.app.conversations = vec![conv("c1", "me,zoe", MembersType::ImpTeamNative)];
+    rig.app.open_conv_id = Some("c1".into());
+    rig.app.compose.set("hello");
+    rig.app.mouse_areas.frame_size = (90, 30);
+    rig.app.last_terminal_size = (90, 30);
+    rig.app.mouse_areas.compose_send = Rect {
+        x: 70,
+        y: 20,
+        width: 10,
+        height: 1,
+    };
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 72,
+            row: 20,
+            modifiers: KeyModifiers::NONE,
+        },
+    );
+    assert!(
+        rig.app.compose.text().is_empty(),
+        "clicking the send chip submitted + cleared the draft"
+    );
+}
+
+#[test]
 fn apply_response_drops_message_when_no_in_flight_slot() {
     // A response arriving without a matching in-flight context is
     // a worker/main-thread disagreement that should NEVER happen

@@ -310,8 +310,9 @@ keyboard protocol (legacy terminals can't distinguish it from Enter, so
 `Alt+Enter` is the always-works binding) — (`Enter` sends), the box grows with the line count (capped, then it scrolls to keep
 the cursor visible), and `widgets::editor_lines` renders the multi-row
 cursor. Its bottom border carries the **compose chips** — `Alt+G GIF · Alt+I emoji
-· Alt+A attach`, right-aligned in the legend grammar (key accent + dim
-label) and **clickable** (`mouse_areas.compose_gif/emoji/attach`): emoji
+· Alt+A attach · Enter send`, right-aligned in the legend grammar (key accent + dim
+label) and **clickable** (`mouse_areas.compose_gif/emoji/attach/send`): **send**
+submits the draft (the mouse twin of Enter), emoji
 opens the shared picker in **insert mode** (`App::react_to_compose` — Enter
 drops the glyph, or `:alias:` for a custom emoji, into the draft at the
 cursor), attach opens the file picker, and GIF opens the **giphy search**

@@ -326,6 +326,11 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
             crate::tui::input::conversation::open_attach_picker(app);
             return;
         }
+        if hit_test(c, r, app.mouse_areas.compose_send) {
+            // The mouse twin of Enter — submit the draft.
+            crate::tui::input::conversation::submit_compose(app);
+            return;
+        }
         // Tree pane (mouse_areas.source): focus + select/activate the row.
         if hit_test(c, r, app.mouse_areas.source) {
             app.focus = Focus::Tree;
