@@ -314,6 +314,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                         "unhide — restore a blocked/reported chat by name",
                     ),
                     ("Shift+L", "logout"),
+                    (
+                        "right-click",
+                        "action menu on a conversation (open/read/mute/fav/…)",
+                    ),
                 ] {
                     lines.push(help_line(k, d, t));
                 }

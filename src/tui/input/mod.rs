@@ -301,6 +301,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::ConvSearch => popups::conv_search(app, key),
         Screen::GiphySearch => popups::giphy_search(app, key),
         Screen::MessageActions => popups::message_actions(app, key),
+        Screen::ConvActions => popups::conv_actions(app, key),
     }
 }
 

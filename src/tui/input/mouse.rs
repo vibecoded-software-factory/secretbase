@@ -88,10 +88,13 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
                 // selected row activates it — the tree/messages contract, now on
                 // every picker (the hit map comes from the shared skeleton).
                 if let Some(item) = crate::tui::view::widgets::picker_row_at(ev.column, ev.row) {
+                    // Context menus run on a single click (no select-first).
                     if app.screen == Screen::MessageActions {
-                        // A context menu runs on a single click (no select-first).
                         app.msg_actions_selected = item;
                         chat::run_message_action(app);
+                    } else if app.screen == Screen::ConvActions {
+                        app.conv_actions_selected = item;
+                        chat::run_conv_action(app);
                     } else {
                         picker_click(app, item);
                     }
@@ -247,6 +250,7 @@ fn picker_screen(s: Screen) -> bool {
             | Screen::Members
             | Screen::GiphySearch
             | Screen::MessageActions
+            | Screen::ConvActions
     )
 }
 
@@ -347,8 +351,18 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
             app.focus = Focus::Tree;
             let len = app.tree_rows().len();
             if let Some(idx) = table_row_at(app.mouse_areas.source, r, app.list_scroll, len) {
-                app.tree_selected = idx;
-                chat::tree_activate(app);
+                let is_conv = matches!(
+                    app.tree_rows().get(idx),
+                    Some(crate::tui::app::TreeRow::Conv { .. })
+                );
+                if button == MouseButton::Right && is_conv {
+                    // Right-click a conversation → its action menu.
+                    chat::open_conv_actions(app, idx);
+                } else {
+                    // Left-click selects + activates (open conv / toggle group).
+                    app.tree_selected = idx;
+                    chat::tree_activate(app);
+                }
             }
             return;
         }

@@ -55,6 +55,10 @@ pub enum Screen {
     /// Per-message action menu (right-click a message) — react / reply / edit /
     /// delete / copy, operating on the message under the Select cursor.
     MessageActions,
+    /// Per-conversation action menu (right-click a tree row) — open / mark read
+    /// / mute / favorite / copy / channels / ignore / block / report, operating
+    /// on the conversation under the tree cursor.
+    ConvActions,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.

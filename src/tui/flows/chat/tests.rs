@@ -5245,6 +5245,41 @@ fn read_channel_rejects_unknown_members_type() {
 }
 
 #[test]
+fn right_click_tree_conversation_opens_actions_and_runs_them() {
+    use crate::tui::app::{App, TreeRow};
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.conversations = vec![conv("c1", "me,zoe", MembersType::ImpTeamNative)];
+    rig.app.rebuild_lowered();
+    rig.app.rebuild_filter_preserving_cursor();
+    rig.app.expanded.insert(App::DMS_KEY.to_string()); // expand DMs → conv rows
+    rig.app.rebuild_tree_rows();
+    let row = rig
+        .app
+        .tree_rows()
+        .iter()
+        .position(|r| matches!(r, TreeRow::Conv { .. }))
+        .expect("a conversation row");
+
+    open_conv_actions(&mut rig.app, row);
+    assert_eq!(rig.app.screen, Screen::ConvActions);
+    assert_eq!(rig.app.tree_selected, row, "the menu targets that row");
+
+    // Run "mute / unmute" (index 2) → menu closes, the conversation is muted.
+    rig.app.conv_actions_selected = 2;
+    run_conv_action(&mut rig.app);
+    assert_ne!(
+        rig.app.screen,
+        Screen::ConvActions,
+        "running closed the menu"
+    );
+    assert!(
+        rig.app.is_muted("c1"),
+        "the mute action toggled the conversation muted"
+    );
+}
+
+#[test]
 fn opening_a_conversation_clears_its_unread_locally() {
     // Auto-mark-read on: opening a conversation optimistically clears the local
     // unread flag so it leaves the switcher / island / tree the moment it opens
