@@ -5245,6 +5245,34 @@ fn read_channel_rejects_unknown_members_type() {
 }
 
 #[test]
+fn right_click_channel_opens_actions_and_runs_them() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.channel_browser.team = Some("phoenix".into());
+    rig.app.screen = Screen::ChannelBrowser;
+
+    open_channel_actions(&mut rig.app, 0);
+    assert_eq!(rig.app.screen, Screen::ChannelActions);
+    assert_eq!(
+        rig.app.channel_browser.selected, 0,
+        "the menu targets that row"
+    );
+
+    // Run "new channel" (index 4) → menu closes, the create input opens.
+    rig.app.channel_actions_selected = 4;
+    run_channel_action(&mut rig.app);
+    assert_ne!(
+        rig.app.screen,
+        Screen::ChannelActions,
+        "running closed the menu"
+    );
+    assert!(
+        rig.app.channel_browser.creating,
+        "the new-channel action entered the create input"
+    );
+}
+
+#[test]
 fn right_click_tree_conversation_opens_actions_and_runs_them() {
     use crate::tui::app::{App, TreeRow};
     let mut rig = build_rig();

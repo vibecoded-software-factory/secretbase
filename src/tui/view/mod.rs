@@ -6,6 +6,7 @@
 
 pub mod action;
 pub mod action_menu;
+pub mod channel_actions;
 pub mod channels;
 pub mod conv_actions;
 pub mod conv_search;
@@ -82,6 +83,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // e.g. Teams isn't drawn as Inbox underneath.
         Screen::Help => app.help_from,
         Screen::Settings => app.settings_ui.from,
+        // The channel action menu floats over the channel browser it was
+        // opened from.
+        Screen::ChannelActions => Screen::ChannelBrowser,
         other => other,
     };
     draw_screen(frame, app, base);
@@ -169,6 +173,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::GiphySearch => popups::giphy_search_input(frame, app),
         Screen::MessageActions => message_actions::draw(frame, app),
         Screen::ConvActions => conv_actions::draw(frame, app),
+        Screen::ChannelActions => channel_actions::draw(frame, app),
         _ => {}
     }
 

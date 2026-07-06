@@ -867,3 +867,45 @@ pub fn handle_new_conversation_response(app: &mut App, result: Result<String, Ke
         }
     }
 }
+
+// ── Per-channel action menu (right-click a channel-browser row) ───────
+
+/// One per-channel action menu row: label + the handler it runs (each targets
+/// the selected channel).
+pub type ChannelMenuAction = (&'static str, fn(&mut App));
+
+/// The per-channel action menu rows, in order. Both the menu view and its
+/// activation read this array, so labels and actions can't drift.
+pub const CHANNEL_ACTIONS: [ChannelMenuAction; 7] = [
+    ("open / join", channel_browser_activate),
+    ("members", open_members_from_browser),
+    ("rename", open_channel_rename),
+    ("default", toggle_default_channel),
+    ("new channel", open_channel_create),
+    ("leave", request_leave_selected_channel),
+    ("delete", open_channel_delete_confirm),
+];
+
+/// Opens the per-channel action menu (`Screen::ChannelActions`) for the channel
+/// at `row` — right-click. Seats the browser cursor on it so the actions
+/// target it.
+pub fn open_channel_actions(app: &mut App, row: usize) {
+    app.channel_browser.selected = row;
+    app.channel_actions_selected = 0;
+    app.screen = crate::tui::screens::Screen::ChannelActions;
+}
+
+/// Closes the menu back to the channel browser without running an action.
+pub fn close_channel_actions(app: &mut App) {
+    app.screen = crate::tui::screens::Screen::ChannelBrowser;
+}
+
+/// Runs the highlighted menu action: closes the menu first, then dispatches
+/// (the action may open its own overlay — rename/create input, delete confirm,
+/// members — or mutate the channel).
+pub fn run_channel_action(app: &mut App) {
+    let idx = app.channel_actions_selected.min(CHANNEL_ACTIONS.len() - 1);
+    let action = CHANNEL_ACTIONS[idx].1;
+    close_channel_actions(app);
+    action(app);
+}

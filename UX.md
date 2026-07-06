@@ -254,7 +254,9 @@ menu rows and their handlers. The same idiom serves the tree: **right-click a
 conversation** opens its action menu (`Screen::ConvActions`,
 `view::conv_actions`) — `open · mark read · mute/unmute · favorite · copy name ·
 channels · ignore · block · report`, the mouse twin of the inbox action keys
-(one `CONV_ACTIONS` table). Both render through the shared
+(one `CONV_ACTIONS` table); and **right-click a channel** in the browser opens
+`Screen::ChannelActions` — `open/join · members · rename · default · new ·
+leave · delete` (one `CHANNEL_ACTIONS` table). All render through the shared
 `view::action_menu` skeleton, so every right-click menu reads identically. In Select mode, `Enter` is the same activation: on a **reply** it
 jumps to the quoted message (the search-jump machinery pages older history
 in automatically when the parent is outside the loaded window), on anything
