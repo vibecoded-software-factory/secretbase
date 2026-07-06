@@ -12,23 +12,22 @@ use crate::tui::flows::chat;
 use crate::tui::input::common::{self, SearchAction};
 use crate::tui::screens::{Focus, Screen};
 
-/// Focus cycle order — the tree filter, the conversation tree, the open chat,
-/// the command log. `Chat` is skipped while no conversation is open. (In-chat
-/// search is a `Ctrl+F` modal now, not a focusable panel.)
+/// Focus cycle order — the tree filter, the conversation tree, the right pane
+/// (`Chat`: an open conversation, a section list, or the Find landing), the
+/// command log. (In-chat search is a `Ctrl+F` modal now, not a focusable panel.)
 const FOCUS_ORDER: [Focus; 4] = [Focus::Search, Focus::Tree, Focus::Chat, Focus::CmdLog];
 
-/// Cycles focus, skipping the chat panel when no conversation is open.
+/// Cycles focus, skipping only the command log when the `cmdlog_rows` setting
+/// hides it — the right pane (`Chat`) is always reachable.
 fn cycle(app: &App, forward: bool) -> Focus {
     let mut f = common::cycle_focus(&FOCUS_ORDER, app.focus, forward);
     // Skip unreachable panels: a closed chat, and the command log when the
     // `cmdlog_rows` setting hides it.
     for _ in 0..FOCUS_ORDER.len() {
-        // Chat is reachable with no open conversation when the right pane holds
-        // a section (Teams list / channel browser) — its list is the focus
-        // target there.
-        let in_section = matches!(app.screen, Screen::Teams | Screen::ChannelBrowser);
-        let skip = (f == Focus::Chat && app.open_conv_id.is_none() && !in_section)
-            || (f == Focus::CmdLog && app.settings_cache.cmdlog_rows == 0);
+        // Chat (the right pane) is always reachable now: an open conversation,
+        // a section list (Teams / channel browser), or the Find landing when
+        // nothing is open. Only the command log can be hidden.
+        let skip = f == Focus::CmdLog && app.settings_cache.cmdlog_rows == 0;
         if !skip {
             break;
         }
@@ -212,6 +211,9 @@ pub fn handle(app: &mut App, key: KeyEvent) {
         Focus::Chat if app.screen == Screen::ChannelBrowser => {
             crate::tui::input::popups::channel_browser(app, key)
         }
+        // No conversation open → the Find landing (a list over the filtered
+        // conversations), not the compose/select conversation handler.
+        Focus::Chat if app.open_conv_id.is_none() => handle_find(app, key),
         Focus::Chat => crate::tui::input::conversation::handle(app, key),
         Focus::CmdLog => handle_cmdlog(app, key),
         // Search returns early above; keep this a no-op (not a panic) so a
@@ -225,13 +227,15 @@ fn handle_search(app: &mut App, key: KeyEvent) {
         SearchAction::Idle => {}
         SearchAction::Rebuild => {
             app.rebuild_filter();
-            // A changed query re-ranks the tree — snap the cursor to the top.
+            // A changed query re-ranks the tree — snap both cursors to the top.
             app.tree_selected = 0;
+            app.find_selected = 0;
             app.list_scroll = 0;
         }
         SearchAction::ClearAndExit => {
             app.rebuild_filter();
             app.tree_selected = 0;
+            app.find_selected = 0;
             app.list_scroll = 0;
             app.focus = Focus::Tree;
         }
@@ -240,6 +244,29 @@ fn handle_search(app: &mut App, key: KeyEvent) {
             app.focus = Focus::Tree;
             handle_tree(app, k);
         }
+    }
+}
+
+/// The **Find a conversation** landing (right pane, nothing open): a list over
+/// the filtered conversations. `↑/↓`/`j`/`k` pick, `Enter`/`l` open; `/` filters
+/// (the same query as the tree), `n` new, `t` teams, `:` palette.
+fn handle_find(app: &mut App, key: KeyEvent) {
+    let len = app.filtered_cache.len();
+    if common::list_nav(&key, len, app.find_selected, |i| app.find_selected = i) {
+        return;
+    }
+    match key.code {
+        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+            if let Some(&i) = app.filtered_cache.get(app.find_selected) {
+                let id = app.conversations[i].id.clone();
+                chat::enter_conversation(app, id);
+            }
+        }
+        KeyCode::Char('/') => app.focus = Focus::Search,
+        KeyCode::Char('n') => chat::open_new_conversation(app),
+        KeyCode::Char('t') => crate::tui::flows::teams::open_teams(app),
+        KeyCode::Char(':') => crate::tui::flows::palette::open_command_palette(app),
+        _ => {}
     }
 }
 

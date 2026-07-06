@@ -18,6 +18,36 @@ use crate::tui::view::titled_block;
 
 const SPINNER: &[&str] = &["⠋", "⠙", "⠸", "⠴"];
 
+/// The Home shell's **section tab bar** as a title `Line` — `Messages · Teams ·
+/// Find` with the active section (derived from the screen) in accent+bold and
+/// the others dim. Woven into a right-pane panel's *top border* (the app's
+/// title grammar), never a floating row. Used by every section renderer so the
+/// whole right pane reads as one tabbed surface.
+pub(crate) fn section_tabs_line(app: &App) -> Line<'static> {
+    use crate::tui::screens::Screen;
+    let t = &app.theme;
+    let on_teams = matches!(app.screen, Screen::Teams | Screen::ChannelBrowser);
+    let on_find = app.screen == Screen::Inbox && app.open_conv_id.is_none();
+    let on_messages = !on_teams && !on_find;
+    let tab = |label: &str, active: bool| {
+        let style = if active {
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(t.dim)
+        };
+        Span::styled(format!(" {label} "), style)
+    };
+    let sep = || Span::styled("·", Style::default().fg(t.muted));
+    Line::from(vec![
+        Span::raw(" "),
+        tab("Messages", on_messages),
+        sep(),
+        tab("Teams", on_teams),
+        sep(),
+        tab("Find", on_find),
+    ])
+}
+
 /// Title for a filtered list block: `"{subject} · {filtered} of {total}"`.
 /// Every list screen builds its `list_table` title this way.
 pub fn list_title(subject: &str, filtered: usize, total: usize) -> String {
@@ -502,7 +532,69 @@ pub fn draw_picker_into(
     ));
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    draw_picker_body(frame, theme, area, inner, m);
+}
 
+/// The **tabbed** in-pane picker (a Home-shell section): the section tab bar
+/// `tabs` woven into the top border as the title, the picker's own `title` as
+/// the right-aligned detail — so the section reads as one bordered panel with
+/// its tabs *in the border* (the app's grammar), never a floating row.
+pub(crate) fn draw_picker_tabbed(
+    frame: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    focused: bool,
+    tabs: Line<'static>,
+    m: PickerModal<'_>,
+) {
+    let border = if focused {
+        theme.accent
+    } else {
+        theme.inactive
+    };
+    let block = rounded_block(Style::default().fg(border))
+        .title(tabs)
+        .title(
+            Line::from(Span::styled(
+                format!(" {} ", m.title.trim()),
+                Style::default().fg(theme.dim),
+            ))
+            .right_aligned(),
+        );
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    draw_picker_body(frame, theme, area, inner, m);
+}
+
+/// A rounded panel [`Block`] carrying the `Messages · Teams · Find` section
+/// tabs woven into its top border (left-aligned) with `detail` as the
+/// right-aligned dim caption — the same border grammar as
+/// [`draw_picker_tabbed`], but returned for panels that render their own body
+/// (the conversation's messages pane). `focused` accents the border.
+pub(crate) fn tabbed_block(app: &App, detail: &str, focused: bool) -> Block<'static> {
+    let border = if focused {
+        app.theme.accent
+    } else {
+        app.theme.inactive
+    };
+    let mut block = rounded_block(Style::default().fg(border)).title(section_tabs_line(app));
+    let detail = detail.trim();
+    if !detail.is_empty() {
+        block = block.title(
+            Line::from(Span::styled(
+                format!(" {detail} "),
+                Style::default().fg(app.theme.dim),
+            ))
+            .right_aligned(),
+        );
+    }
+    block
+}
+
+/// The picker body — query row + windowed list + scrollbar + legend/footer —
+/// rendered into `inner`, with the scrollbar hugging `area`'s right border.
+/// Shared by the modal, plain in-pane and tabbed forms.
+fn draw_picker_body(frame: &mut Frame, theme: &Theme, area: Rect, inner: Rect, m: PickerModal<'_>) {
     let has_query = m.query.is_some();
     let chunks = Layout::vertical([
         Constraint::Length(if has_query { 1 } else { 0 }), // query
