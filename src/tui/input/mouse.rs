@@ -245,6 +245,11 @@ fn apply_click_action(app: &mut App, action: ClickAction) {
         }
         ClickAction::OpenSettings => app.open_settings(),
         ClickAction::OpenPalette => crate::tui::flows::palette::open_command_palette(app),
+        // Jump to the latest message (the `▼ N new · End` cue) — the End key.
+        ClickAction::JumpLatest => {
+            app.pagination.scroll = 0;
+            app.pagination.new_since = 0;
+        }
     }
 }
 
