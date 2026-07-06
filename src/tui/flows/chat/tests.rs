@@ -5245,6 +5245,49 @@ fn read_channel_rejects_unknown_members_type() {
 }
 
 #[test]
+fn opening_a_conversation_clears_its_unread_locally() {
+    // Auto-mark-read on: opening a conversation optimistically clears the local
+    // unread flag so it leaves the switcher / island / tree the moment it opens
+    // (the server `read` + next inbox list confirm) — fixing the "no matter how
+    // much I read it, it comes back" ghost from the resync latency.
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.settings_cache.auto_mark_read = true;
+    let mut c = conv("c1", "me,zoe", MembersType::ImpTeamNative);
+    c.unread = true;
+    rig.app.conversations = vec![c];
+    rig.app.rebuild_lowered();
+    rig.app.rebuild_filter_preserving_cursor();
+    assert!(rig.app.conversations[0].unread);
+
+    enter_conversation(&mut rig.app, "c1".into());
+    assert!(
+        !rig.app.conversations[0].unread,
+        "opening with auto-mark-read cleared the local unread flag"
+    );
+}
+
+#[test]
+fn peeking_leaves_the_unread_flag() {
+    // Auto-mark-read OFF (peek): opening must NOT clear the unread flag — the
+    // messages aren't marked read server-side, so the local state must agree.
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.settings_cache.auto_mark_read = false;
+    let mut c = conv("c1", "me,zoe", MembersType::ImpTeamNative);
+    c.unread = true;
+    rig.app.conversations = vec![c];
+    rig.app.rebuild_lowered();
+    rig.app.rebuild_filter_preserving_cursor();
+
+    enter_conversation(&mut rig.app, "c1".into());
+    assert!(
+        rig.app.conversations[0].unread,
+        "peeking (auto-mark-read off) leaves the unread flag set"
+    );
+}
+
+#[test]
 fn request_mark_read_surfaces_unknown_members_type() {
     // Integration check: a request_* path receiving an Unknown
     // conversation must NOT route to "impteamnative" and must NOT
