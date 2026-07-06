@@ -1319,6 +1319,10 @@ pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool,
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), inner);
+    // Overflow cue on the right border, like every other scrollable panel —
+    // `start` is the first visible entry.
+    let theme = app.theme.clone();
+    draw_scrollbar(frame, &theme, area, total, visible_rows, start);
 }
 
 /// Trims a ` · `-separated hint to the whole segments that fit `max` columns,
