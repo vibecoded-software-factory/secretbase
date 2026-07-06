@@ -448,3 +448,21 @@ pub fn conv_actions(app: &mut App, key: KeyEvent) {
         _ => {}
     }
 }
+
+// ── Per-channel action menu (right-click a channel-browser row) ───────
+
+/// The per-channel action menu (`Screen::ChannelActions`): navigate the fixed
+/// action list, `Enter`/`l`/`→` runs the highlighted action, `Esc` closes.
+pub fn channel_actions(app: &mut App, key: KeyEvent) {
+    let len = crate::tui::flows::chat::CHANNEL_ACTIONS.len();
+    if common::list_nav(&key, len, app.channel_actions_selected, |i| {
+        app.channel_actions_selected = i
+    }) {
+        return;
+    }
+    match key.code {
+        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => chat::run_channel_action(app),
+        KeyCode::Esc => chat::close_channel_actions(app),
+        _ => {}
+    }
+}

@@ -76,7 +76,7 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
         return;
     }
     match ev.kind {
-        MouseEventKind::Down(_) => {
+        MouseEventKind::Down(button) => {
             if app.screen == Screen::Login {
                 // Focus a login field / press a login button.
                 crate::tui::input::login::mouse(app, ev.column, ev.row);
@@ -95,6 +95,12 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
                     } else if app.screen == Screen::ConvActions {
                         app.conv_actions_selected = item;
                         chat::run_conv_action(app);
+                    } else if app.screen == Screen::ChannelActions {
+                        app.channel_actions_selected = item;
+                        chat::run_channel_action(app);
+                    } else if app.screen == Screen::ChannelBrowser && button == MouseButton::Right {
+                        // Right-click a channel → its action menu.
+                        chat::open_channel_actions(app, item);
                     } else {
                         picker_click(app, item);
                     }
@@ -251,6 +257,7 @@ fn picker_screen(s: Screen) -> bool {
             | Screen::GiphySearch
             | Screen::MessageActions
             | Screen::ConvActions
+            | Screen::ChannelActions
     )
 }
 

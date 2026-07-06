@@ -59,6 +59,10 @@ pub enum Screen {
     /// / mute / favorite / copy / channels / ignore / block / report, operating
     /// on the conversation under the tree cursor.
     ConvActions,
+    /// Per-channel action menu (right-click a channel-browser row) — open/join
+    /// / members / rename / default / new / leave / delete, operating on the
+    /// selected channel.
+    ChannelActions,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.
