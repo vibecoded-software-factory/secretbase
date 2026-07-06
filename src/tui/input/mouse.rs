@@ -3,7 +3,7 @@
 //! Maps screen-space clicks to semantic focus changes / row selection via
 //! [`crate::tui::mouse_areas::MouseAreas`] rectangles populated by the view.
 
-use crossterm::event::{MouseEvent, MouseEventKind};
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use crate::tui::app::App;
 use crate::tui::flows::chat;
@@ -64,7 +64,13 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
                 // selected row activates it — the tree/messages contract, now on
                 // every picker (the hit map comes from the shared skeleton).
                 if let Some(item) = crate::tui::view::widgets::picker_row_at(ev.column, ev.row) {
-                    picker_click(app, item);
+                    if app.screen == Screen::MessageActions {
+                        // A context menu runs on a single click (no select-first).
+                        app.msg_actions_selected = item;
+                        chat::run_message_action(app);
+                    } else {
+                        picker_click(app, item);
+                    }
                 }
             } else if matches!(app.screen, Screen::Inbox | Screen::Teams) {
                 // The Home shell handles clicks on its own panes (tree, command
@@ -179,6 +185,7 @@ fn picker_screen(s: Screen) -> bool {
             | Screen::ChannelBrowser
             | Screen::Members
             | Screen::GiphySearch
+            | Screen::MessageActions
     )
 }
 
@@ -254,7 +261,7 @@ fn picker_click(app: &mut App, item: usize) {
 fn handle_home(app: &mut App, ev: MouseEvent) {
     let (c, r) = (ev.column, ev.row);
     // Only clicks reach here; the wheel is handled generically in `handle`.
-    if let MouseEventKind::Down(_) = ev.kind {
+    if let MouseEventKind::Down(button) = ev.kind {
         // Compose-bar chips: emoji picker (insert mode) and the attach
         // file picker — the compose's clickable buttons.
         if hit_test(c, r, app.mouse_areas.compose_gif) {
@@ -316,10 +323,14 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
                 .find(|(rect, _)| hit_test(c, r, *rect))
                 .map(|(_, idx)| *idx)
             {
-                // A conversation message: click selects, clicking the
-                // already-selected message *activates* it (a reply jumps to
-                // its quoted parent) — the tree's select-then-activate.
-                if app.select.cursor == Some(idx) {
+                if button == MouseButton::Right {
+                    // Right-click opens the per-message action menu on that
+                    // message (react / reply / edit / delete / copy).
+                    chat::open_message_actions(app, idx);
+                } else if app.select.cursor == Some(idx) {
+                    // Left-click selects; clicking the already-selected message
+                    // *activates* it (a reply jumps to its quoted parent) —
+                    // the tree's select-then-activate.
                     chat::select_activate(app);
                 } else {
                     app.select.cursor = Some(idx);

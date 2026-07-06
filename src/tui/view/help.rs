@@ -169,6 +169,10 @@ fn build_lines(from: Screen, chat: bool, t: &Theme) -> Vec<Line<'static>> {
                 "next / previous search hit (retained after Ctrl+F)",
             ),
             ("Esc", "clear selection · then close the conversation"),
+            (
+                "right-click",
+                "action menu on a message (react/reply/edit/delete/copy)",
+            ),
         ] {
             lines.push(help_line(k, d, t));
         }
