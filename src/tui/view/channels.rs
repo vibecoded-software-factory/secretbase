@@ -17,7 +17,8 @@ use ratatui::layout::Rect;
 use crate::domain::MemberStatus;
 use crate::tui::app::App;
 use crate::tui::view::widgets::{
-    PickerModal, PickerRow, draw_picker_into, inline_confirm_line, inline_input_line,
+    PickerModal, PickerRow, draw_picker_tabbed, inline_confirm_line, inline_input_line,
+    section_tabs_line,
 };
 
 /// Renders the channel browser **in the Home shell's right pane** (the Teams
@@ -84,14 +85,17 @@ pub(crate) fn render_in_pane(frame: &mut Frame, app: &App, area: Rect, focused: 
         })
     };
 
-    draw_picker_into(
+    draw_picker_tabbed(
         frame,
         t,
         area,
         focused,
+        section_tabs_line(app),
         PickerModal {
+            // The `Teams` tab carries the section; the title is the drill-down
+            // detail (team → its channel count).
             title: format!(
-                "Channels — {team} · {} of {}",
+                "#{team} · {} of {}",
                 filtered.len(),
                 app.channel_browser.channels.len()
             ),

@@ -593,18 +593,36 @@ Conventions:
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
 its panels `─[Alt+C]-Chats` (with the live `/query` woven into its title, the
-same tree-search contract as Teams — `Alt+F` / `/` start it), `─[Alt+M]-Messages`, `─[Alt+L]-Command log`.
+same tree-search contract as Teams — `Alt+F` / `/` start it) and
+`─[Alt+L]-Command log`; the right pane carries the section tabs in its border
+(see the Teams-section note below) rather than a single `─[Alt+M]-` tag.
 **Teams is a *section* of this shell, not a separate screen** (`Screen::Teams`
-renders through `view::inbox::draw`): a 1-row **section tab bar**
-(`Messages · Teams`, active in accent) sits atop the right pane, and `t`
-swaps that pane to the teams `list_table` (`view::teams::render_list`) while
-the left tree stays the persistent conversation nav — Discord's model. `Esc`
-or `Alt+M` returns to the Messages section; `Enter` on a team opens the
-channel browser. The teams list keeps its `/` **name filter** (tree-search
-contract: Enter keeps it, Esc clears then leaves; the title carries the live
-`/query` and the count reads `shown of total`) and a **persisted scroll
-offset** (`App::teams.scroll`). This keeps one aesthetic across the app
-instead of swapping to full-screen views that clash. `draw_search_box`
+renders through `view::inbox::draw`). The right pane is a **tabbed surface**:
+the `Messages · Teams · Find` tabs are woven into its **top border** (never a
+floating row — that broke the app's grammar), the active section in
+accent+bold, via `widgets::section_tabs_line(app)`. Every section renderer
+draws through the same tabbed border skeleton — the conversation via
+`widgets::tabbed_block(app, name, focused)` (Messages tab + the conversation
+name as the right-aligned detail), the teams list and channel browser via
+`widgets::draw_picker_tabbed(...)` — so switching sections only recolours a
+tab, never swaps a whole view. `t` swaps the pane to the teams section
+(`view::teams::render_list`) while the left tree stays the persistent
+conversation nav — Discord's model. `Esc` or `Alt+M` returns to the Messages
+section; `Enter` on a team opens the channel browser (the Teams tab stays
+active — it's a drill-down). The teams list keeps its `/` **name filter**
+(tree-search contract: Enter keeps it, Esc clears then leaves; the border
+detail carries the count `shown of total`) and a **persisted scroll offset**
+(`App::teams.scroll`). This keeps one aesthetic across the app instead of
+swapping to full-screen views that clash.
+
+**The Find landing** fills the right pane when the Messages section is active
+but no conversation is open (`Screen::Inbox` + no `open_conv_id`): the `Find`
+tab lights up and `view::inbox::render_find_landing` draws the same tabbed
+picker — a search input (`Alt+F` / `/`) over your conversations with rich
+two-line rows (badges + name, then a dim `kind · age` meta line), `Enter`
+opens the highlighted one (`find_selected`, a session-local index). It reuses
+the tree's own `filtered_cache`, so the landing and the left tree always show
+the same filtered set. `draw_search_box`
 adds the `─[/]-` tag
 itself; `draw_cmd_log` takes the panel number; list titles are prefixed at the
 call site.
@@ -780,8 +798,9 @@ under react/delete/download).
   team in the Teams section) — the Teams section's **in-pane drill-down**
   (team → its channels), rendered in the Home shell's right pane via
   `view::channels::render_in_pane` (the same picker skeleton as the modals, on
-  the non-centered `draw_picker_into`), **not** a centered modal; `Esc` /
-  `Alt+M` go back up to the teams list. It lists **every**
+  the tabbed in-pane `draw_picker_tabbed` — the `Teams` tab stays active in the
+  border, the team name is the right-aligned detail), **not** a centered modal;
+  `Esc` / `Alt+M` go back up to the teams list. It lists **every**
   channel of the team via `keybase chat api listconvsonname` (same `ConvSummary`
   shape as `list`, so the tolerant parser is reused; `member_status == Active`
   marks the ones you're in, sorted joined-first). `↑/↓` pick, `Enter` opens a

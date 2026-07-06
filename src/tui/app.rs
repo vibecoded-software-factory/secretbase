@@ -176,6 +176,10 @@ pub struct App {
     pub tree_rows_cache: Vec<TreeRow>,
     /// First visible row in the conversation tree — driven by scrolling.
     pub list_scroll: usize,
+    /// Cursor into `filtered_cache` for the **Find a conversation** landing —
+    /// the spacious search+list the right pane shows when no chat is open. Its
+    /// own cursor (not `tree_selected`, which indexes the grouped tree rows).
+    pub find_selected: usize,
     /// Error from the **last inbox `list`** — kept so the empty tree shows a
     /// persistent "couldn't load, retry" state (the feedback toast expires
     /// after ~1.5 s, leaving nothing but the command log otherwise). `None`
@@ -608,6 +612,7 @@ impl App {
             focus: Focus::Tree,
             expanded: HashSet::new(),
             tree_selected: 0,
+            find_selected: 0,
             identity: IdentityInfo::default(),
             conversations: Vec::new(),
             conversations_lowered: Vec::new(),

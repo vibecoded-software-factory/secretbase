@@ -20,7 +20,7 @@ use crate::domain::{
 use crate::tui::app::App;
 use crate::tui::screens::Focus;
 use crate::tui::view::titled_block;
-use crate::tui::view::widgets::{editor_lines, trim_end_ellipsis};
+use crate::tui::view::widgets::{editor_lines, tabbed_block, trim_end_ellipsis};
 
 /// Whether the chat draws its **adaptive** header — a pin or a channel
 /// topic (`App::conv_headline`, cached per load). When neither exists the
@@ -364,11 +364,12 @@ fn draw_compose_chips(frame: &mut Frame, app: &mut App, area: Rect) {
     app.mouse_areas.compose_attach = rects[2];
 }
 
-/// The Messages-panel title — the `─[Alt+M]-` go-to tag + the conversation name.
+/// The Messages-panel border caption — just the conversation name (empty when
+/// none is open). The section identity now lives in the `Messages` tab woven
+/// into the top border via [`tabbed_block`]; this is the right-aligned detail.
 /// (The pin / topic live in the optional adaptive header line above the panel.)
-fn chat_title(app: &App) -> String {
-    let name = app
-        .open_conv_id
+fn chat_detail(app: &App) -> String {
+    app.open_conv_id
         .as_deref()
         .and_then(|id| {
             app.conversations
@@ -380,11 +381,8 @@ fn chat_title(app: &App) -> String {
                         .map(|l| l.display_label.clone())
                 })
         })
-        .filter(|s| !s.is_empty());
-    match name {
-        Some(n) => format!("─[Alt+M]-Messages — {n}"),
-        None => "─[Alt+M]-Messages".to_string(),
-    }
+        .filter(|s| !s.is_empty())
+        .unwrap_or_default()
 }
 
 /// A rendered message block cached by id: the lines exactly as
@@ -477,11 +475,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 )),
             ]
         };
-        let title = chat_title(app);
-        frame.render_widget(
-            Paragraph::new(lines).block(titled_block(&title, app.focus == Focus::Chat, app)),
-            area,
-        );
+        let block = tabbed_block(app, &chat_detail(app), app.focus == Focus::Chat);
+        frame.render_widget(Paragraph::new(lines).block(block), area);
         app.pagination.max_back = 0;
         return;
     }
@@ -854,7 +849,6 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         }
 
         let dim = app.theme.dim;
-        let title = chat_title(app);
         // The count lives in the bottom-right border; when messages arrived below
         // while the reader is scrolled up, a `▼ N new` cue (accent) is appended
         // there — in the border, never overlaying the message rows.
@@ -865,7 +859,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ));
         }
-        let block = titled_block(&title, app.focus == Focus::Chat, app)
+        let block = tabbed_block(app, &chat_detail(app), app.focus == Focus::Chat)
             .title_bottom(Line::from(counter_spans).right_aligned());
         frame.render_widget(Paragraph::new(visible).block(block), area);
 

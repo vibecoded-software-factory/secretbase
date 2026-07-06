@@ -4034,11 +4034,14 @@ fn input_tab_steps_forward_through_non_search_focuses() {
     let mut rig = build_rig();
     rig.app.screen = Screen::Inbox;
 
-    // FOCUS_ORDER = [Search, Tree, Chat, CmdLog]; Chat is skipped with no
-    // open conversation.
+    // FOCUS_ORDER = [Search, Tree, Chat, CmdLog]; the right pane (Chat) is
+    // always reachable now — with no conversation open it's the Find landing.
     rig.app.focus = Focus::Tree;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
-    assert_eq!(rig.app.focus, Focus::CmdLog); // Chat skipped (no conv open)
+    assert_eq!(rig.app.focus, Focus::Chat, "right pane always reachable");
+
+    press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.app.focus, Focus::CmdLog);
 
     rig.app.focus = Focus::CmdLog;
     press(&mut rig.app, KeyCode::Tab, KeyModifiers::NONE);

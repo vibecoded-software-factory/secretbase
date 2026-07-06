@@ -1,14 +1,15 @@
 //! Home renderer — the two-pane shell: identity chip + conversation tree on
-//! the left, a section tab bar (`Messages · Teams`) + the active section on the
-//! right, command log + status strip below. Teams renders here as a section,
-//! not a separate screen.
+//! the left, the active section on the right with the `Messages · Teams · Find`
+//! tabs woven into its own top border (never a floating row), command log +
+//! status strip below. Teams and the channel browser render here as sections,
+//! not separate screens.
 
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Row},
+    widgets::Row,
 };
 
 use crate::tui::app::{App, TreeRow};
@@ -67,25 +68,23 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     render_identity(frame, app, identity_area);
     render_tree(frame, app, tree_area);
-    // Right pane: a 1-row section tab bar (Messages · Teams) atop the active
-    // section's content — so the whole app keeps the two-pane shell instead of
-    // swapping to full-screen views.
-    let right = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(chat_area);
-    let (header_area, content_area) = (right[0], right[1]);
-    render_section_header(frame, app, header_area);
+    // Right pane: the active section fills it, with the `Messages · Teams ·
+    // Find` tab bar woven into its own top border (the app's title grammar) —
+    // no floating header row, so it stays harmonic with the rest of the UI.
     let section_focused = app.focus == Focus::Chat;
     match app.screen {
         Screen::Teams => {
-            crate::tui::view::teams::render_list(frame, app, content_area, section_focused)
+            crate::tui::view::teams::render_list(frame, app, chat_area, section_focused)
         }
         // The channel browser is the Teams section's drill-down (team → channels).
         Screen::ChannelBrowser => {
-            crate::tui::view::channels::render_in_pane(frame, app, content_area, section_focused)
+            crate::tui::view::channels::render_in_pane(frame, app, chat_area, section_focused)
         }
         _ if app.open_conv_id.is_some() => {
-            crate::tui::view::conversation::draw_chat(frame, app, content_area);
+            crate::tui::view::conversation::draw_chat(frame, app, chat_area);
         }
-        _ => render_chat_placeholder(frame, app, content_area),
+        // No conversation open → the Find landing (search + rich chat list).
+        _ => render_find_landing(frame, app, chat_area, section_focused),
     }
     let cmdlog_focused = app.focus == Focus::CmdLog;
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+L");
@@ -113,7 +112,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // zero rect means no click ever lands on the removed panel.
     app.mouse_areas.search = ratatui::layout::Rect::default();
     app.mouse_areas.source = tree_area;
-    app.mouse_areas.list = content_area;
+    app.mouse_areas.list = chat_area;
     app.mouse_areas.cmd_log = cmdlog;
 }
 
@@ -156,32 +155,6 @@ fn render_identity(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::styled("not signed in", Style::default().fg(t.dim)));
     }
     frame.render_widget(ratatui::widgets::Paragraph::new(Line::from(spans)), inner);
-}
-
-/// The section tab bar atop the right pane — `Messages · Teams` — marking which
-/// apartado you're viewing (Discord's top bar). Keeps the two-pane shell so the
-/// app never swaps to a jarring full-screen view. Switched with `Alt+M` / `t`
-/// (mouse-clickable tabs are a follow-up).
-fn render_section_header(frame: &mut Frame, app: &App, area: Rect) {
-    let t = &app.theme;
-    // The channel browser is a Teams-section drill-down, so the Teams tab stays
-    // active there too.
-    let on_teams = matches!(app.screen, Screen::Teams | Screen::ChannelBrowser);
-    let tab = |label: &str, active: bool| {
-        let style = if active {
-            Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(t.dim)
-        };
-        Span::styled(format!(" {label} "), style)
-    };
-    let line = Line::from(vec![
-        Span::raw(" "),
-        tab("Messages", !on_teams),
-        Span::raw(" "),
-        tab("Teams", on_teams),
-    ]);
-    frame.render_widget(Paragraph::new(line), area);
 }
 
 /// A friendly notice inside the Chats panel (empty inbox / no matches): a bold
@@ -467,52 +440,108 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     app.list_scroll = scroll;
 }
 
-/// Linearly blends `a` toward `b` by `f` (0 = `a`, 1 = `b`), for RGB theme
-/// colours; a non-RGB colour (a hand-set named value) falls back to `a`. Used
-/// to place the placeholder legend a step below `placeholder` toward `muted`.
-fn blend(a: ratatui::style::Color, b: ratatui::style::Color, f: f32) -> ratatui::style::Color {
-    use ratatui::style::Color::Rgb;
-    if let (Rgb(ar, ag, ab), Rgb(br, bg, bb)) = (a, b) {
-        let lerp = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * f).round() as u8;
-        Rgb(lerp(ar, br), lerp(ag, bg), lerp(ab, bb))
-    } else {
-        a
-    }
-}
-
-/// Right pane shown when no conversation is open. The Chat pane can't be
-/// focused with nothing open (Tab skips it, `Alt+M` is gated), so its border is
-/// `disabled_block` (muted) — it reads as unreachable, not just unfocused.
-fn render_chat_placeholder(frame: &mut Frame, app: &App, area: Rect) {
+/// Right pane when no conversation is open — a spacious **"Find a
+/// conversation"** landing (Discord's Friends view): the shared `/` filter
+/// query + the filtered conversations as rich two-line rows, on the same picker
+/// skeleton every overlay uses (so it's one aesthetic, not a one-off). `↑/↓`
+/// pick, `Enter` opens; `/` filters (the same `app.search` query as the tree —
+/// one query, two views). Replaces the old dead "Select a conversation" notice.
+fn render_find_landing(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
+    use crate::tui::view::widgets::{
+        PickerModal, PickerRow, draw_picker_tabbed, empty_state_lines, section_tabs_line,
+    };
     let t = &app.theme;
-    let block = crate::tui::view::disabled_block("─[Alt+M]-Messages", app);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    // The pane is unreachable (nothing open), so its legend recedes: a touch
-    // dimmer than `placeholder`, blended toward the border's `muted`, but kept
-    // clear of `muted` itself so it stays legible.
-    let legend = blend(t.placeholder, t.muted, 0.5);
-    let mut key_hint = vec![Span::raw("  ")];
-    key_hint.extend(
-        crate::tui::view::widgets::legend_line(
-            &[("Tab", "to Chats"), ("↑/↓", "pick"), ("Enter", "open")],
-            inner.width.saturating_sub(2) as usize,
-            t,
-        )
-        .spans,
+    let now_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let rows: Vec<PickerRow> = app
+        .filtered_cache
+        .iter()
+        .map(|&i| {
+            let conv = &app.conversations[i];
+            let name = app
+                .conversations_lowered
+                .get(i)
+                .map(|l| l.display_label.clone())
+                .unwrap_or_default();
+            let unread = app.conv_is_unread(conv);
+            // Line 1: attention badges + the name.
+            let mut l1: Vec<Span<'static>> = vec![Span::raw(" ")];
+            if app.is_favorite(&conv.id) {
+                l1.push(favorite_star(t));
+                l1.push(Span::raw(" "));
+            }
+            if unread {
+                l1.push(unread_dot(t));
+                l1.push(Span::raw(" "));
+            }
+            if app.mentioned.contains(&conv.id) {
+                l1.push(Span::styled("@ ", t.danger_title()));
+            }
+            if app
+                .drafts
+                .get(&conv.id)
+                .is_some_and(|d| !d.trim().is_empty())
+            {
+                l1.push(Span::styled("✎ ", Style::default().fg(t.accent)));
+            }
+            let name_style = if unread {
+                unread_style(t)
+            } else {
+                Style::default().fg(t.foreground)
+            };
+            l1.push(Span::styled(name, name_style));
+            // Line 2 (dim): kind · relative age.
+            let kind = conv.channel.members_type.label();
+            let meta = if conv.active_at > 0 && now_s >= conv.active_at {
+                let age = crate::domain::format_duration(std::time::Duration::from_secs(
+                    now_s - conv.active_at,
+                ));
+                format!("   {kind} · {age}")
+            } else {
+                format!("   {kind}")
+            };
+            PickerRow::Item(vec![
+                Line::from(l1),
+                Line::from(Span::styled(meta, Style::default().fg(t.dim))),
+            ])
+        })
+        .collect();
+    draw_picker_tabbed(
+        frame,
+        t,
+        area,
+        focused,
+        section_tabs_line(app),
+        PickerModal {
+            // The `Find` tab carries the section identity; the title is just the
+            // right-aligned count detail.
+            title: format!(
+                "{} of {}",
+                app.filtered_cache.len(),
+                app.conversations.len()
+            ),
+            query: Some((&app.search, "search your chats…")),
+            selected: app
+                .find_selected
+                .min(app.filtered_cache.len().saturating_sub(1)),
+            rows,
+            empty: empty_state_lines(
+                "No conversations to show",
+                &["/ to filter", "n to start one", "Ctrl+K to jump"],
+                t,
+            ),
+            legend: &[
+                ("↑/↓", "pick"),
+                ("Enter", "open"),
+                ("/", "filter"),
+                ("n", "new"),
+                ("t", "teams"),
+            ],
+            footer: None,
+        },
     );
-    let lines = vec![
-        Line::from(Span::raw("")),
-        Line::from(Span::styled(
-            "  Select a conversation to start chatting",
-            Style::default().fg(legend),
-        )),
-        // The *instructions* must not recede with the disabled chrome —
-        // "never put content a user must read in the recessive band". Keys
-        // through the shared legend (accent keys, dim labels).
-        Line::from(key_hint),
-    ];
-    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 #[cfg(test)]
@@ -641,10 +670,52 @@ mod tests {
         app.screen = Screen::ChannelBrowser;
         app.focus = Focus::Chat;
         let text = render_to_text(&mut app);
-        // The drill-down renders in the right pane (not a centered modal) with
-        // the Teams tab still active.
-        assert!(text.contains("Channels"), "panel titled Channels:\n{text}");
+        // The drill-down renders in the right pane (not a centered modal): the
+        // section identity lives in the `Teams` tab woven into the border, and
+        // the team name is the right-aligned drill-down detail.
+        assert!(
+            text.contains("#phoenix"),
+            "drill-down shows the team:\n{text}"
+        );
         assert!(text.contains("general"), "the channel renders:\n{text}");
         assert!(text.contains("Teams"), "Teams tab stays active:\n{text}");
+    }
+
+    #[test]
+    fn open_conversation_shows_the_messages_tab_and_name_in_its_border() {
+        use crate::domain::{Channel, Conversation, MembersType};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.conversations = vec![Conversation {
+            id: "cv1".into(),
+            channel: Channel {
+                name: "me,zoe".into(),
+                members_type: MembersType::ImpTeamNative,
+                topic_name: None,
+            },
+            unread: false,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: crate::domain::MemberStatus::Active,
+            creator_info: None,
+        }];
+        app.rebuild_lowered();
+        app.rebuild_filter_preserving_cursor();
+        app.open_conv_id = Some("cv1".into());
+        app.screen = Screen::Inbox;
+        app.focus = Focus::Chat;
+        let text = render_to_text(&mut app);
+        // The Messages section carries the same tabbed border as the others: the
+        // `Messages` tab is active and the conversation name is the detail.
+        assert!(text.contains("Messages"), "Messages tab in border:\n{text}");
+        assert!(
+            text.contains("Teams"),
+            "the section tabs are woven in:\n{text}"
+        );
+        assert!(
+            text.contains("zoe"),
+            "the conversation name is the detail:\n{text}"
+        );
     }
 }
