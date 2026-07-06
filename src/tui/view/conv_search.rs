@@ -15,7 +15,7 @@ use ratatui::{
 use crate::domain::message_time;
 use crate::tui::App;
 use crate::tui::view::widgets::{
-    PickerModal, PickerRow, draw_picker_modal, modal_inner_width, trim_end_ellipsis,
+    PickerModal, PickerRow, ScrollTarget, draw_picker_modal, modal_inner_width, trim_end_ellipsis,
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -87,6 +87,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 ("Esc", "close"),
             ],
             footer: None,
+            scroll_target: Some(ScrollTarget::ConvSearch),
         },
     );
 }

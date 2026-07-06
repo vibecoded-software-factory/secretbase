@@ -11,7 +11,7 @@ use ratatui::{
 
 use crate::tui::app::App;
 use crate::tui::view::widgets::{
-    PickerModal, PickerRow, draw_picker_modal, inline_confirm_line, inline_input_line,
+    PickerModal, PickerRow, ScrollTarget, draw_picker_modal, inline_confirm_line, inline_input_line,
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -78,6 +78,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 ("Esc", "close"),
             ],
             footer,
+            scroll_target: Some(ScrollTarget::Members),
         },
     );
 }

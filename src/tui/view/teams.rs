@@ -13,7 +13,7 @@ use ratatui::{
 use crate::domain::TeamRole;
 use crate::tui::app::App;
 use crate::tui::view::widgets::{
-    PickerModal, PickerRow, draw_picker_tabbed, empty_state_lines, section_tabs_line,
+    PickerModal, PickerRow, ScrollTarget, draw_picker_tabbed, empty_state_lines, section_tabs_line,
 };
 
 /// Renders the teams list into `area` (the Home right pane). `focused` accents
@@ -89,6 +89,7 @@ pub(crate) fn render_list(
                 ("r", "refresh"),
             ],
             footer: None,
+            scroll_target: Some(ScrollTarget::Teams),
         },
     );
 }

@@ -11,7 +11,7 @@ use ratatui::{
 };
 
 use crate::tui::app::App;
-use crate::tui::view::widgets::{PickerModal, PickerRow, draw_picker_modal};
+use crate::tui::view::widgets::{PickerModal, PickerRow, ScrollTarget, draw_picker_modal};
 
 /// Searchable reaction picker: a query over the cached emoji catalogue
 /// (frecency-sorted), a custom-`:shortcode:` fallback when nothing matches.
@@ -64,6 +64,7 @@ pub fn giphy_search_input(frame: &mut Frame, app: &App) {
                 ("Esc", "close"),
             ],
             footer: None,
+            scroll_target: Some(ScrollTarget::Giphy),
         },
     );
 }
@@ -133,6 +134,7 @@ pub fn react_input(frame: &mut Frame, app: &App) {
                 ]
             },
             footer: None,
+            scroll_target: Some(ScrollTarget::React),
         },
     );
 }
@@ -253,6 +255,7 @@ pub fn quick_switcher(frame: &mut Frame, app: &App) {
                 ("Esc", "cancel"),
             ],
             footer: None,
+            scroll_target: Some(ScrollTarget::Switcher),
         },
     );
 }

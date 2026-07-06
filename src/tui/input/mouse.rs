@@ -11,7 +11,7 @@ use crate::tui::input::common::clamp_move;
 use crate::tui::input::conversation;
 use crate::tui::mouse_areas::hit_test;
 use crate::tui::screens::{Focus, Screen};
-use crate::tui::view::widgets::table_row_at;
+use crate::tui::view::widgets::{ScrollTarget, table_row_at};
 
 pub fn handle(app: &mut App, ev: MouseEvent) {
     // Reject clicks whose coordinates predate the most recent resize.
@@ -46,63 +46,90 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     {
         return;
     }
-    // The wheel scrolls whatever is active — position-aware across the home's
-    // panes, whole-screen on a single-list overlay. Clicks only mean something
-    // on the home screen for now.
-    let delta = match ev.kind {
-        MouseEventKind::ScrollUp => -1isize,
-        MouseEventKind::ScrollDown => 1isize,
-        MouseEventKind::Down(_) if picker_screen(app.screen) => {
-            // Click selects the row under the pointer; clicking the already-
-            // selected row activates it — the tree/messages contract, now on
-            // every picker (the hit map comes from the shared skeleton).
-            if let Some(item) = crate::tui::view::widgets::picker_row_at(ev.column, ev.row) {
-                picker_click(app, item);
-            }
-            return;
-        }
-        _ => {
-            if app.screen == Screen::Inbox {
+    match ev.kind {
+        MouseEventKind::Down(_) => {
+            if picker_screen(app.screen) {
+                // Click selects the row under the pointer; clicking the already-
+                // selected row activates it — the tree/messages contract, now on
+                // every picker (the hit map comes from the shared skeleton).
+                if let Some(item) = crate::tui::view::widgets::picker_row_at(ev.column, ev.row) {
+                    picker_click(app, item);
+                }
+            } else if matches!(app.screen, Screen::Inbox | Screen::Teams) {
+                // The Home shell handles clicks on its own panes (tree, command
+                // log, the active right-pane list); the channel browser is a
+                // picker above.
                 handle_home(app, ev);
             }
-            return;
         }
-    };
-    match app.screen {
-        Screen::Inbox => handle_home(app, ev), // position-aware pane scroll
-        Screen::Teams => {
-            app.teams.selected = clamp_move(app.teams.selected, delta, app.teams.list.len());
+        // One generic wheel path: scroll whatever registered region sits under
+        // the pointer. The widget layer records those regions each frame, so
+        // there is no per-screen `match` here — a new scrollable list is one
+        // `register_scroll` call at its draw site.
+        MouseEventKind::ScrollUp => {
+            if let Some(t) = crate::tui::view::widgets::scroll_target_at(ev.column, ev.row) {
+                apply_scroll(app, t, -1);
+            }
         }
-        Screen::ChannelBrowser => chat::channel_browser_move(app, delta),
-        Screen::Members => chat::members_move(app, delta),
-        Screen::SearchGlobal => {
-            let len = app.global_search.results.len();
-            app.global_search.selected = clamp_move(app.global_search.selected, delta, len);
+        MouseEventKind::ScrollDown => {
+            if let Some(t) = crate::tui::view::widgets::scroll_target_at(ev.column, ev.row) {
+                apply_scroll(app, t, 1);
+            }
         }
-        Screen::React => {
-            let len = app.emoji.filtered().len();
-            app.react_selected = clamp_move(app.react_selected, delta, len);
-        }
-        Screen::QuickSwitcher => {
-            let len = app.switcher_selectable().len();
-            app.switcher.selected = clamp_move(app.switcher.selected, delta, len);
-        }
-        Screen::CommandPalette => {
-            let len = crate::tui::flows::palette::filtered_commands(app).len();
-            app.palette.selected = clamp_move(app.palette.selected, delta, len);
-        }
-        Screen::ConvSearch => {
-            let len = app.conv_search.results.len();
-            app.conv_search.selected = clamp_move(app.conv_search.selected, delta, len);
-        }
-        Screen::Help => {
+        _ => {}
+    }
+}
+
+/// The single table mapping a [`ScrollTarget`] to the state its wheel moves —
+/// the only place that knows how each list scrolls. Every scrollable widget
+/// registers its rect + target as it draws (`register_scroll`); the wheel
+/// handler above dispatches here purely by pointer position.
+fn apply_scroll(app: &mut App, target: ScrollTarget, delta: isize) {
+    match target {
+        ScrollTarget::Tree => chat::tree_move(app, delta),
+        ScrollTarget::CmdLog => app.cmdlog.move_cursor(delta),
+        ScrollTarget::Messages => wheel_messages(app, delta),
+        ScrollTarget::Help => {
             app.help_scroll = if delta < 0 {
                 app.help_scroll.saturating_sub(3)
             } else {
                 app.help_scroll.saturating_add(3)
             };
         }
-        _ => {}
+        ScrollTarget::Teams => {
+            let len = app.teams.filtered().len();
+            app.teams.selected = clamp_move(app.teams.selected, delta, len);
+        }
+        ScrollTarget::Find => {
+            let len = app.filtered_cache.len();
+            app.find_selected = clamp_move(app.find_selected, delta, len);
+        }
+        ScrollTarget::ChannelBrowser => chat::channel_browser_move(app, delta),
+        ScrollTarget::Members => chat::members_move(app, delta),
+        ScrollTarget::React => {
+            let len = app.emoji.filtered().len();
+            app.react_selected = clamp_move(app.react_selected, delta, len);
+        }
+        ScrollTarget::Palette => {
+            let len = crate::tui::flows::palette::filtered_commands(app).len();
+            app.palette.selected = clamp_move(app.palette.selected, delta, len);
+        }
+        ScrollTarget::Switcher => {
+            let len = app.switcher_selectable().len();
+            app.switcher.selected = clamp_move(app.switcher.selected, delta, len);
+        }
+        ScrollTarget::ConvSearch => {
+            let len = app.conv_search.results.len();
+            app.conv_search.selected = clamp_move(app.conv_search.selected, delta, len);
+        }
+        ScrollTarget::GlobalSearch => {
+            let len = app.global_search.results.len();
+            app.global_search.selected = clamp_move(app.global_search.selected, delta, len);
+        }
+        ScrollTarget::Giphy => {
+            let len = app.giphy.results.len();
+            app.giphy.selected = clamp_move(app.giphy.selected, delta, len);
+        }
     }
 }
 
@@ -192,98 +219,88 @@ fn picker_click(app: &mut App, item: usize) {
 
 fn handle_home(app: &mut App, ev: MouseEvent) {
     let (c, r) = (ev.column, ev.row);
-    match ev.kind {
-        MouseEventKind::Down(_) => {
-            // Compose-bar chips: emoji picker (insert mode) and the attach
-            // file picker — the compose's clickable buttons.
-            if hit_test(c, r, app.mouse_areas.compose_gif) {
-                chat::open_giphy_search(app);
-                return;
+    // Only clicks reach here; the wheel is handled generically in `handle`.
+    if let MouseEventKind::Down(_) = ev.kind {
+        // Compose-bar chips: emoji picker (insert mode) and the attach
+        // file picker — the compose's clickable buttons.
+        if hit_test(c, r, app.mouse_areas.compose_gif) {
+            chat::open_giphy_search(app);
+            return;
+        }
+        if hit_test(c, r, app.mouse_areas.compose_emoji) {
+            chat::open_emoji_for_compose(app);
+            return;
+        }
+        if hit_test(c, r, app.mouse_areas.compose_attach) {
+            crate::tui::input::conversation::open_attach_picker(app);
+            return;
+        }
+        // Tree pane (mouse_areas.source): focus + select/activate the row.
+        if hit_test(c, r, app.mouse_areas.source) {
+            app.focus = Focus::Tree;
+            let len = app.tree_rows().len();
+            if let Some(idx) = table_row_at(app.mouse_areas.source, r, app.list_scroll, len) {
+                app.tree_selected = idx;
+                chat::tree_activate(app);
             }
-            if hit_test(c, r, app.mouse_areas.compose_emoji) {
-                chat::open_emoji_for_compose(app);
-                return;
-            }
-            if hit_test(c, r, app.mouse_areas.compose_attach) {
-                crate::tui::input::conversation::open_attach_picker(app);
-                return;
-            }
-            // Tree pane (mouse_areas.source): focus + select/activate the row.
-            if hit_test(c, r, app.mouse_areas.source) {
-                app.focus = Focus::Tree;
-                let len = app.tree_rows().len();
-                if let Some(idx) = table_row_at(app.mouse_areas.source, r, app.list_scroll, len) {
-                    app.tree_selected = idx;
-                    chat::tree_activate(app);
-                }
-                return;
-            }
-            // Chat pane (mouse_areas.list): focus + click-to-select a message.
-            if hit_test(c, r, app.mouse_areas.list) {
-                app.focus = Focus::Chat;
-                let clicked = app
-                    .mouse_areas
-                    .message_rows
-                    .iter()
-                    .find(|(rect, _)| hit_test(c, r, *rect))
-                    .map(|(_, idx)| *idx);
-                if let Some(idx) = clicked {
-                    // Click selects; clicking the already-selected message
-                    // *activates* it (a reply jumps to its quoted parent) —
-                    // the same select-then-activate the tree click uses.
-                    if app.select.cursor == Some(idx) {
-                        chat::select_activate(app);
-                    } else {
-                        app.select.cursor = Some(idx);
+            return;
+        }
+        // Right pane (mouse_areas.list): focus it (stealing focus from the
+        // tree/log if need be), then act by section — a team row, a
+        // Find-landing conversation, or a message to select.
+        if hit_test(c, r, app.mouse_areas.list) {
+            app.focus = Focus::Chat;
+            if app.screen == Screen::Teams {
+                // A team row drills into its channels (the Enter action).
+                if let Some(item) = crate::tui::view::widgets::picker_row_at(c, r) {
+                    app.teams.selected = item;
+                    let team = {
+                        let filtered = app.teams.filtered();
+                        filtered
+                            .get(item)
+                            .and_then(|&i| app.teams.list.get(i))
+                            .map(|tm| tm.name.clone())
+                    };
+                    if let Some(team) = team {
+                        chat::open_channel_browser_for_team(app, team);
                     }
                 }
-                return;
-            }
-            // Other panels just take focus; the command log also seats its
-            // visual-select cursor on focus.
-            if let Some(target) = app.mouse_areas.focus_for(c, r) {
-                app.focus = target;
-                if target == crate::tui::screens::Focus::CmdLog {
-                    app.cmdlog.enter();
+            } else if app.open_conv_id.is_none() {
+                // The Find landing: a row opens that conversation (single
+                // click, like the tree — this list *is* the conversations).
+                if let Some(item) = crate::tui::view::widgets::picker_row_at(c, r) {
+                    app.find_selected = item;
+                    if let Some(&i) = app.filtered_cache.get(item) {
+                        let id = app.conversations[i].id.clone();
+                        chat::enter_conversation(app, id);
+                    }
+                }
+            } else if let Some(idx) = app
+                .mouse_areas
+                .message_rows
+                .iter()
+                .find(|(rect, _)| hit_test(c, r, *rect))
+                .map(|(_, idx)| *idx)
+            {
+                // A conversation message: click selects, clicking the
+                // already-selected message *activates* it (a reply jumps to
+                // its quoted parent) — the tree's select-then-activate.
+                if app.select.cursor == Some(idx) {
+                    chat::select_activate(app);
+                } else {
+                    app.select.cursor = Some(idx);
                 }
             }
+            return;
         }
-        MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.source) => {
-            chat::tree_move(app, -1);
-        }
-        MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.source) => {
-            chat::tree_move(app, 1);
-        }
-        MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.cmd_log) => {
-            app.cmdlog.move_cursor(-1);
-        }
-        MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.cmd_log) => {
-            app.cmdlog.move_cursor(1);
-        }
-        MouseEventKind::ScrollUp if hit_test(c, r, app.mouse_areas.messages) => {
-            wheel_messages(app, -1);
-        }
-        MouseEventKind::ScrollDown if hit_test(c, r, app.mouse_areas.messages) => {
-            wheel_messages(app, 1);
-        }
-        // Column fallback — the wheel must not die on borders, the compose
-        // box, the header row or the status strip: anywhere in the chat
-        // column scrolls the history, anywhere else scrolls the tree.
-        MouseEventKind::ScrollUp => {
-            if app.mouse_areas.messages.width > 0 && c >= app.mouse_areas.messages.x {
-                wheel_messages(app, -1);
-            } else {
-                chat::tree_move(app, -1);
+        // Other panels just take focus; the command log also seats its
+        // visual-select cursor on focus.
+        if let Some(target) = app.mouse_areas.focus_for(c, r) {
+            app.focus = target;
+            if target == crate::tui::screens::Focus::CmdLog {
+                app.cmdlog.enter();
             }
         }
-        MouseEventKind::ScrollDown => {
-            if app.mouse_areas.messages.width > 0 && c >= app.mouse_areas.messages.x {
-                wheel_messages(app, 1);
-            } else {
-                chat::tree_move(app, 1);
-            }
-        }
-        _ => {}
     }
 }
 

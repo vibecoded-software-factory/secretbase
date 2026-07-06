@@ -450,6 +450,7 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
         &mut scroll,
     );
     app.list_scroll = scroll;
+    crate::tui::view::widgets::register_scroll(area, crate::tui::view::widgets::ScrollTarget::Tree);
 }
 
 /// Right pane when no conversation is open — a spacious **"Find a
@@ -460,7 +461,8 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
 /// one query, two views). Replaces the old dead "Select a conversation" notice.
 fn render_find_landing(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
     use crate::tui::view::widgets::{
-        PickerModal, PickerRow, draw_picker_tabbed, empty_state_lines, section_tabs_line,
+        PickerModal, PickerRow, ScrollTarget, draw_picker_tabbed, empty_state_lines,
+        section_tabs_line,
     };
     let t = &app.theme;
     let now_s = std::time::SystemTime::now()
@@ -552,6 +554,7 @@ fn render_find_landing(frame: &mut Frame, app: &App, area: Rect, focused: bool) 
                 ("t", "teams"),
             ],
             footer: None,
+            scroll_target: Some(ScrollTarget::Find),
         },
     );
 }
@@ -729,5 +732,51 @@ mod tests {
             text.contains("zoe"),
             "the conversation name is the detail:\n{text}"
         );
+    }
+
+    #[test]
+    fn wheel_over_the_find_landing_moves_its_selection() {
+        // End-to-end: a real draw registers the Find landing as a scroll region;
+        // a wheel event over the right pane dispatches through the centralized
+        // registry → `apply_scroll` → the Find cursor. No per-screen mouse code.
+        use crate::domain::{Channel, Conversation, MembersType};
+        use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.conversations = (0..4)
+            .map(|i| Conversation {
+                id: format!("cv{i}"),
+                channel: Channel {
+                    name: format!("chat{i}"),
+                    members_type: MembersType::ImpTeamNative,
+                    topic_name: None,
+                },
+                unread: false,
+                active_at: 0,
+                active_at_ms: 0,
+                member_status: crate::domain::MemberStatus::Active,
+                creator_info: None,
+            })
+            .collect();
+        app.rebuild_lowered();
+        app.rebuild_filter_preserving_cursor();
+        app.screen = Screen::Inbox; // no conversation open → the Find landing
+        app.focus = Focus::Chat;
+        let _ = render_to_text(&mut app); // populates the scroll registry
+        // The TestBackend is 90×30; align the resize guard so the click counts.
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        assert_eq!(app.find_selected, 0);
+        // Wheel down over the right pane (col 60 is inside the chat column).
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 60,
+                row: 10,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(app.find_selected, 1, "the wheel moved the Find selection");
     }
 }
