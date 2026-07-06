@@ -235,7 +235,11 @@ twin of `Esc`: each modal drawer (`draw_picker_modal` / `draw_input_popup` /
 the settings and help popups) records its rect (`widgets::register_modal`,
 cleared each frame), and `input::mouse` routes an outside-click through one
 `dismiss_overlay` table (confirms cancel — the safe default). A new overlay is
-dismissable for free once it registers its rect. The screen is mouse-interactive: click a message to select it
+dismissable for free once it registers its rect. **Chrome buttons are clickable**
+through a shared button registry (`widgets::register_button` / `button_at`, a
+`ClickAction` per rect — the same frame-local pattern as the scroll registry):
+the confirm popup's `[ confirm ]` / `[ cancel ]` (the mouse twin of y/n) and the
+status strip's `F1 help` / `F10 settings` anchor. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row), click the **already-selected** row again
 to *activate* it — a reply jumps to the message it quotes (the
 select-then-activate the tree click uses) — and scroll the wheel to page
