@@ -25,6 +25,8 @@ pub fn open_teams(app: &mut App) {
 /// conversation if there is one, else the conversation tree.
 pub fn close_teams(app: &mut App) {
     app.screen = Screen::Inbox;
+    // Returning to the Messages section shows the overview, not Find search.
+    app.find_active = false;
     app.focus = if app.open_conv_id.is_some() {
         Focus::Chat
     } else {

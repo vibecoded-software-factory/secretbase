@@ -160,6 +160,10 @@ fn apply_scroll(app: &mut App, target: ScrollTarget, delta: isize) {
             let len = app.filtered_cache.len();
             app.find_selected = clamp_move(app.find_selected, delta, len);
         }
+        ScrollTarget::Overview => {
+            let len = app.overview_entries().len();
+            app.overview_selected = clamp_move(app.overview_selected, delta, len);
+        }
         ScrollTarget::ChannelBrowser => chat::channel_browser_move(app, delta),
         ScrollTarget::Members => chat::members_move(app, delta),
         ScrollTarget::React => {
@@ -288,19 +292,20 @@ fn section_tab_click(app: &mut App, c: u16, r: u16) -> bool {
         return true;
     }
     if hit_test(c, r, app.mouse_areas.tab_messages) {
-        // Back to the Messages section: the open conversation, or the tree when
-        // none is open (matches `Alt+M` / `close_teams`).
+        // Back to the Messages section: the open conversation, or the overview
+        // (not Find) when none is open (`close_teams` resets `find_active`).
         crate::tui::flows::teams::close_teams(app);
         return true;
     }
     if hit_test(c, r, app.mouse_areas.tab_find) {
-        // Show the Find landing: leave any section and close the open
-        // conversation (draft-safe), then focus the landing.
+        // Show the Find search landing: leave any section, close the open
+        // conversation (draft-safe), and flip the Messages pane to Find.
         if app.open_conv_id.is_some() {
             chat::close_conversation(app);
         } else {
             app.screen = Screen::Inbox;
         }
+        app.find_active = true;
         app.focus = Focus::Chat;
         return true;
     }
@@ -367,9 +372,11 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
             return;
         }
         // Chats title / header rows: click to focus Search and start filtering
-        // (the filter folds into the Chats title now). Checked before the tree
-        // rows below, which the same panel's `source` rect also covers.
+        // (the filter folds into the Chats title now). Searching flips the
+        // Messages pane to Find. Checked before the tree rows below, which the
+        // same panel's `source` rect also covers.
         if hit_test(c, r, app.mouse_areas.search) {
+            app.find_active = true;
             app.focus = Focus::Search;
             return;
         }
@@ -414,11 +421,18 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
                     }
                 }
             } else if app.open_conv_id.is_none() {
-                // The Find landing: a row opens that conversation (single
-                // click, like the tree — this list *is* the conversations).
+                // No conversation open → the Find landing or the Messages
+                // overview; either way a row opens that conversation (single
+                // click, like the tree).
                 if let Some(item) = crate::tui::view::widgets::picker_row_at(c, r) {
-                    app.find_selected = item;
-                    if let Some(&i) = app.filtered_cache.get(item) {
+                    let conv_idx = if app.find_active {
+                        app.find_selected = item;
+                        app.filtered_cache.get(item).copied()
+                    } else {
+                        app.overview_selected = item;
+                        app.overview_entries().get(item).copied()
+                    };
+                    if let Some(i) = conv_idx {
                         let id = app.conversations[i].id.clone();
                         chat::enter_conversation(app, id);
                     }

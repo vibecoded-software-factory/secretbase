@@ -667,9 +667,16 @@ detail carries the count `shown of total`) and a **persisted scroll offset**
 (`App::teams.scroll`). This keeps one aesthetic across the app instead of
 swapping to full-screen views that clash.
 
-**The Find landing** fills the right pane when the Messages section is active
-but no conversation is open (`Screen::Inbox` + no `open_conv_id`): the `Find`
-tab lights up and `view::inbox::render_find_landing` draws the same tabbed
+**When no conversation is open** the right pane shows one of two landings, per
+`App::find_active`. **By default the Messages overview** (`Messages` tab active,
+`render_messages_overview`): the day's activity grouped into **`Unread (N)`** and
+**`Mentions (N)`** sections of rich conversation rows, `Enter`/click opens one
+(`overview_selected` over `App::overview_entries`), empty-state *"All caught
+up ✨"*. It's the calm home you land on; **Teams / Find are a tab-click away**.
+
+**The Find landing** takes over when `find_active` flips on — clicking the
+`Find` tab, `Alt+F` / `/`, or the Chats-header click (searching implies Find).
+`view::inbox::render_find_landing` draws the same tabbed
 picker — a dim **`Chats` list header** (the same one the tree panel carries, so
 the list is framed identically) over a search input (`Alt+F` / `/`) and your
 conversations as rich two-line rows (badges + name, then a dim `kind · age`

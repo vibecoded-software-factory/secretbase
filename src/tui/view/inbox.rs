@@ -103,8 +103,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         _ if app.open_conv_id.is_some() => {
             crate::tui::view::conversation::draw_chat(frame, app, chat_area);
         }
-        // No conversation open → the Find landing (search + rich chat list).
-        _ => render_find_landing(frame, app, chat_area, section_focused),
+        // No conversation open → the Messages overview (Unread/Mentions) by
+        // default, or the Find search landing when the Find tab is active.
+        _ if app.find_active => render_find_landing(frame, app, chat_area, section_focused),
+        _ => render_messages_overview(frame, app, chat_area, section_focused),
     }
     record_section_tabs(app, chat_area);
     let cmdlog_focused = app.focus == Focus::CmdLog;
@@ -475,6 +477,118 @@ fn render_tree(frame: &mut Frame, app: &mut App, area: Rect) {
 /// skeleton every overlay uses (so it's one aesthetic, not a one-off). `↑/↓`
 /// pick, `Enter` opens; `/` filters (the same `app.search` query as the tree —
 /// one query, two views). Replaces the old dead "Select a conversation" notice.
+/// A rich two-line conversation row for the Find landing / Messages overview:
+/// attention badges + name, then a dim `kind · age` meta line. Shared so both
+/// list surfaces read identically.
+fn conv_row(app: &App, i: usize, now_s: u64) -> crate::tui::view::widgets::PickerRow {
+    use crate::tui::view::widgets::PickerRow;
+    let t = &app.theme;
+    let conv = &app.conversations[i];
+    let name = app
+        .conversations_lowered
+        .get(i)
+        .map(|l| l.display_label.clone())
+        .unwrap_or_default();
+    let unread = app.conv_is_unread(conv);
+    let mut l1: Vec<Span<'static>> = vec![Span::raw(" ")];
+    if app.is_favorite(&conv.id) {
+        l1.push(favorite_star(t));
+        l1.push(Span::raw(" "));
+    }
+    if unread {
+        l1.push(unread_dot(t));
+        l1.push(Span::raw(" "));
+    }
+    if app.mentioned.contains(&conv.id) {
+        l1.push(Span::styled("@ ", t.danger_title()));
+    }
+    if app
+        .drafts
+        .get(&conv.id)
+        .is_some_and(|d| !d.trim().is_empty())
+    {
+        l1.push(Span::styled("✎ ", Style::default().fg(t.accent)));
+    }
+    let name_style = if unread {
+        unread_style(t)
+    } else {
+        Style::default().fg(t.foreground)
+    };
+    l1.push(Span::styled(name, name_style));
+    let kind = conv.channel.members_type.label();
+    let meta = if conv.active_at > 0 && now_s >= conv.active_at {
+        let age =
+            crate::domain::format_duration(std::time::Duration::from_secs(now_s - conv.active_at));
+        format!("   {kind} · {age}")
+    } else {
+        format!("   {kind}")
+    };
+    PickerRow::Item(vec![
+        Line::from(l1),
+        Line::from(Span::styled(meta, Style::default().fg(t.dim))),
+    ])
+}
+
+/// The **Messages overview** — the right pane when the Messages section is
+/// active and no conversation is open (the default landing): the day's activity
+/// grouped into **Unread** and **Mentions**, browsable, `Enter` opens. Distinct
+/// from the Find search landing (the `Find` tab).
+fn render_messages_overview(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
+    use crate::tui::view::widgets::{
+        PickerModal, PickerRow, ScrollTarget, draw_picker_tabbed, empty_state_lines,
+        section_tabs_line,
+    };
+    let t = &app.theme;
+    let now_s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let unread = app.overview_unread();
+    let mentions = app.overview_mentions();
+    let section_header = |label: String| {
+        PickerRow::Header(Line::from(Span::styled(
+            format!("  {label}"),
+            Style::default().fg(t.dim).add_modifier(Modifier::BOLD),
+        )))
+    };
+    let mut rows: Vec<PickerRow> = Vec::new();
+    if !unread.is_empty() {
+        rows.push(section_header(format!("Unread ({})", unread.len())));
+        rows.extend(unread.iter().map(|&i| conv_row(app, i, now_s)));
+    }
+    if !mentions.is_empty() {
+        rows.push(section_header(format!("Mentions ({})", mentions.len())));
+        rows.extend(mentions.iter().map(|&i| conv_row(app, i, now_s)));
+    }
+    let items = unread.len() + mentions.len();
+    draw_picker_tabbed(
+        frame,
+        t,
+        area,
+        focused,
+        section_tabs_line(app),
+        PickerModal {
+            title: format!("{} unread · {} mentions", unread.len(), mentions.len()),
+            query: None,
+            selected: app.overview_selected.min(items.saturating_sub(1)),
+            rows,
+            empty: empty_state_lines(
+                "All caught up ✨",
+                &["/ or the Find tab to search", "Ctrl+K to jump"],
+                t,
+            ),
+            legend: &[
+                ("↑/↓", "pick"),
+                ("Enter", "open"),
+                ("/", "find"),
+                ("Tab", "section"),
+            ],
+            footer: None,
+            scroll_target: Some(ScrollTarget::Overview),
+        },
+    );
+}
+
 fn render_find_landing(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
     use crate::tui::view::widgets::{
         PickerModal, PickerRow, ScrollTarget, draw_picker_tabbed, empty_state_lines,
@@ -488,55 +602,7 @@ fn render_find_landing(frame: &mut Frame, app: &App, area: Rect, focused: bool) 
     let mut rows: Vec<PickerRow> = app
         .filtered_cache
         .iter()
-        .map(|&i| {
-            let conv = &app.conversations[i];
-            let name = app
-                .conversations_lowered
-                .get(i)
-                .map(|l| l.display_label.clone())
-                .unwrap_or_default();
-            let unread = app.conv_is_unread(conv);
-            // Line 1: attention badges + the name.
-            let mut l1: Vec<Span<'static>> = vec![Span::raw(" ")];
-            if app.is_favorite(&conv.id) {
-                l1.push(favorite_star(t));
-                l1.push(Span::raw(" "));
-            }
-            if unread {
-                l1.push(unread_dot(t));
-                l1.push(Span::raw(" "));
-            }
-            if app.mentioned.contains(&conv.id) {
-                l1.push(Span::styled("@ ", t.danger_title()));
-            }
-            if app
-                .drafts
-                .get(&conv.id)
-                .is_some_and(|d| !d.trim().is_empty())
-            {
-                l1.push(Span::styled("✎ ", Style::default().fg(t.accent)));
-            }
-            let name_style = if unread {
-                unread_style(t)
-            } else {
-                Style::default().fg(t.foreground)
-            };
-            l1.push(Span::styled(name, name_style));
-            // Line 2 (dim): kind · relative age.
-            let kind = conv.channel.members_type.label();
-            let meta = if conv.active_at > 0 && now_s >= conv.active_at {
-                let age = crate::domain::format_duration(std::time::Duration::from_secs(
-                    now_s - conv.active_at,
-                ));
-                format!("   {kind} · {age}")
-            } else {
-                format!("   {kind}")
-            };
-            PickerRow::Item(vec![
-                Line::from(l1),
-                Line::from(Span::styled(meta, Style::default().fg(t.dim))),
-            ])
-        })
+        .map(|&i| conv_row(app, i, now_s))
         .collect();
     // A dim column header over the list — the same `Chats` header the tree
     // panel carries, so the Find landing frames its rows identically. Headers
@@ -790,6 +856,7 @@ mod tests {
         app.rebuild_lowered();
         app.rebuild_filter_preserving_cursor();
         app.screen = Screen::Inbox; // no conversation open → the Find landing
+        app.find_active = true; // exercise the Find landing (overview is default)
         app.focus = Focus::Chat;
         let _ = render_to_text(&mut app); // populates the scroll registry
         // The TestBackend is 90×30; align the resize guard so the click counts.
@@ -1078,12 +1145,74 @@ mod tests {
         app.rebuild_lowered();
         app.rebuild_filter_preserving_cursor();
         app.screen = Screen::Inbox; // no conversation open → the Find landing
+        app.find_active = true; // exercise the Find landing (overview is default)
         let text = render_to_text(&mut app);
         // The tree carries `Chats` in its title + header; the Find landing adds
         // a third — its own `Chats` list header — so it frames its rows the same.
         assert!(
             text.matches("Chats").count() >= 3,
             "the Find landing renders a `Chats` list header like the tree:\n{text}"
+        );
+    }
+
+    #[test]
+    fn messages_overview_is_the_default_and_groups_unread() {
+        use crate::domain::{Channel, Conversation, MembersType};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.conversations = vec![Conversation {
+            id: "cv1".into(),
+            channel: Channel {
+                name: "me,zoe".into(),
+                members_type: MembersType::ImpTeamNative,
+                topic_name: None,
+            },
+            unread: true,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: crate::domain::MemberStatus::Active,
+            creator_info: None,
+        }];
+        app.rebuild_lowered();
+        app.rebuild_filter_preserving_cursor();
+        app.screen = Screen::Inbox; // no conversation open, find_active = false
+        let text = render_to_text(&mut app);
+        // The default landing is the Messages overview (not Find): it groups the
+        // day's activity under an `Unread` header, and the Messages tab is active.
+        assert!(
+            text.contains("Unread (1)"),
+            "the overview groups unread conversations:\n{text}"
+        );
+        assert!(
+            !text.contains("search your chats"),
+            "the default landing is the overview, not the Find search:\n{text}"
+        );
+    }
+
+    #[test]
+    fn clicking_the_find_tab_switches_from_the_overview_to_search() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.screen = Screen::Inbox;
+        assert!(!app.find_active, "overview is the default");
+        let _ = render_to_text(&mut app); // records the section-tab hit rects
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        let ft = app.mouse_areas.tab_find;
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: ft.x + 1,
+                row: ft.y,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert!(
+            app.find_active,
+            "clicking the Find tab flipped the pane to the search landing"
         );
     }
 }
