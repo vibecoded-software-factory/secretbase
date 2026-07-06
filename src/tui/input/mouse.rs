@@ -232,6 +232,7 @@ fn apply_click_action(app: &mut App, action: ClickAction) {
             }
         }
         ClickAction::OpenSettings => app.open_settings(),
+        ClickAction::OpenPalette => crate::tui::flows::palette::open_command_palette(app),
     }
 }
 

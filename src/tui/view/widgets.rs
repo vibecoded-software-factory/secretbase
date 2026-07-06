@@ -544,6 +544,9 @@ pub enum ClickAction {
     OpenHelp,
     /// Open the settings overlay (the `F10 settings` anchor).
     OpenSettings,
+    /// Open the command palette (the `☰ menu` anchor) — a mouse gateway to
+    /// every action (switcher, searches, …) for a keyboard-free user.
+    OpenPalette,
 }
 
 /// What the mouse wheel moves when it's over a registered region. The widget
@@ -1417,9 +1420,11 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
         height: full_area.height,
     };
 
-    // Right side: just the help anchor. The signed-in `@username` now lives in
-    // the identity chip atop the conversation tree, not the footer.
-    const HELP_ANCHOR: &str = "F1 help · F10 settings";
+    // Right side: the clickable anchor — a `☰ menu` gateway to the command
+    // palette (the mouse route to the switcher / searches / everything) plus the
+    // help / settings function keys. The signed-in `@username` lives in the
+    // identity chip atop the tree, not here.
+    const HELP_ANCHOR: &str = "☰ menu · F1 help · F10 settings";
     let anchor_block = HELP_ANCHOR.chars().count() + 2;
     let avail = (area.width as usize).saturating_sub(anchor_block);
     // Show only the hint segments that fully fit — the rest lives in F1 (don't
@@ -1450,25 +1455,26 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
     let anchor_len = HELP_ANCHOR.chars().count() as u16;
     if area.width >= anchor_len {
         let ax = area.x + area.width - anchor_len;
-        let help_w = "F1 help".chars().count() as u16;
         let sep_w = " · ".chars().count() as u16;
+        let menu_w = "☰ menu".chars().count() as u16;
+        let help_w = "F1 help".chars().count() as u16;
         let set_w = "F10 settings".chars().count() as u16;
-        register_button(
-            Rect {
-                x: ax,
-                y: area.y,
-                width: help_w,
-                height: 1,
-            },
-            ClickAction::OpenHelp,
-        );
-        register_button(
-            Rect {
-                x: ax + help_w + sep_w,
-                y: area.y,
-                width: set_w,
-                height: 1,
-            },
+        let row = |x: u16, w: u16, a: ClickAction| {
+            register_button(
+                Rect {
+                    x,
+                    y: area.y,
+                    width: w,
+                    height: 1,
+                },
+                a,
+            );
+        };
+        row(ax, menu_w, ClickAction::OpenPalette);
+        row(ax + menu_w + sep_w, help_w, ClickAction::OpenHelp);
+        row(
+            ax + menu_w + sep_w + help_w + sep_w,
+            set_w,
             ClickAction::OpenSettings,
         );
     }
