@@ -131,6 +131,14 @@ fn draw_adaptive_header(frame: &mut Frame, app: &App, area: Rect) {
 /// section (a pin / topic, `has_adaptive_header`) that takes 0 rows when
 /// there's nothing to show, then the message history and the compose box.
 pub(crate) fn draw_chat(frame: &mut Frame, app: &mut App, area: Rect) {
+    // The wheel scrolls the history from anywhere in the right column — over the
+    // header, compose or borders too, not just the message rows — so it never
+    // dies on chrome. Registered over the whole pane; the messages viewport rect
+    // (below) stays the precise click-to-select map.
+    crate::tui::view::widgets::register_scroll(
+        area,
+        crate::tui::view::widgets::ScrollTarget::Messages,
+    );
     // The header is a bordered section like every other panel — 3 rows
     // (border + content + border), 0 when there's nothing to show.
     let header_h: u16 = if has_adaptive_header(app) { 3 } else { 0 };

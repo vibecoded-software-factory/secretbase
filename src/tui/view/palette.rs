@@ -11,7 +11,7 @@ use ratatui::{
 use crate::tui::App;
 use crate::tui::flows::palette::{PaletteRow, palette_rows};
 use crate::tui::view::widgets::{
-    PickerModal, PickerRow, draw_picker_modal, key_style, modal_inner_width,
+    PickerModal, PickerRow, ScrollTarget, draw_picker_modal, key_style, modal_inner_width,
 };
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -65,6 +65,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             ),
             legend: &[("↑↓", "select"), ("Enter", "run"), ("Esc", "cancel")],
             footer: None,
+            scroll_target: Some(ScrollTarget::Palette),
         },
     );
 }

@@ -30,6 +30,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // the terminal (72% wide, ~82% tall — see `h`).
     let popup = center_rect(72, h, frame.area());
     frame.render_widget(Clear, popup);
+    crate::tui::view::widgets::register_scroll(
+        popup,
+        crate::tui::view::widgets::ScrollTarget::Help,
+    );
 
     let inner = Rect {
         x: popup.x + 1,

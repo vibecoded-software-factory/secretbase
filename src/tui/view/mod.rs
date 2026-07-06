@@ -45,6 +45,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // slots they care about. Stamp the size so the input layer can
     // drop clicks whose coordinates predate a resize.
     app.mouse_areas.reset(area.width, area.height);
+    // Clear the scroll registry too; each scrollable widget re-registers its
+    // region as it draws, so the wheel dispatches by pointer position.
+    crate::tui::view::widgets::reset_scroll_regions();
 
     if area.width < MIN_W || area.height < MIN_H {
         draw_too_small(frame, area, &app.theme);

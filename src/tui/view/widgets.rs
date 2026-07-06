@@ -490,6 +490,10 @@ pub struct PickerModal<'a> {
     /// input modes and inline confirms ([`inline_input_line`] /
     /// [`inline_confirm_line`]).
     pub footer: Option<Line<'static>>,
+    /// What the wheel scrolls when the pointer is over this picker. `None` for
+    /// non-scrollable uses (e.g. the confirm popup). Registered by the skeleton
+    /// itself, so every picker is wheel-scrollable for free.
+    pub scroll_target: Option<ScrollTarget>,
 }
 
 /// Inner content width of the standard picker modal — for callers that
@@ -509,6 +513,78 @@ thread_local! {
     /// an otherwise pure widget.
     static PICKER_HITS: std::cell::RefCell<(Rect, Vec<Option<usize>>)> =
         const { std::cell::RefCell::new((Rect { x: 0, y: 0, width: 0, height: 0 }, Vec::new())) };
+
+    /// Frame-local **scroll registry**: every scrollable component records its
+    /// viewport rect + logical [`ScrollTarget`] here as it draws, so the mouse
+    /// wheel dispatches by pointer position — one generic path, no per-screen
+    /// `match` in the input layer. Cleared each frame by [`reset_scroll_regions`].
+    static SCROLL_REGIONS: std::cell::RefCell<Vec<(Rect, ScrollTarget)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// What the mouse wheel moves when it's over a registered region. The widget
+/// that draws a scrollable surface tags it with one of these; the input layer
+/// owns the single table that maps a tag to the state it scrolls. Adding a new
+/// scrollable list is one `register_scroll` call — the wheel handler never
+/// changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollTarget {
+    /// The conversation tree (left pane).
+    Tree,
+    /// The command-log panel.
+    CmdLog,
+    /// The open conversation's message viewport.
+    Messages,
+    /// The help overlay's scroll offset.
+    Help,
+    /// The Teams section list.
+    Teams,
+    /// The Find landing's conversation list.
+    Find,
+    /// The channel-browser list.
+    ChannelBrowser,
+    /// The team-members list.
+    Members,
+    /// The reaction picker.
+    React,
+    /// The command palette.
+    Palette,
+    /// The quick switcher.
+    Switcher,
+    /// The in-conversation search results.
+    ConvSearch,
+    /// The global search results.
+    GlobalSearch,
+    /// The GIF search results.
+    Giphy,
+}
+
+/// Clears the scroll registry. Called once per frame before drawing, alongside
+/// [`crate::tui::mouse_areas::MouseAreas::reset`].
+pub fn reset_scroll_regions() {
+    SCROLL_REGIONS.with(|s| s.borrow_mut().clear());
+}
+
+/// Records a scrollable region for this frame. Overlays draw after the base
+/// screen, so later registrations win on overlap (the modal captures the wheel).
+pub fn register_scroll(rect: Rect, target: ScrollTarget) {
+    if rect.width > 0 && rect.height > 0 {
+        SCROLL_REGIONS.with(|s| s.borrow_mut().push((rect, target)));
+    }
+}
+
+/// The scroll target under `(column, row)`, if any — the last-registered
+/// (top-most) region that contains the point.
+pub fn scroll_target_at(column: u16, row: u16) -> Option<ScrollTarget> {
+    SCROLL_REGIONS.with(|s| {
+        s.borrow()
+            .iter()
+            .rev()
+            .find(|(r, _)| {
+                column >= r.x && column < r.x + r.width && row >= r.y && row < r.y + r.height
+            })
+            .map(|(_, t)| *t)
+    })
 }
 
 /// The selectable item under `(column, row)` in the last-drawn picker
@@ -628,6 +704,10 @@ pub(crate) fn tabbed_block(app: &App, detail: &str, focused: bool) -> Block<'sta
 /// rendered into `inner`, with the scrollbar hugging `area`'s right border.
 /// Shared by the modal, plain in-pane and tabbed forms.
 fn draw_picker_body(frame: &mut Frame, theme: &Theme, area: Rect, inner: Rect, m: PickerModal<'_>) {
+    // The wheel scrolls this picker anywhere inside its panel.
+    if let Some(target) = m.scroll_target {
+        register_scroll(area, target);
+    }
     let has_query = m.query.is_some();
     let chunks = Layout::vertical([
         Constraint::Length(if has_query { 1 } else { 0 }), // query
@@ -887,6 +967,7 @@ pub fn draw_confirm_popup(
             empty: Vec::new(),
             legend: &[],
             footer: Some(inline_confirm_line("", "", "confirm", confirmed, theme)),
+            scroll_target: None,
         },
     );
 }
@@ -1046,6 +1127,7 @@ pub fn editor_lines(editor: &LineEditor, theme: &Theme) -> Vec<Line<'static>> {
 /// without the title showing a 20-digit number or the scroll getting
 /// stuck above the bottom.
 pub fn draw_cmd_log(frame: &mut Frame, app: &mut App, area: Rect, focused: bool, tag: &str) {
+    register_scroll(area, ScrollTarget::CmdLog);
     // Inner height = block area minus the two borders.
     let visible_rows = (area.height as usize).saturating_sub(2);
     let total = app.cmdlog.entries.len();
@@ -1395,6 +1477,52 @@ mod tests {
         assert_eq!(lines.len(), 3); // spacer + head + one hint
         assert_eq!(line_text(&lines[1]), "  No chats");
         assert_eq!(line_text(&lines[2]), "  n to start one");
+    }
+
+    #[test]
+    fn scroll_registry_dispatches_by_position_top_most_wins() {
+        use super::{ScrollTarget, register_scroll, reset_scroll_regions, scroll_target_at};
+        reset_scroll_regions();
+        // Base region, then a smaller overlapping one registered later (as an
+        // overlay would draw over the base).
+        register_scroll(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 5,
+            },
+            ScrollTarget::Tree,
+        );
+        register_scroll(
+            Rect {
+                x: 2,
+                y: 1,
+                width: 4,
+                height: 2,
+            },
+            ScrollTarget::React,
+        );
+        // Only the base covers this point.
+        assert_eq!(scroll_target_at(0, 0), Some(ScrollTarget::Tree));
+        // Overlap → the later (top-most) registration wins.
+        assert_eq!(scroll_target_at(3, 1), Some(ScrollTarget::React));
+        // Outside every region.
+        assert_eq!(scroll_target_at(50, 50), None);
+        // Empty rects are never registered.
+        register_scroll(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 5,
+            },
+            ScrollTarget::Help,
+        );
+        assert_eq!(scroll_target_at(0, 0), Some(ScrollTarget::Tree));
+        // Reset clears the registry.
+        reset_scroll_regions();
+        assert_eq!(scroll_target_at(0, 0), None);
     }
 
     use super::*;

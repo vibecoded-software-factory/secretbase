@@ -205,7 +205,13 @@ status strip at the bottom.
   row-step; `Ctrl+U` stays kill-to-start in the query) for a list behind a
   text input, where the letter aliases would be typed. This guarantees identical
   coverage so screens can't drift. The **mouse wheel** scrolls whatever list is
-  active on every screen (`input::mouse` dispatches by `Screen`). The **section
+  under the pointer through a **centralized scroll registry** in the widget
+  layer: every scrollable component (`draw_picker_*`, `list_table`, the message
+  viewport, the command log, help) records its rect + a `widgets::ScrollTarget`
+  as it draws (`register_scroll`, cleared each frame), and `input::mouse`
+  dispatches the wheel purely by position — one `apply_scroll` table, **no
+  per-screen `match`**. Adding a scrollable list is one `register_scroll` call
+  at its draw site; the wheel handler never changes. The **section
   tabs** (`Messages · Teams · Find`) woven into the right-pane border are
   **clickable** — the mouse twin of `t` / `Alt+M`: click `Teams` to open the
   teams section (or, from the channel-browser drill-down, to step back up to the

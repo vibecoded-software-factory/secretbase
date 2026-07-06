@@ -11,7 +11,7 @@ use ratatui::{
 };
 
 use crate::tui::app::App;
-use crate::tui::view::widgets::{PickerModal, PickerRow, draw_picker_modal};
+use crate::tui::view::widgets::{PickerModal, PickerRow, ScrollTarget, draw_picker_modal};
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let t = &app.theme;
@@ -72,6 +72,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
                 ("Esc", "close"),
             ],
             footer: None,
+            scroll_target: Some(ScrollTarget::GlobalSearch),
         },
     );
 }
