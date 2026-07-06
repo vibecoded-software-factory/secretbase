@@ -4911,6 +4911,35 @@ fn clicking_the_teams_tab_steps_up_from_the_channel_browser() {
 }
 
 #[test]
+fn clicking_the_splash_retries_a_failed_boot() {
+    use crate::tui::action::ActionState;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    crate::tui::view::widgets::reset_scroll_regions(); // clear stale modal/button rects
+
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Splash;
+    rig.app.set_action(ActionState::Error("boot failed".into()));
+    rig.app.mouse_areas.frame_size = (90, 30);
+    rig.app.last_terminal_size = (90, 30);
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 10,
+            row: 10,
+            modifiers: KeyModifiers::NONE,
+        },
+    );
+    // request_status fires → the error toast is replaced by a Running state.
+    assert!(
+        matches!(rig.app.action_state, ActionState::Running(_)),
+        "clicking the failed splash retried the boot"
+    );
+}
+
+#[test]
 fn clicking_outside_a_centered_overlay_dismisses_it() {
     // A real draw records the overlay's modal rect; a click outside it routes
     // through the generic `dismiss_overlay` path — one close for every overlay.
