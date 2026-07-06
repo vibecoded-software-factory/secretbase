@@ -77,7 +77,15 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     }
     match ev.kind {
         MouseEventKind::Down(button) => {
-            if app.screen == Screen::Login {
+            if app.screen == Screen::Splash {
+                // A failed boot is a dead end but for retry — a click retries
+                // it (the mouse twin of `r` / Enter), same guards.
+                if !app.is_busy()
+                    && matches!(app.action_state, crate::tui::action::ActionState::Error(_))
+                {
+                    crate::tui::flows::auth::request_status(app);
+                }
+            } else if app.screen == Screen::Login {
                 // Focus a login field / press a login button.
                 crate::tui::input::login::mouse(app, ev.column, ev.row);
             } else if app.screen == Screen::Settings {
