@@ -250,7 +250,12 @@ of `react · reply · edit · delete · copy` that operates on that message (it
 seats the Select cursor there first), on the shared skeleton so it inherits
 click-to-run, click-outside-to-dismiss and the modal grammar. It's the mouse
 twin of the Select-mode verbs — one `MESSAGE_ACTIONS` table drives both the
-menu rows and their handlers. In Select mode, `Enter` is the same activation: on a **reply** it
+menu rows and their handlers. The same idiom serves the tree: **right-click a
+conversation** opens its action menu (`Screen::ConvActions`,
+`view::conv_actions`) — `open · mark read · mute/unmute · favorite · copy name ·
+channels · ignore · block · report`, the mouse twin of the inbox action keys
+(one `CONV_ACTIONS` table). Both render through the shared
+`view::action_menu` skeleton, so every right-click menu reads identically. In Select mode, `Enter` is the same activation: on a **reply** it
 jumps to the quoted message (the search-jump machinery pages older history
 in automatically when the parent is outside the loaded window), on anything
 else it returns to Compose (`i`/`a` always do).

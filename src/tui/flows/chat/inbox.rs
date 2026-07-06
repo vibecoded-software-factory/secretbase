@@ -519,6 +519,65 @@ pub fn do_copy_conversation_label(app: &mut App) {
     }
 }
 
+// ── Per-conversation action menu (right-click a tree row) ─────────────
+
+/// One per-conversation action menu row: label + the handler it runs (each
+/// targets the conversation under the tree cursor).
+pub type ConvMenuAction = (&'static str, fn(&mut App));
+
+fn act_open(a: &mut App) {
+    tree_activate(a);
+}
+fn act_channels(a: &mut App) {
+    super::open_channel_browser(a);
+}
+fn act_ignore(a: &mut App) {
+    open_conv_action(a, ConvAction::Ignore);
+}
+fn act_block(a: &mut App) {
+    open_conv_action(a, ConvAction::Block);
+}
+fn act_report(a: &mut App) {
+    open_conv_action(a, ConvAction::Report);
+}
+
+/// The per-conversation action menu rows, in order. Both the menu view and its
+/// activation read this array, so labels and actions can't drift.
+pub const CONV_ACTIONS: [ConvMenuAction; 9] = [
+    ("open", act_open),
+    ("mark read", request_mark_read),
+    ("mute / unmute", toggle_muted_conversation),
+    ("favorite", toggle_favorite_conversation),
+    ("copy name", do_copy_conversation_label),
+    ("channels", act_channels),
+    ("ignore", act_ignore),
+    ("block", act_block),
+    ("report", act_report),
+];
+
+/// Opens the per-conversation action menu (`Screen::ConvActions`) for the tree
+/// `row` — right-click. Seats the tree cursor on it so the actions target it.
+pub fn open_conv_actions(app: &mut App, row: usize) {
+    app.tree_selected = row;
+    app.conv_actions_selected = 0;
+    app.screen = crate::tui::screens::Screen::ConvActions;
+}
+
+/// Closes the menu back to the inbox without running an action.
+pub fn close_conv_actions(app: &mut App) {
+    app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+/// Runs the highlighted menu action: closes the menu first, then dispatches
+/// (the action may open its own overlay — ignore/block/report confirm, the
+/// channel browser — or mutate local state — mute / favourite).
+pub fn run_conv_action(app: &mut App) {
+    let idx = app.conv_actions_selected.min(CONV_ACTIONS.len() - 1);
+    let action = CONV_ACTIONS[idx].1;
+    close_conv_actions(app);
+    action(app);
+}
+
 /// Copies the marked command-log lines (or the cursor line if none are
 /// marked) to the clipboard. `full` copies the whole line (`✓ cmd → detail
 /// (dur)`); otherwise just the `detail`. The selection is kept so the user

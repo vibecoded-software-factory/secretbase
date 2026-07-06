@@ -5,7 +5,9 @@
 //! `titled_block` layout system and the shared `widgets` chrome.
 
 pub mod action;
+pub mod action_menu;
 pub mod channels;
+pub mod conv_actions;
 pub mod conv_search;
 pub mod conversation;
 pub mod help;
@@ -67,6 +69,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::ConvSearch
         | Screen::GiphySearch
         | Screen::MessageActions
+        | Screen::ConvActions
         | Screen::React => Screen::Inbox,
         // Members floats over wherever it was opened (the in-pane channel
         // browser, or the open conversation) — draw that underneath.
@@ -165,6 +168,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::ConvSearch => conv_search::draw(frame, app),
         Screen::GiphySearch => popups::giphy_search_input(frame, app),
         Screen::MessageActions => message_actions::draw(frame, app),
+        Screen::ConvActions => conv_actions::draw(frame, app),
         _ => {}
     }
 

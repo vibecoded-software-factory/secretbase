@@ -430,3 +430,21 @@ pub fn message_actions(app: &mut App, key: KeyEvent) {
         _ => {}
     }
 }
+
+// ── Per-conversation action menu (right-click a tree row) ─────────────
+
+/// The per-conversation action menu (`Screen::ConvActions`): navigate the fixed
+/// action list, `Enter`/`l`/`→` runs the highlighted action, `Esc` closes.
+pub fn conv_actions(app: &mut App, key: KeyEvent) {
+    let len = crate::tui::flows::chat::CONV_ACTIONS.len();
+    if common::list_nav(&key, len, app.conv_actions_selected, |i| {
+        app.conv_actions_selected = i
+    }) {
+        return;
+    }
+    match key.code {
+        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => chat::run_conv_action(app),
+        KeyCode::Esc => chat::close_conv_actions(app),
+        _ => {}
+    }
+}

@@ -155,7 +155,7 @@ collapse a group); the header search fuzzy-filters it.
 | `Ctrl+W` / `Ctrl+U`     | Delete word / to line start (works in every text input) |
 | `Ctrl+←` / `Ctrl+→` · `Ctrl+A` / `Ctrl+E` | Word jump · line start / end (every input) |
 | `Ctrl+F`                | Search this conversation (jump to a match) |
-| mouse                   | Click a message to select, right-click for its action menu, scroll to page history |
+| mouse                   | Click to select, **right-click** a message or a conversation for its action menu, scroll to page history |
 | `Alt+V`                 | Select mode — act on a message (edit/delete/react/pin/reply) |
 | `Alt+I`                 | Insert an emoji into the draft |
 | `Alt+G`                 | GIF search — pick a giphy GIF and send it |
