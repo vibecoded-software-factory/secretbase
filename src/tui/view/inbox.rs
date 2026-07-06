@@ -962,4 +962,21 @@ mod tests {
             "clicking the Username input focused it"
         );
     }
+
+    #[test]
+    fn command_log_shows_a_scrollbar_when_it_overflows() {
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.settings_cache.cmdlog_rows = 6;
+        for i in 0..40 {
+            app.push_cmd(format!("cmd {i}"), true, "ok");
+        }
+        app.screen = Screen::Inbox;
+        let text = render_to_text(&mut app);
+        assert!(
+            text.contains('┃'),
+            "the command log renders a scrollbar thumb when it overflows:\n{text}"
+        );
+    }
 }

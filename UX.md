@@ -1123,10 +1123,12 @@ pin or topic, otherwise the message history takes the rows.
 <conversation> @mentions (unread)` — a free status surface in tmux/SSH
 window lists, re-emitted only on change and cleared on exit.
 
-**Scroll position cues:** every overflowing scrollable region draws a dim
-vertical scrollbar on its right border (`widgets::draw_scrollbar` — one
-implementation: `list_table` surfaces, the picker modal's list, the message
-history). It appears only on overflow; short lists stay clean.
+**Scroll position cues:** **every** scrollable region draws a dim vertical
+scrollbar on its right border (`widgets::draw_scrollbar` — one implementation,
+shared by `list_table` surfaces (tree / Teams), every picker modal's list
+(Find / channels / switcher / palette / searches / react / giphy / members),
+the **message history**, and the **command log**). It appears only on overflow;
+short lists stay clean.
 
 **Text that fits-or-degrades (never a fixed char cap that the terminal clips):**
 - **Footer hint** — `widgets::fit_segments` keeps only whole ` · ` segments that
