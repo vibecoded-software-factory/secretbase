@@ -15,6 +15,52 @@ use crate::tui::app::{SettingKind, SettingsFocus, SettingsSection};
 use crate::tui::theme;
 use crate::tui::view::widgets::MODAL_HEIGHT;
 
+/// A clickable target inside the settings overlay — a sidebar section, a panel
+/// row, or a theme preset, each keyed by its index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingsHit {
+    Section(usize),
+    Row(usize),
+    Theme(usize),
+}
+
+thread_local! {
+    /// Frame-local hit map for the settings overlay — one `(rect, target)` per
+    /// clickable row, recorded as it draws (`&App`, so no `mouse_areas` write).
+    static SETTINGS_HITS: std::cell::RefCell<Vec<(Rect, SettingsHit)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn register_hit(rect: Rect, hit: SettingsHit) {
+    if rect.width > 0 && rect.height > 0 {
+        SETTINGS_HITS.with(|h| h.borrow_mut().push((rect, hit)));
+    }
+}
+
+/// The settings target under `(column, row)`, if any — consumed by the mouse
+/// layer to select / activate a sidebar section, panel row or theme preset.
+pub fn settings_hit_at(column: u16, row: u16) -> Option<SettingsHit> {
+    SETTINGS_HITS.with(|h| {
+        h.borrow()
+            .iter()
+            .rev()
+            .find(|(r, _)| {
+                column >= r.x && column < r.x + r.width && row >= r.y && row < r.y + r.height
+            })
+            .map(|(_, t)| *t)
+    })
+}
+
+/// A 1-row rect at line `y` spanning `[x, x+width)` — for a settings row hit.
+fn row_rect(area: Rect, line: u16, width: u16) -> Rect {
+    Rect {
+        x: area.x,
+        y: area.y + line,
+        width,
+        height: 1,
+    }
+}
+
 /// Footer hint shown while the section sidebar holds focus.
 const HINT_SIDEBAR: &str = "↑/↓ section · →/Enter open · Esc close";
 /// Footer hint shown while the active section's panel holds focus.
@@ -26,6 +72,7 @@ const LABEL_GAP: usize = 2;
 const VALUE_CAP: usize = 34;
 
 pub fn draw_popup(frame: &mut Frame, app: &App) {
+    SETTINGS_HITS.with(|h| h.borrow_mut().clear());
     let area = frame.area();
     let t = &app.theme;
     let accent = Style::default().fg(t.accent).add_modifier(Modifier::BOLD);
@@ -211,6 +258,13 @@ fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), body);
+    // Each section is one clickable row (no wrapping).
+    for i in 0..SettingsSection::ALL.len() {
+        register_hit(
+            row_rect(body, i as u16, body.width),
+            SettingsHit::Section(i),
+        );
+    }
 }
 
 fn draw_panel(frame: &mut Frame, app: &App, area: Rect) {
@@ -256,7 +310,13 @@ fn draw_rows_panel(frame: &mut Frame, app: &App, area: Rect, section: SettingsSe
     let value_avail = (content_area.width as usize).saturating_sub(indent).max(4);
 
     let mut lines: Vec<Line> = Vec::new();
+    let mut line_no: u16 = 0; // track each row's first line (values can wrap)
     for (i, &id) in rows.iter().enumerate() {
+        // The row's label line is its clickable target.
+        register_hit(
+            row_rect(content_area, line_no, content_area.width),
+            SettingsHit::Row(i),
+        );
         let selected = i == item;
         let marker = if selected { "▶ " } else { "  " };
         let label_style = if selected && focused {
@@ -283,12 +343,14 @@ fn draw_rows_panel(frame: &mut Frame, app: &App, area: Rect, section: SettingsSe
             Span::styled(format!("{marker}{label:<label_w$}{gap}"), label_style),
             Span::styled(chunks[0].clone(), value_style),
         ]));
+        line_no += 1;
         // Continuation lines align under the value column.
         for cont in chunks.iter().skip(1) {
             lines.push(Line::from(vec![
                 Span::raw(" ".repeat(indent)),
                 Span::styled(cont.clone(), value_style),
             ]));
+            line_no += 1;
         }
     }
     frame.render_widget(Paragraph::new(lines), content_area);
@@ -328,6 +390,11 @@ fn draw_theme_panel(frame: &mut Frame, app: &App, area: Rect) {
             format!("  {marker}{}", p.label()),
             style,
         )));
+        // Preset i renders on line (1 + i) — a "Preset" header sits on line 0.
+        register_hit(
+            row_rect(content_area, (i + 1) as u16, content_area.width),
+            SettingsHit::Theme(i),
+        );
     }
     frame.render_widget(Paragraph::new(lines), content_area);
 

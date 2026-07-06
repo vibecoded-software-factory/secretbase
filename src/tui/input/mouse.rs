@@ -69,7 +69,10 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     }
     match ev.kind {
         MouseEventKind::Down(_) => {
-            if picker_screen(app.screen) {
+            if app.screen == Screen::Settings {
+                // Click a sidebar section / panel row / theme preset.
+                crate::tui::input::settings::mouse(app, ev.column, ev.row);
+            } else if picker_screen(app.screen) {
                 // Click selects the row under the pointer; clicking the already-
                 // selected row activates it — the tree/messages contract, now on
                 // every picker (the hit map comes from the shared skeleton).

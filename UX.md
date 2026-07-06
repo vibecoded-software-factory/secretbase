@@ -1043,7 +1043,12 @@ hex entries override it. The Settings picker applies live. Adding a preset = one
 `settings_from` like Help) — `view::settings::draw_popup`, input in
 `input::settings`. Layout: a left **section sidebar** + the active section's
 **panel**; `Tab` switches sidebar ↔ panel, `↑/↓` move within (section or row),
-`←/→` change the focused setting. **Height + position follow the standard
+`←/→` change the focused setting. **Fully mouse-operable:** every sidebar
+section, panel row and theme preset records a hit rect
+(`settings::settings_hit_at`, a frame-local map like the picker's); clicking a
+section selects it, clicking a panel row selects it (a second click on the
+selected row cycles / toggles it), clicking a theme applies it, and a click
+outside the box closes it. **Height + position follow the standard
 modal geometry** (`MODAL_HEIGHT`, vertically centered — the same as global
 search / the quick switcher), so overlays line up. The **width is
 content-driven** (`settings::popup_dims` + `section_width`): sized once to the

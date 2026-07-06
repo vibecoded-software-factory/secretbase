@@ -883,4 +883,36 @@ mod tests {
             "clicking the F1 anchor opened help"
         );
     }
+
+    #[test]
+    fn clicking_a_settings_sidebar_section_selects_it() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.screen = Screen::Settings;
+        app.settings_ui.section = 0; // Identity
+        let text = render_to_text(&mut app);
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        // Find the "Theme" section label in the sidebar (the panel title is
+        // "Identity" here, so "Theme" only appears as a sidebar row).
+        let (col, row) = text
+            .lines()
+            .enumerate()
+            .find_map(|(y, line)| line.find("Theme").map(|x| (x as u16, y as u16)))
+            .expect("Theme section row is rendered");
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: col,
+                row,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(
+            app.settings_ui.section, 1,
+            "clicking the Theme sidebar row selected it (index 1)"
+        );
+    }
 }
