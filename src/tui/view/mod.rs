@@ -10,6 +10,7 @@ pub mod conv_search;
 pub mod conversation;
 pub mod help;
 pub mod inbox;
+pub mod island;
 pub mod login;
 pub mod logo;
 pub mod members;
