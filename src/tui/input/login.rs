@@ -14,6 +14,19 @@ use crate::tui::app::{App, LoginField};
 use crate::tui::flows;
 use crate::tui::input::common;
 
+/// A click in the login form: focus the field under the pointer, and press
+/// (submit) if it's one of the two action buttons — the mouse twin of the
+/// keyboard focus + Enter.
+pub fn mouse(app: &mut App, col: u16, row: u16) {
+    let Some(field) = crate::tui::view::login::login_hit_at(col, row) else {
+        return;
+    };
+    app.login.focus = field;
+    if matches!(field, LoginField::SubmitPaperkey | LoginField::SubmitNative) {
+        submit(app, field);
+    }
+}
+
 pub fn handle(app: &mut App, key: KeyEvent) {
     let field = app.login.focus;
     match key.code {

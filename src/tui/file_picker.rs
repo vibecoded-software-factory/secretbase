@@ -85,6 +85,8 @@ pub struct FilePicker {
     filter: LineEditor,
     /// Last directory-read error, shown inline.
     error: Option<String>,
+    /// The list viewport rect from the last render — for click hit-testing.
+    list_rect: Rect,
 }
 
 impl FilePicker {
@@ -113,9 +115,29 @@ impl FilePicker {
             filtering: false,
             filter: LineEditor::default(),
             error: None,
+            list_rect: Rect::default(),
         };
         p.load();
         p
+    }
+
+    /// A click at `(col, row)`: over a list row, selects it (a click on the
+    /// already-selected row activates it — open a dir / pick a file); elsewhere
+    /// it's a no-op. The mouse twin of `↑/↓` + `Enter`.
+    pub fn click(&mut self, col: u16, row: u16) -> Outcome {
+        let r = self.list_rect;
+        if r.width == 0 || col < r.x || col >= r.x + r.width || row < r.y || row >= r.y + r.height {
+            return Outcome::Pending;
+        }
+        let idx = self.scroll + (row - r.y) as usize;
+        if idx >= self.view.len() {
+            return Outcome::Pending;
+        }
+        if idx == self.selected {
+            return self.activate();
+        }
+        self.selected = idx;
+        Outcome::Pending
     }
 
     /// The directory currently being browsed.
@@ -349,6 +371,7 @@ impl FilePicker {
         } else {
             (inner, None)
         };
+        self.list_rect = list_area; // remember it for click hit-testing
 
         if let Some(err) = &self.error {
             frame.render_widget(

@@ -117,12 +117,29 @@ pub fn handle_paste(app: &mut App, text: &str) {
 /// Routes a key to the open file picker and acts on its outcome: a
 /// pick fires the attachment upload, a cancel just closes it.
 pub(crate) fn file_picker_key(app: &mut App, key: KeyEvent) {
-    use crate::tui::app::PickerAction;
-    use crate::tui::file_picker::Outcome;
     let Some(picker) = app.file_picker.as_mut() else {
         return;
     };
-    match picker.handle_key(key) {
+    let outcome = picker.handle_key(key);
+    apply_picker_outcome(app, outcome);
+}
+
+/// A click inside the file picker — the mouse twin of `↑/↓` + `Enter`.
+pub(crate) fn file_picker_click(app: &mut App, col: u16, row: u16) {
+    let Some(picker) = app.file_picker.as_mut() else {
+        return;
+    };
+    let outcome = picker.click(col, row);
+    apply_picker_outcome(app, outcome);
+}
+
+/// Applies a file-picker [`Outcome`] — cancel closes it, a selection closes it
+/// and fires the host action (upload / download). Shared by the key + click
+/// paths so they can't diverge.
+fn apply_picker_outcome(app: &mut App, outcome: crate::tui::file_picker::Outcome) {
+    use crate::tui::app::PickerAction;
+    use crate::tui::file_picker::Outcome;
+    match outcome {
         Outcome::Pending => {}
         Outcome::Cancelled => app.file_picker = None,
         Outcome::Selected(path) => {
