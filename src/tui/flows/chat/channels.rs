@@ -909,3 +909,37 @@ pub fn run_channel_action(app: &mut App) {
     close_channel_actions(app);
     action(app);
 }
+
+// ── Per-member action menu (right-click a members-view row) ───────────
+
+/// One per-member action menu row: label + the handler it runs.
+pub type MemberMenuAction = (&'static str, fn(&mut App));
+
+/// The per-member action menu rows, in order. Both the menu view and its
+/// activation read this array, so labels and actions can't drift.
+pub const MEMBER_ACTIONS: [MemberMenuAction; 2] = [
+    ("add member", open_member_add),
+    ("remove", open_member_remove_confirm),
+];
+
+/// Opens the per-member action menu (`Screen::MemberActions`) for the member at
+/// `row` — right-click. Seats the members cursor on it so remove targets it.
+pub fn open_member_actions(app: &mut App, row: usize) {
+    app.members.selected = row;
+    app.member_actions_selected = 0;
+    app.screen = crate::tui::screens::Screen::MemberActions;
+}
+
+/// Closes the menu back to the members view without running an action.
+pub fn close_member_actions(app: &mut App) {
+    app.screen = crate::tui::screens::Screen::Members;
+}
+
+/// Runs the highlighted menu action: closes the menu first, then dispatches
+/// (both actions open their own overlay — the add input / remove confirm).
+pub fn run_member_action(app: &mut App) {
+    let idx = app.member_actions_selected.min(MEMBER_ACTIONS.len() - 1);
+    let action = MEMBER_ACTIONS[idx].1;
+    close_member_actions(app);
+    action(app);
+}

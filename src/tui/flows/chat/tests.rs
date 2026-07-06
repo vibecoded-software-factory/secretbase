@@ -5245,6 +5245,36 @@ fn read_channel_rejects_unknown_members_type() {
 }
 
 #[test]
+fn right_click_member_opens_actions_and_runs_them() {
+    use crate::ports::keybase::ReadChannel;
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.members.channel = Some(ReadChannel {
+        name: "phoenix".into(),
+        members_type: "team".into(),
+        topic_name: Some("general".into()),
+    });
+    rig.app.screen = Screen::Members;
+
+    open_member_actions(&mut rig.app, 0);
+    assert_eq!(rig.app.screen, Screen::MemberActions);
+    assert_eq!(rig.app.members.selected, 0, "the menu targets that row");
+
+    // Run "add member" (index 0) → menu closes, the add input opens.
+    rig.app.member_actions_selected = 0;
+    run_member_action(&mut rig.app);
+    assert_ne!(
+        rig.app.screen,
+        Screen::MemberActions,
+        "running closed the menu"
+    );
+    assert!(
+        rig.app.members.adding,
+        "the add action entered the add input"
+    );
+}
+
+#[test]
 fn right_click_channel_opens_actions_and_runs_them() {
     let mut rig = build_rig();
     set_identity(&mut rig.app, "me");

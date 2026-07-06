@@ -16,6 +16,7 @@ pub mod inbox;
 pub mod island;
 pub mod login;
 pub mod logo;
+pub mod member_actions;
 pub mod members;
 pub mod message_actions;
 pub mod new_conversation;
@@ -86,6 +87,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // The channel action menu floats over the channel browser it was
         // opened from.
         Screen::ChannelActions => Screen::ChannelBrowser,
+        // The member action menu floats over the members view, which itself
+        // floats over its own base — draw that base here and both overlays
+        // (list + menu) below.
+        Screen::MemberActions => app.members.return_to,
         other => other,
     };
     draw_screen(frame, app, base);
@@ -174,6 +179,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::MessageActions => message_actions::draw(frame, app),
         Screen::ConvActions => conv_actions::draw(frame, app),
         Screen::ChannelActions => channel_actions::draw(frame, app),
+        // The member menu floats over the members list, which floats over its
+        // base — draw both here (the base came from the `base` match above).
+        Screen::MemberActions => {
+            members::draw(frame, app);
+            member_actions::draw(frame, app);
+        }
         _ => {}
     }
 

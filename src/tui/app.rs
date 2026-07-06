@@ -310,6 +310,9 @@ pub struct App {
     /// Selected row in the per-channel action menu (`Screen::ChannelActions`),
     /// opened by right-clicking a channel-browser row.
     pub channel_actions_selected: usize,
+    /// Selected row in the per-member action menu (`Screen::MemberActions`),
+    /// opened by right-clicking a members-view row.
+    pub member_actions_selected: usize,
     /// The emoji picker's catalogue, lookup index and frecency ranking —
     /// extracted into its own cohesive type (see
     /// [`crate::tui::emoji_catalog`]). The `emojilist` fetch that fills the
@@ -654,6 +657,7 @@ impl App {
             msg_actions_selected: 0,
             conv_actions_selected: 0,
             channel_actions_selected: 0,
+            member_actions_selected: 0,
             // Seeds the bundled standard set (so the picker has content and
             // reactions resolve to glyphs immediately) and builds its index +
             // filter; the emojilist fetch merges the team's custom emojis on top.
