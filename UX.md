@@ -356,7 +356,9 @@ buttons (**Log in** / **Log in in terminal**). Fields render via
 reveals it. Focus (`App::login_focus`, [`LoginField`]) is shown by an accent
 label / highlighted button; `Tab`/`↑↓` cycle, `Enter` submits, `F2` reveals,
 `F5` retries status, `Esc` clears the focused field, `Ctrl+C` quits (the
-only quit, as everywhere). As a **text-entry** screen it owns
+only quit, as everywhere). **Mouse-operable:** each input block and both
+buttons record a hit rect (`login::login_hit_at`); a click focuses the field,
+or presses (submits) a button. Text still needs the keyboard. As a **text-entry** screen it owns
 bare letters as typed text (the gradient rule), so its actions live on
 non-text keys. Layout: a whole-screen `Layout::vertical([Fill(2), Length(20),
 Fill(1), Length(1)])` puts the wordmark up top (2/3 of the stars above the
@@ -573,7 +575,10 @@ routing in `input::handle_events`, drawn last in `view::draw`). Single-pane,
 desktop-chooser style: a path bar, the current directory (dirs first;
 dotfiles and any extension shown), and a hint bar. `↑↓`/`kj` move,
 `Enter`/`→` open-or-pick, `⌫`/`←` parent, `~` home, `g`/`G` ends, `/` fuzzy
-filter, `.` toggles hidden, `Esc` cancels. Two modes:
+filter, `.` toggles hidden, `Esc` cancels. **Rows are clickable** (the wheel
+already scrolled): a click selects the row, a click on the selected row opens
+the dir / picks the file (`FilePicker::click`, hit-tested against the list
+viewport it records each render — the `↑↓`+`Enter` twin). Two modes:
 
 - **File** (`PickerMode::OpenFile`) — pick an existing file. `Alt+A` in a
   conversation opens it; the pick feeds `keybase chat api attach` (upload).

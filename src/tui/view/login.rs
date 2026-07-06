@@ -26,7 +26,36 @@ use crate::tui::view::{logo, splash};
 /// spacer(1) + buttons(1) + hint(1) + feedback strip(2) + borders(2).
 const FORM_ROWS: u16 = 20;
 
+thread_local! {
+    /// Frame-local hit map for the login form — one `(rect, field)` per input /
+    /// button, recorded as `&mut App` draws. The mouse layer focuses the field
+    /// (and submits, for the two buttons).
+    static LOGIN_HITS: std::cell::RefCell<Vec<(Rect, LoginField)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn register_hit(rect: Rect, field: LoginField) {
+    if rect.width > 0 && rect.height > 0 {
+        LOGIN_HITS.with(|h| h.borrow_mut().push((rect, field)));
+    }
+}
+
+/// The login field/button under `(column, row)`, if any — consumed by the mouse
+/// layer to focus a field or press a button.
+pub fn login_hit_at(column: u16, row: u16) -> Option<LoginField> {
+    LOGIN_HITS.with(|h| {
+        h.borrow()
+            .iter()
+            .rev()
+            .find(|(r, _)| {
+                column >= r.x && column < r.x + r.width && row >= r.y && row < r.y + r.height
+            })
+            .map(|(_, f)| *f)
+    })
+}
+
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    LOGIN_HITS.with(|h| h.borrow_mut().clear());
     // While a login / status check is in flight the form has nothing
     // actionable — show the same centered logo + spinner as the boot splash.
     if matches!(app.action_state, ActionState::Running(_)) {
@@ -150,6 +179,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         &t,
     );
 
+    // Each input block is a clickable target that focuses its field.
+    register_hit(f[2], LoginField::Username);
+    register_hit(f[4], LoginField::Device);
+    register_hit(f[6], LoginField::PaperKey);
+
     // Buttons, centered.
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -159,6 +193,29 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         ]))
         .alignment(Alignment::Center),
         f[8],
+    );
+    // Register the two centered buttons' rects (`[ label ]` = label + 4).
+    let b1w = "Log in".len() as u16 + 4;
+    let b2w = "Log in in terminal".len() as u16 + 4;
+    let total = b1w + 4 + b2w; // 4-space gap between them
+    let bx = f[8].x + f[8].width.saturating_sub(total) / 2;
+    register_hit(
+        Rect {
+            x: bx,
+            y: f[8].y,
+            width: b1w,
+            height: 1,
+        },
+        LoginField::SubmitPaperkey,
+    );
+    register_hit(
+        Rect {
+            x: bx + b1w + 4,
+            y: f[8].y,
+            width: b2w,
+            height: 1,
+        },
+        LoginField::SubmitNative,
     );
 
     // Short, centered hint — which button to pick.

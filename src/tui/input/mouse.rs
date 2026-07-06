@@ -22,15 +22,23 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     // moves *its* selection (through the same key path as ↑/↓, so Outcome
     // handling can't diverge), never whatever sits underneath.
     if app.file_picker.is_some() {
-        let code = match ev.kind {
-            MouseEventKind::ScrollUp => crossterm::event::KeyCode::Up,
-            MouseEventKind::ScrollDown => crossterm::event::KeyCode::Down,
-            _ => return,
-        };
-        crate::tui::input::file_picker_key(
-            app,
-            crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE),
-        );
+        match ev.kind {
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                let code = if matches!(ev.kind, MouseEventKind::ScrollUp) {
+                    crossterm::event::KeyCode::Up
+                } else {
+                    crossterm::event::KeyCode::Down
+                };
+                crate::tui::input::file_picker_key(
+                    app,
+                    crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE),
+                );
+            }
+            MouseEventKind::Down(_) => {
+                crate::tui::input::file_picker_click(app, ev.column, ev.row);
+            }
+            _ => {}
+        }
         return;
     }
     // A click outside any centered overlay dismisses it — one generic path for
@@ -69,7 +77,10 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
     }
     match ev.kind {
         MouseEventKind::Down(_) => {
-            if app.screen == Screen::Settings {
+            if app.screen == Screen::Login {
+                // Focus a login field / press a login button.
+                crate::tui::input::login::mouse(app, ev.column, ev.row);
+            } else if app.screen == Screen::Settings {
                 // Click a sidebar section / panel row / theme preset.
                 crate::tui::input::settings::mouse(app, ev.column, ev.row);
             } else if picker_screen(app.screen) {

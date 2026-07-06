@@ -915,4 +915,51 @@ mod tests {
             "clicking the Theme sidebar row selected it (index 1)"
         );
     }
+
+    #[test]
+    fn clicking_a_login_field_focuses_it() {
+        use crate::tui::app::LoginField;
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut app = app();
+        app.screen = Screen::Login;
+        app.login.focus = LoginField::PaperKey;
+
+        // Render tall enough for the whole form + locate the Username label.
+        let mut term = Terminal::new(TestBackend::new(90, 44)).unwrap();
+        term.draw(|f| crate::tui::view::draw(f, &mut app)).unwrap();
+        let buf = term.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if let Some(c) = buf.cell((x, y)) {
+                    text.push_str(c.symbol());
+                }
+            }
+            text.push('\n');
+        }
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        let (col, label_y) = text
+            .lines()
+            .enumerate()
+            .find_map(|(y, line)| line.find("Username").map(|x| (x as u16, y as u16)))
+            .expect("Username label is rendered");
+        // The input block sits on the row just below its label.
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: col + 1,
+                row: label_y + 1,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(
+            app.login.focus,
+            LoginField::Username,
+            "clicking the Username input focused it"
+        );
+    }
 }
