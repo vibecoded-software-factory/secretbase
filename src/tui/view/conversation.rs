@@ -758,8 +758,24 @@ fn render_messages(frame: &mut Frame, app: &mut App, area: Rect) {
         // there — in the border, never overlaying the message rows.
         let mut counter_spans = vec![Span::styled(counter, Style::default().fg(dim))];
         if effective_back > 0 && app.pagination.new_since > 0 {
+            let cue = format!(" · ▼ {} new · End", app.pagination.new_since);
+            // The cue is right-aligned in the bottom border; register it as a
+            // clickable jump-to-latest target (its rect ends one cell in from
+            // the border corner).
+            let cue_w = cue.chars().count() as u16;
+            if area.width > cue_w + 2 && area.height >= 1 {
+                crate::tui::view::widgets::register_button(
+                    Rect {
+                        x: area.x + area.width - 1 - cue_w,
+                        y: area.y + area.height - 1,
+                        width: cue_w,
+                        height: 1,
+                    },
+                    crate::tui::view::widgets::ClickAction::JumpLatest,
+                );
+            }
             counter_spans.push(Span::styled(
-                format!(" · ▼ {} new · End", app.pagination.new_since),
+                cue,
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ));
         }

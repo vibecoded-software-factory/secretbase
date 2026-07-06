@@ -549,6 +549,8 @@ pub enum ClickAction {
     /// Open the command palette (the `☰ menu` anchor) — a mouse gateway to
     /// every action (switcher, searches, …) for a keyboard-free user.
     OpenPalette,
+    /// Jump the message history to the latest (the `▼ N new · End` cue).
+    JumpLatest,
 }
 
 /// What the mouse wheel moves when it's over a registered region. The widget

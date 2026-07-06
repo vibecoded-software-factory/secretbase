@@ -4940,6 +4940,55 @@ fn clicking_the_splash_retries_a_failed_boot() {
 }
 
 #[test]
+fn clicking_the_new_messages_cue_jumps_to_latest() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    crate::tui::view::widgets::reset_scroll_regions();
+
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.conversations = vec![conv("c1", "me,zoe", MembersType::ImpTeamNative)];
+    rig.app.open_conv_id = Some("c1".into());
+    rig.app.thread.messages = (1..40).map(|i| text_msg(i, "me", "hello there")).collect();
+    rig.app.rebuild_msg_meta();
+    rig.app.pagination.scroll = 8; // scrolled up in history
+    rig.app.pagination.new_since = 3; // new arrivals below the fold
+    rig.app.screen = Screen::Inbox;
+    rig.app.focus = crate::tui::screens::Focus::Chat;
+
+    let mut term = Terminal::new(TestBackend::new(90, 20)).unwrap();
+    term.draw(|f| crate::tui::view::draw(f, &mut rig.app))
+        .unwrap();
+    let buf = term.backend().buffer();
+    // Locate the `▼` of the `▼ 3 new · End` cue in the bottom border.
+    let mut cue: Option<(u16, u16)> = None;
+    for y in 0..buf.area().height {
+        for x in 0..buf.area().width {
+            if buf.cell((x, y)).map(|c| c.symbol()) == Some("▼") {
+                cue = Some((x, y));
+            }
+        }
+    }
+    let (cx, cy) = cue.expect("the `▼ N new` cue is rendered");
+    rig.app.last_terminal_size = rig.app.mouse_areas.frame_size;
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: cx,
+            row: cy,
+            modifiers: KeyModifiers::NONE,
+        },
+    );
+    assert_eq!(
+        rig.app.pagination.scroll, 0,
+        "clicking the cue jumped to the latest message"
+    );
+}
+
+#[test]
 fn clicking_outside_a_centered_overlay_dismisses_it() {
     // A real draw records the overlay's modal rect; a click outside it routes
     // through the generic `dismiss_overlay` path — one close for every overlay.
