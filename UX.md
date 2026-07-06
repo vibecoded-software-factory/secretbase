@@ -236,7 +236,13 @@ dismissable for free once it registers its rect. The screen is mouse-interactive
 to *activate* it — a reply jumps to the message it quotes (the
 select-then-activate the tree click uses) — and scroll the wheel to page
 history (`mouse_areas` carries the messages viewport rect + a per-message
-row map). In Select mode, `Enter` is the same activation: on a **reply** it
+row map). **Right-click a message** opens the per-message action menu
+(`Screen::MessageActions`, `view::message_actions`): a compact centered picker
+of `react · reply · edit · delete · copy` that operates on that message (it
+seats the Select cursor there first), on the shared skeleton so it inherits
+click-to-run, click-outside-to-dismiss and the modal grammar. It's the mouse
+twin of the Select-mode verbs — one `MESSAGE_ACTIONS` table drives both the
+menu rows and their handlers. In Select mode, `Enter` is the same activation: on a **reply** it
 jumps to the quoted message (the search-jump machinery pages older history
 in automatically when the parent is outside the loaded window), on anything
 else it returns to Compose (`i`/`a` always do).

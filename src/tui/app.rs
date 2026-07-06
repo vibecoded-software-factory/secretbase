@@ -301,6 +301,9 @@ pub struct App {
     /// Selected row in the reaction picker (indexes the *filtered* emoji
     /// list — see [`crate::tui::emoji_catalog::EmojiCatalog::filtered`]).
     pub react_selected: usize,
+    /// Selected row in the per-message action menu (`Screen::MessageActions`),
+    /// opened by right-clicking a message.
+    pub msg_actions_selected: usize,
     /// The emoji picker's catalogue, lookup index and frecency ranking —
     /// extracted into its own cohesive type (see
     /// [`crate::tui::emoji_catalog`]). The `emojilist` fetch that fills the
@@ -642,6 +645,7 @@ impl App {
             mention_selected: 0,
             react: LineEditor::default(),
             react_selected: 0,
+            msg_actions_selected: 0,
             // Seeds the bundled standard set (so the picker has content and
             // reactions resolve to glyphs immediately) and builds its index +
             // filter; the emojilist fetch merges the team's custom emojis on top.

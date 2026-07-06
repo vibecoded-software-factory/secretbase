@@ -283,6 +283,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         Screen::CommandPalette => popups::command_palette(app, key),
         Screen::ConvSearch => popups::conv_search(app, key),
         Screen::GiphySearch => popups::giphy_search(app, key),
+        Screen::MessageActions => popups::message_actions(app, key),
     }
 }
 

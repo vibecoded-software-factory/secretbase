@@ -13,6 +13,7 @@ pub mod inbox;
 pub mod login;
 pub mod logo;
 pub mod members;
+pub mod message_actions;
 pub mod new_conversation;
 pub mod palette;
 pub mod popups;
@@ -64,6 +65,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         | Screen::ConfirmDeleteMessage
         | Screen::ConvSearch
         | Screen::GiphySearch
+        | Screen::MessageActions
         | Screen::React => Screen::Inbox,
         // Members floats over wherever it was opened (the in-pane channel
         // browser, or the open conversation) — draw that underneath.
@@ -161,6 +163,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Screen::CommandPalette => palette::draw(frame, app),
         Screen::ConvSearch => conv_search::draw(frame, app),
         Screen::GiphySearch => popups::giphy_search_input(frame, app),
+        Screen::MessageActions => message_actions::draw(frame, app),
         _ => {}
     }
 

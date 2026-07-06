@@ -1339,6 +1339,52 @@ pub fn open_react_for_selected(app: &mut App) {
     }
 }
 
+/// `copy` menu action — author + timestamp + body of the selected message(s).
+fn copy_selected_message(app: &mut App) {
+    do_copy_messages(app, true);
+}
+
+/// One per-message action menu row: its label + the handler it runs.
+pub type MessageAction = (&'static str, fn(&mut App));
+
+/// The per-message action menu rows, in order: label + the handler it runs
+/// (each targets the message under the Select cursor). Both the menu view and
+/// its activation read this array, so the labels and actions can't drift.
+pub const MESSAGE_ACTIONS: [MessageAction; 5] = [
+    ("react", open_react_for_selected),
+    ("reply", start_reply_for_selected),
+    ("edit", open_edit_for_selected),
+    ("delete", open_delete_for_selected),
+    ("copy", copy_selected_message),
+];
+
+/// Opens the per-message action menu (`Screen::MessageActions`) for the message
+/// at `idx` — right-click. Seats the Select cursor on it first so the actions
+/// target the right message.
+pub fn open_message_actions(app: &mut App, idx: usize) {
+    if app.open_conv_id.is_none() || idx >= app.thread.messages.len() {
+        return;
+    }
+    app.select.cursor = Some(idx);
+    app.msg_actions_selected = 0;
+    app.screen = crate::tui::screens::Screen::MessageActions;
+}
+
+/// Closes the menu back to the open conversation without running an action.
+pub fn close_message_actions(app: &mut App) {
+    app.screen = crate::tui::screens::Screen::Inbox;
+}
+
+/// Runs the highlighted menu action: closes the menu first, then dispatches
+/// (the action may open its own overlay — react / delete-confirm — or mutate
+/// compose — reply / edit).
+pub fn run_message_action(app: &mut App) {
+    let idx = app.msg_actions_selected.min(MESSAGE_ACTIONS.len() - 1);
+    let action = MESSAGE_ACTIONS[idx].1;
+    close_message_actions(app);
+    action(app);
+}
+
 /// Opens the emoji picker in **insert** mode: the chosen emoji lands in the
 /// compose draft at the cursor (the compose bar's `emoji` chip / `Alt+I`),
 /// instead of reacting to a message. Same picker, same catalogue.

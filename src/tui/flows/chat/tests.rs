@@ -4948,6 +4948,79 @@ fn clicking_outside_a_centered_overlay_dismisses_it() {
 }
 
 #[test]
+fn message_action_menu_opens_and_runs_the_highlighted_action() {
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.open_conv_id = Some("c1".into());
+    rig.app.thread.messages = vec![text_msg(1, "me", "hi")];
+
+    open_message_actions(&mut rig.app, 0);
+    assert_eq!(rig.app.screen, Screen::MessageActions);
+    assert_eq!(
+        rig.app.select.cursor,
+        Some(0),
+        "the menu targets that message"
+    );
+
+    rig.app.msg_actions_selected = 0; // "react"
+    run_message_action(&mut rig.app);
+    assert_eq!(
+        rig.app.screen,
+        Screen::React,
+        "running react closed the menu and opened the reaction picker"
+    );
+}
+
+#[test]
+fn right_click_on_a_message_opens_the_action_menu() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
+
+    // No modal is up; clear the frame-local registries so a stale rect from an
+    // earlier test on this thread can't intercept the click.
+    crate::tui::view::widgets::reset_scroll_regions();
+
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "me");
+    rig.app.screen = Screen::Inbox;
+    rig.app.open_conv_id = Some("c1".into());
+    rig.app.thread.messages = vec![text_msg(1, "me", "hi")];
+    rig.app.mouse_areas.frame_size = (90, 30);
+    rig.app.last_terminal_size = (90, 30);
+    rig.app.mouse_areas.list = Rect {
+        x: 25,
+        y: 0,
+        width: 65,
+        height: 28,
+    };
+    rig.app.mouse_areas.message_rows = vec![(
+        Rect {
+            x: 30,
+            y: 5,
+            width: 50,
+            height: 1,
+        },
+        0,
+    )];
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: 40,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        },
+    );
+    assert_eq!(
+        rig.app.screen,
+        Screen::MessageActions,
+        "right-click opened the per-message menu"
+    );
+    assert_eq!(rig.app.select.cursor, Some(0));
+}
+
+#[test]
 fn apply_response_drops_message_when_no_in_flight_slot() {
     // A response arriving without a matching in-flight context is
     // a worker/main-thread disagreement that should NEVER happen

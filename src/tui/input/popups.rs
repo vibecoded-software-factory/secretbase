@@ -412,3 +412,21 @@ pub fn quick_switcher(app: &mut App, key: KeyEvent) {
         }
     }
 }
+
+// ── Per-message action menu (right-click) ─────────────────────────────
+
+/// The per-message action menu (`Screen::MessageActions`): navigate the fixed
+/// action list, `Enter`/`l`/`→` runs the highlighted action, `Esc` closes.
+pub fn message_actions(app: &mut App, key: KeyEvent) {
+    let len = crate::tui::flows::chat::MESSAGE_ACTIONS.len();
+    if common::list_nav(&key, len, app.msg_actions_selected, |i| {
+        app.msg_actions_selected = i
+    }) {
+        return;
+    }
+    match key.code {
+        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => chat::run_message_action(app),
+        KeyCode::Esc => chat::close_message_actions(app),
+        _ => {}
+    }
+}

@@ -52,6 +52,9 @@ pub enum Screen {
     /// GIF search popup (giphy, user API key) — query + results; Enter
     /// sends the selected GIF's media URL to the open conversation.
     GiphySearch,
+    /// Per-message action menu (right-click a message) — react / reply / edit /
+    /// delete / copy, operating on the message under the Select cursor.
+    MessageActions,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.
