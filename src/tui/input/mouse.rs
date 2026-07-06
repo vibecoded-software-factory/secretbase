@@ -33,6 +33,19 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
         );
         return;
     }
+    // Section tabs woven into the Home shell's right-pane border are clickable
+    // across all three sections — the mouse twin of `t` / `Alt+M`. Handle a tab
+    // click before the per-screen routing below: on Teams a click otherwise
+    // does nothing, and on the channel browser it would route to the picker.
+    if matches!(ev.kind, MouseEventKind::Down(_))
+        && matches!(
+            app.screen,
+            Screen::Inbox | Screen::Teams | Screen::ChannelBrowser
+        )
+        && section_tab_click(app, ev.column, ev.row)
+    {
+        return;
+    }
     // The wheel scrolls whatever is active — position-aware across the home's
     // panes, whole-screen on a single-list overlay. Clicks only mean something
     // on the home screen for now.
@@ -106,6 +119,39 @@ fn picker_screen(s: Screen) -> bool {
             | Screen::Members
             | Screen::GiphySearch
     )
+}
+
+/// Handles a click on the section tabs woven into the right-pane border —
+/// `Messages` · `Teams` · `Find` — switching sections (the mouse twin of `t` /
+/// `Alt+M`). Returns true when the click landed on a tab.
+fn section_tab_click(app: &mut App, c: u16, r: u16) -> bool {
+    if hit_test(c, r, app.mouse_areas.tab_teams) {
+        match app.screen {
+            Screen::Teams => {} // already at the teams list
+            // In the channel-browser drill-down the Teams tab steps back up.
+            Screen::ChannelBrowser => chat::close_channel_browser(app),
+            _ => crate::tui::flows::teams::open_teams(app),
+        }
+        return true;
+    }
+    if hit_test(c, r, app.mouse_areas.tab_messages) {
+        // Back to the Messages section: the open conversation, or the tree when
+        // none is open (matches `Alt+M` / `close_teams`).
+        crate::tui::flows::teams::close_teams(app);
+        return true;
+    }
+    if hit_test(c, r, app.mouse_areas.tab_find) {
+        // Show the Find landing: leave any section and close the open
+        // conversation (draft-safe), then focus the landing.
+        if app.open_conv_id.is_some() {
+            chat::close_conversation(app);
+        } else {
+            app.screen = Screen::Inbox;
+        }
+        app.focus = Focus::Chat;
+        return true;
+    }
+    false
 }
 
 /// Select-then-activate for a clicked picker row.

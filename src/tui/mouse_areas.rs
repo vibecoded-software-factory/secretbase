@@ -37,6 +37,12 @@ pub struct MouseAreas {
     pub compose_emoji: Rect,
     /// The compose bar's clickable `attach` chip (opens the file picker).
     pub compose_attach: Rect,
+    /// The three section tabs woven into the right pane's top border —
+    /// `Messages` · `Teams` · `Find`. Clicking one switches sections, the
+    /// mouse twin of `t` / `Alt+M`. Built fresh each render by the Home view.
+    pub tab_messages: Rect,
+    pub tab_teams: Rect,
+    pub tab_find: Rect,
     /// `(width, height)` of the frame these rects were computed
     /// against. `(0, 0)` for a freshly-reset bag.
     pub frame_size: (u16, u16),

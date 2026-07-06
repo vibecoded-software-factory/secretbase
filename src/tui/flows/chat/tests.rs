@@ -4784,6 +4784,133 @@ fn mouse_handler_honors_clicks_when_rects_are_fresh() {
 }
 
 #[test]
+fn clicking_the_teams_tab_opens_the_teams_section() {
+    // The section tabs woven into the right-pane border are clickable — the
+    // mouse twin of `t`. A click inside `tab_teams` switches to the Teams
+    // section even though that rect sits in the chat panel's top border.
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
+
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Inbox;
+    rig.app.mouse_areas.frame_size = (120, 40);
+    rig.app.last_terminal_size = (120, 40);
+    // The chat panel's top border sits at row 0; the Teams tab is a small
+    // rect within it. (Empty username keeps the load request hermetic.)
+    rig.app.identity.username = String::new();
+    rig.app.mouse_areas.tab_teams = Rect {
+        x: 20,
+        y: 0,
+        width: 7,
+        height: 1,
+    };
+    rig.app.mouse_areas.list = Rect {
+        x: 10,
+        y: 0,
+        width: 110,
+        height: 30,
+    };
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 22,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        },
+    );
+
+    assert_eq!(
+        rig.app.screen,
+        Screen::Teams,
+        "the Teams tab switches sections (not just focuses the chat pane)"
+    );
+}
+
+#[test]
+fn clicking_the_messages_tab_leaves_a_section() {
+    // Clicking `Messages` from the Teams section returns to the Home's
+    // Messages section (Inbox) — the mouse twin of `Alt+M`.
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
+
+    let mut rig = build_rig();
+    rig.app.screen = Screen::Teams;
+    rig.app.mouse_areas.frame_size = (120, 40);
+    rig.app.last_terminal_size = (120, 40);
+    rig.app.mouse_areas.tab_messages = Rect {
+        x: 2,
+        y: 0,
+        width: 10,
+        height: 1,
+    };
+    rig.app.mouse_areas.list = Rect {
+        x: 10,
+        y: 0,
+        width: 110,
+        height: 30,
+    };
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 4,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        },
+    );
+
+    assert_eq!(
+        rig.app.screen,
+        Screen::Inbox,
+        "the Messages tab leaves Teams"
+    );
+}
+
+#[test]
+fn clicking_the_teams_tab_steps_up_from_the_channel_browser() {
+    // From the channel-browser drill-down, the (active) Teams tab steps back up
+    // to the teams list. This click must be handled before the channel
+    // browser's picker-row routing swallows it.
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Rect;
+
+    let mut rig = build_rig();
+    rig.app.screen = Screen::ChannelBrowser;
+    rig.app.channel_browser.team = Some("phoenix".into());
+    rig.app.mouse_areas.frame_size = (120, 40);
+    rig.app.last_terminal_size = (120, 40);
+    rig.app.mouse_areas.tab_teams = Rect {
+        x: 20,
+        y: 0,
+        width: 7,
+        height: 1,
+    };
+
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 22,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        },
+    );
+
+    assert_eq!(
+        rig.app.screen,
+        Screen::Teams,
+        "Teams tab steps up to the list"
+    );
+    assert!(
+        rig.app.channel_browser.team.is_none(),
+        "the drill-down state is cleared"
+    );
+}
+
+#[test]
 fn apply_response_drops_message_when_no_in_flight_slot() {
     // A response arriving without a matching in-flight context is
     // a worker/main-thread disagreement that should NEVER happen

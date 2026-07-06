@@ -17,8 +17,18 @@ use crate::tui::screens::{Focus, Screen};
 use crate::tui::view::titled_block;
 use crate::tui::view::widgets::{
     cmdlog_height, draw_cmd_log, draw_status_strip, favorite_star, list_table, list_title,
-    middle_ellipsis, tree_pane_width, unread_dot, unread_style,
+    middle_ellipsis, section_tab_rects, tree_pane_width, unread_dot, unread_style,
 };
+
+/// Records the three section-tab hit rects (in `panel`'s top border) so the
+/// mouse layer can switch sections on click. Keeps the render and the hit map
+/// reading from the same [`section_tab_rects`] geometry.
+fn record_section_tabs(app: &mut App, panel: Rect) {
+    let (msg, teams, find) = section_tab_rects(panel);
+    app.mouse_areas.tab_messages = msg;
+    app.mouse_areas.tab_teams = teams;
+    app.mouse_areas.tab_find = find;
+}
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -36,6 +46,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.pane_zoomed && app.open_conv_id.is_some() {
         let full = Layout::vertical([Constraint::Min(8), Constraint::Length(1)]).split(area);
         crate::tui::view::conversation::draw_chat(frame, app, full[0]);
+        record_section_tabs(app, full[0]);
         let hint = if app.pending_pane_nav {
             "Ctrl+W move: h/j/k/l or arrows · z unzoom · Esc exit"
         } else {
@@ -86,6 +97,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // No conversation open → the Find landing (search + rich chat list).
         _ => render_find_landing(frame, app, chat_area, section_focused),
     }
+    record_section_tabs(app, chat_area);
     let cmdlog_focused = app.focus == Focus::CmdLog;
     draw_cmd_log(frame, app, cmdlog, cmdlog_focused, "Alt+L");
     let hint = if app.pending_pane_nav {
