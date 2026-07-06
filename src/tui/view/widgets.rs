@@ -28,7 +28,7 @@ pub(crate) fn section_tabs_line(app: &App) -> Line<'static> {
     let t = &app.theme;
     let on_teams = matches!(app.screen, Screen::Teams | Screen::ChannelBrowser);
     let on_find = app.screen == Screen::Inbox && app.open_conv_id.is_none();
-    let on_messages = !on_teams && !on_find;
+    let active = [!on_teams && !on_find, on_teams, on_find];
     let tab = |label: &str, active: bool| {
         let style = if active {
             Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
@@ -40,12 +40,45 @@ pub(crate) fn section_tabs_line(app: &App) -> Line<'static> {
     let sep = || Span::styled("·", Style::default().fg(t.muted));
     Line::from(vec![
         Span::raw(" "),
-        tab("Messages", on_messages),
+        tab(SECTION_TAB_LABELS[0], active[0]),
         sep(),
-        tab("Teams", on_teams),
+        tab(SECTION_TAB_LABELS[1], active[1]),
         sep(),
-        tab("Find", on_find),
+        tab(SECTION_TAB_LABELS[2], active[2]),
     ])
+}
+
+/// The three section-tab labels, in border order. Both the rendered tabs
+/// ([`section_tabs_line`]) and their clickable hit rects
+/// ([`section_tab_rects`]) are driven by this array so the glyphs and the
+/// mouse targets can never drift apart.
+const SECTION_TAB_LABELS: [&str; 3] = ["Messages", "Teams", "Find"];
+
+/// Screen rects of the three section tabs within a right-pane panel whose top
+/// border carries [`section_tabs_line`]. The title starts one cell in from the
+/// left corner; each tab is its label padded with a space on each side, the
+/// tabs joined by single `·` separators after one leading space. Returns
+/// `(messages, teams, find)` — the mouse layer hit-tests these to switch
+/// sections.
+pub(crate) fn section_tab_rects(area: Rect) -> (Rect, Rect, Rect) {
+    let y = area.y;
+    let mut x = area.x + 2; // left border corner + the leading raw space
+    let mut rect_for = |label: &str| {
+        let w = label.len() as u16 + 2; // the `" {label} "` padding
+        let r = Rect {
+            x,
+            y,
+            width: w,
+            height: 1,
+        };
+        x += w + 1; // step past the label and its `·` separator
+        r
+    };
+    (
+        rect_for(SECTION_TAB_LABELS[0]),
+        rect_for(SECTION_TAB_LABELS[1]),
+        rect_for(SECTION_TAB_LABELS[2]),
+    )
 }
 
 /// Title for a filtered list block: `"{subject} · {filtered} of {total}"`.
@@ -1443,6 +1476,27 @@ mod tests {
             let b = body(h);
             assert!(b >= prev, "body shrank at height {h}: {b} < {prev}");
             prev = b;
+        }
+    }
+
+    #[test]
+    fn section_tab_rects_line_up_with_the_rendered_tabs() {
+        // The rects must fall exactly on the glyphs `section_tabs_line` paints:
+        // the title starts after the border corner + one leading space, each tab
+        // is `" {label} "` (label width + 2) and the tabs are `·`-separated.
+        let area = Rect {
+            x: 10,
+            y: 5,
+            width: 90,
+            height: 20,
+        };
+        let (m, t, f) = section_tab_rects(area);
+        // corner (10) + leading raw space (11) → the Messages tab starts at 12.
+        assert_eq!((m.x, m.width), (12, 10)); // " Messages "
+        assert_eq!((t.x, t.width), (23, 7)); //  after "·" → " Teams "
+        assert_eq!((f.x, f.width), (31, 6)); //  after "·" → " Find "
+        for r in [m, t, f] {
+            assert_eq!((r.y, r.height), (5, 1));
         }
     }
 }

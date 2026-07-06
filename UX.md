@@ -205,7 +205,15 @@ status strip at the bottom.
   row-step; `Ctrl+U` stays kill-to-start in the query) for a list behind a
   text input, where the letter aliases would be typed. This guarantees identical
   coverage so screens can't drift. The **mouse wheel** scrolls whatever list is
-  active on every screen (`input::mouse` dispatches by `Screen`).
+  active on every screen (`input::mouse` dispatches by `Screen`). The **section
+  tabs** (`Messages · Teams · Find`) woven into the right-pane border are
+  **clickable** — the mouse twin of `t` / `Alt+M`: click `Teams` to open the
+  teams section (or, from the channel-browser drill-down, to step back up to the
+  list), `Messages` to return to the conversation, `Find` to open the landing
+  (draft-safely closing any open chat). Their hit rects come from
+  `widgets::section_tab_rects` (the same geometry that lays out the tabs, so the
+  glyphs and click targets can't drift) and are handled before the per-section
+  routing so they work from every section, not just the Home.
 
 The **conversation** pane uses a custom layout (header ·
 messages · compose · status) because the message stream is a *viewer*, not
