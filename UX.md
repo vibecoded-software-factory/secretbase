@@ -670,9 +670,11 @@ swapping to full-screen views that clash.
 **The Find landing** fills the right pane when the Messages section is active
 but no conversation is open (`Screen::Inbox` + no `open_conv_id`): the `Find`
 tab lights up and `view::inbox::render_find_landing` draws the same tabbed
-picker — a search input (`Alt+F` / `/`) over your conversations with rich
-two-line rows (badges + name, then a dim `kind · age` meta line), `Enter`
-opens the highlighted one (`find_selected`, a session-local index). It reuses
+picker — a dim **`Chats` list header** (the same one the tree panel carries, so
+the list is framed identically) over a search input (`Alt+F` / `/`) and your
+conversations as rich two-line rows (badges + name, then a dim `kind · age`
+meta line); `Enter` opens the highlighted one (`find_selected`, a session-local
+index — headers are non-selectable, so they don't shift it). It reuses
 the tree's own `filtered_cache`, so the landing and the left tree always show
 the same filtered set. `draw_search_box`
 adds the `─[/]-` tag

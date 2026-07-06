@@ -485,7 +485,7 @@ fn render_find_landing(frame: &mut Frame, app: &App, area: Rect, focused: bool) 
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let rows: Vec<PickerRow> = app
+    let mut rows: Vec<PickerRow> = app
         .filtered_cache
         .iter()
         .map(|&i| {
@@ -538,6 +538,18 @@ fn render_find_landing(frame: &mut Frame, app: &App, area: Rect, focused: bool) 
             ])
         })
         .collect();
+    // A dim column header over the list — the same `Chats` header the tree
+    // panel carries, so the Find landing frames its rows identically. Headers
+    // are non-selectable, so they don't shift the `find_selected` item indices.
+    if !rows.is_empty() {
+        rows.insert(
+            0,
+            PickerRow::Header(Line::from(Span::styled(
+                "  Chats",
+                Style::default().fg(t.dim).add_modifier(Modifier::BOLD),
+            ))),
+        );
+    }
     draw_picker_tabbed(
         frame,
         t,
@@ -1041,6 +1053,37 @@ mod tests {
             app.screen,
             Screen::CommandPalette,
             "clicking the ☰ menu anchor opened the command palette"
+        );
+    }
+
+    #[test]
+    fn find_landing_carries_a_chats_header_over_its_list() {
+        use crate::domain::{Channel, Conversation, MembersType};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.conversations = vec![Conversation {
+            id: "cv1".into(),
+            channel: Channel {
+                name: "me,zoe".into(),
+                members_type: MembersType::ImpTeamNative,
+                topic_name: None,
+            },
+            unread: false,
+            active_at: 0,
+            active_at_ms: 0,
+            member_status: crate::domain::MemberStatus::Active,
+            creator_info: None,
+        }];
+        app.rebuild_lowered();
+        app.rebuild_filter_preserving_cursor();
+        app.screen = Screen::Inbox; // no conversation open → the Find landing
+        let text = render_to_text(&mut app);
+        // The tree carries `Chats` in its title + header; the Find landing adds
+        // a third — its own `Chats` list header — so it frames its rows the same.
+        assert!(
+            text.matches("Chats").count() >= 3,
+            "the Find landing renders a `Chats` list header like the tree:\n{text}"
         );
     }
 }
