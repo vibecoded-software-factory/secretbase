@@ -98,9 +98,15 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
                     } else if app.screen == Screen::ChannelActions {
                         app.channel_actions_selected = item;
                         chat::run_channel_action(app);
+                    } else if app.screen == Screen::MemberActions {
+                        app.member_actions_selected = item;
+                        chat::run_member_action(app);
                     } else if app.screen == Screen::ChannelBrowser && button == MouseButton::Right {
                         // Right-click a channel → its action menu.
                         chat::open_channel_actions(app, item);
+                    } else if app.screen == Screen::Members && button == MouseButton::Right {
+                        // Right-click a member → its action menu.
+                        chat::open_member_actions(app, item);
                     } else {
                         picker_click(app, item);
                     }
@@ -202,6 +208,11 @@ fn dismiss_overlay(app: &mut App) {
         Screen::ConfirmLogout => app.screen = Screen::Inbox,
         Screen::Settings => app.close_settings(),
         Screen::Help => app.screen = app.help_from,
+        // Right-click context menus close back to their base on a click outside.
+        Screen::MessageActions => chat::close_message_actions(app),
+        Screen::ConvActions => chat::close_conv_actions(app),
+        Screen::ChannelActions => chat::close_channel_actions(app),
+        Screen::MemberActions => chat::close_member_actions(app),
         _ => {}
     }
 }
@@ -258,6 +269,7 @@ fn picker_screen(s: Screen) -> bool {
             | Screen::MessageActions
             | Screen::ConvActions
             | Screen::ChannelActions
+            | Screen::MemberActions
     )
 }
 

@@ -63,6 +63,9 @@ pub enum Screen {
     /// / members / rename / default / new / leave / delete, operating on the
     /// selected channel.
     ChannelActions,
+    /// Per-member action menu (right-click a members-view row) — add / remove,
+    /// operating on the selected member.
+    MemberActions,
 }
 
 /// Panels inside the [`Screen::Inbox`] layout that can hold focus.

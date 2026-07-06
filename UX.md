@@ -256,8 +256,11 @@ conversation** opens its action menu (`Screen::ConvActions`,
 channels · ignore · block · report`, the mouse twin of the inbox action keys
 (one `CONV_ACTIONS` table); and **right-click a channel** in the browser opens
 `Screen::ChannelActions` — `open/join · members · rename · default · new ·
-leave · delete` (one `CHANNEL_ACTIONS` table). All render through the shared
-`view::action_menu` skeleton, so every right-click menu reads identically. In Select mode, `Enter` is the same activation: on a **reply** it
+leave · delete` (one `CHANNEL_ACTIONS` table); and **right-click a member** in
+the members view opens `Screen::MemberActions` — `add · remove` (one
+`MEMBER_ACTIONS` table). All render through the shared `view::action_menu`
+skeleton, so every right-click menu reads identically, and each closes back to
+its base on a click outside it. In Select mode, `Enter` is the same activation: on a **reply** it
 jumps to the quoted message (the search-jump machinery pages older history
 in automatically when the parent is outside the loaded window), on anything
 else it returns to Compose (`i`/`a` always do).

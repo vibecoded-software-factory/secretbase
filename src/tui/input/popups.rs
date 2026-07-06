@@ -466,3 +466,21 @@ pub fn channel_actions(app: &mut App, key: KeyEvent) {
         _ => {}
     }
 }
+
+// ── Per-member action menu (right-click a members-view row) ───────────
+
+/// The per-member action menu (`Screen::MemberActions`): navigate the fixed
+/// action list, `Enter`/`l`/`→` runs the highlighted action, `Esc` closes.
+pub fn member_actions(app: &mut App, key: KeyEvent) {
+    let len = crate::tui::flows::chat::MEMBER_ACTIONS.len();
+    if common::list_nav(&key, len, app.member_actions_selected, |i| {
+        app.member_actions_selected = i
+    }) {
+        return;
+    }
+    match key.code {
+        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right => chat::run_member_action(app),
+        KeyCode::Esc => chat::close_member_actions(app),
+        _ => {}
+    }
+}
