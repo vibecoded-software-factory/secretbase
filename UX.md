@@ -642,7 +642,8 @@ Conventions:
 **Numbered section borders.** Each list section carries a `─[N]-` tag woven into
 its top border. The inbox numbers
 its panels `─[Alt+C]-Chats` (with the live `/query` woven into its title, the
-same tree-search contract as Teams — `Alt+F` / `/` start it) and
+same tree-search contract as Teams — `Alt+F` / `/`, or a **click on the Chats
+title/header rows**, start it) and
 `─[Alt+L]-Command log`; the right pane carries the section tabs in its border
 (see the Teams-section note below) rather than a single `─[Alt+M]-` tag.
 **Teams is a *section* of this shell, not a separate screen** (`Screen::Teams`

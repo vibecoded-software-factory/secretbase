@@ -365,6 +365,13 @@ fn handle_home(app: &mut App, ev: MouseEvent) {
             crate::tui::input::conversation::submit_compose(app);
             return;
         }
+        // Chats title / header rows: click to focus Search and start filtering
+        // (the filter folds into the Chats title now). Checked before the tree
+        // rows below, which the same panel's `source` rect also covers.
+        if hit_test(c, r, app.mouse_areas.search) {
+            app.focus = Focus::Search;
+            return;
+        }
         // Tree pane (mouse_areas.source): focus + select/activate the row.
         if hit_test(c, r, app.mouse_areas.source) {
             app.focus = Focus::Tree;
