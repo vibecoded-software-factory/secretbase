@@ -520,6 +520,11 @@ thread_local! {
     /// `match` in the input layer. Cleared each frame by [`reset_scroll_regions`].
     static SCROLL_REGIONS: std::cell::RefCell<Vec<(Rect, ScrollTarget)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Frame-local rect of the **active centered overlay** (picker / confirm /
+    /// input / settings / help), if one is drawn. The mouse layer uses it for
+    /// click-outside-to-dismiss — one generic close path for every modal.
+    static MODAL_RECT: std::cell::RefCell<Option<Rect>> = const { std::cell::RefCell::new(None) };
 }
 
 /// What the mouse wheel moves when it's over a registered region. The widget
@@ -559,10 +564,24 @@ pub enum ScrollTarget {
     Giphy,
 }
 
-/// Clears the scroll registry. Called once per frame before drawing, alongside
+/// Clears the frame-local widget registries (scroll regions + the active modal
+/// rect). Called once per frame before drawing, alongside
 /// [`crate::tui::mouse_areas::MouseAreas::reset`].
 pub fn reset_scroll_regions() {
     SCROLL_REGIONS.with(|s| s.borrow_mut().clear());
+    MODAL_RECT.with(|m| *m.borrow_mut() = None);
+}
+
+/// Records the active centered-overlay rect for this frame. Every modal drawer
+/// (`draw_picker_modal`, `draw_input_popup`, the settings/help popups) calls
+/// this so the mouse layer can dismiss the overlay on a click outside it.
+pub fn register_modal(rect: Rect) {
+    MODAL_RECT.with(|m| *m.borrow_mut() = Some(rect));
+}
+
+/// The active centered-overlay rect, if one is drawn this frame.
+pub fn active_modal_rect() -> Option<Rect> {
+    MODAL_RECT.with(|m| *m.borrow())
 }
 
 /// Records a scrollable region for this frame. Overlays draw after the base
@@ -613,6 +632,7 @@ pub fn picker_row_at(column: u16, row: u16) -> Option<usize> {
 pub fn draw_picker_modal(frame: &mut Frame, theme: &Theme, m: PickerModal<'_>) {
     let area = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
+    register_modal(area); // click outside dismisses it
     draw_picker_into(frame, theme, area, true, m);
 }
 
@@ -879,6 +899,7 @@ pub fn draw_input_popup(
 ) {
     let area = center_rect(60, 7, frame.area());
     frame.render_widget(Clear, area);
+    register_modal(area); // click outside dismisses it
     let mut field = vec![Span::styled(
         format!("  {label}"),
         Style::default().fg(theme.dim),

@@ -44,6 +44,7 @@ pub fn draw_popup(frame: &mut Frame, app: &App) {
     };
 
     frame.render_widget(Clear, popup);
+    crate::tui::view::widgets::register_modal(popup); // click outside closes it
     let outer = Block::default()
         .title(Span::styled(" Settings ", accent))
         .borders(Borders::ALL)
