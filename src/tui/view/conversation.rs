@@ -212,7 +212,12 @@ fn render_compose(frame: &mut Frame, app: &mut App, area: Rect) {
 /// grammar as every legend. Skipped when the bar is too narrow.
 fn draw_compose_chips(frame: &mut Frame, app: &mut App, area: Rect) {
     let t = &app.theme;
-    let chips: [(&str, &str); 3] = [("Alt+G", "GIF"), ("Alt+I", "emoji"), ("Alt+A", "attach")];
+    let chips: [(&str, &str); 4] = [
+        ("Alt+G", "GIF"),
+        ("Alt+I", "emoji"),
+        ("Alt+A", "attach"),
+        ("Enter", "send"),
+    ];
     let text_w: usize = chips
         .iter()
         .map(|(k, l)| k.chars().count() + 1 + l.chars().count())
@@ -260,6 +265,7 @@ fn draw_compose_chips(frame: &mut Frame, app: &mut App, area: Rect) {
     app.mouse_areas.compose_gif = rects[0];
     app.mouse_areas.compose_emoji = rects[1];
     app.mouse_areas.compose_attach = rects[2];
+    app.mouse_areas.compose_send = rects[3];
 }
 
 /// The Messages-panel border caption — just the conversation name (empty when
