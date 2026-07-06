@@ -129,9 +129,16 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         );
     }
 
-    // The old search box is gone (filter lives in the Chats title now); a
-    // zero rect means no click ever lands on the removed panel.
-    app.mouse_areas.search = ratatui::layout::Rect::default();
+    // The filter lives in the Chats title now; clicking the panel's title +
+    // header rows (the `─[Alt+C]-Chats` border and the `Chats · #` header)
+    // focuses Search so a mouse user can start filtering. The conversation rows
+    // below stay the tree target.
+    app.mouse_areas.search = ratatui::layout::Rect {
+        x: tree_area.x,
+        y: tree_area.y,
+        width: tree_area.width,
+        height: 2.min(tree_area.height),
+    };
     app.mouse_areas.source = tree_area;
     app.mouse_areas.list = chat_area;
     app.mouse_areas.cmd_log = cmdlog;
@@ -977,6 +984,34 @@ mod tests {
         assert!(
             text.contains('┃'),
             "the command log renders a scrollbar thumb when it overflows:\n{text}"
+        );
+    }
+
+    #[test]
+    fn clicking_the_chats_header_focuses_search() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.screen = Screen::Inbox;
+        app.focus = Focus::Tree;
+        let _ = render_to_text(&mut app); // populates the Chats header hit rect
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        // The Chats panel's title row sits at the top-left; click its border row.
+        let r = app.mouse_areas.search;
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: r.x + 2,
+                row: r.y,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(
+            app.focus,
+            Focus::Search,
+            "clicking the Chats header focuses the filter"
         );
     }
 }
