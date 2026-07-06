@@ -33,6 +33,17 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
         );
         return;
     }
+    // A click outside any centered overlay dismisses it — one generic path for
+    // every modal (picker / confirm / input / settings / help), whose rect the
+    // drawing widget recorded this frame. A click inside falls through to the
+    // overlay's own handling below.
+    if let MouseEventKind::Down(_) = ev.kind
+        && let Some(rect) = crate::tui::view::widgets::active_modal_rect()
+        && !hit_test(ev.column, ev.row, rect)
+    {
+        dismiss_overlay(app);
+        return;
+    }
     // Section tabs woven into the Home shell's right-pane border are clickable
     // across all three sections — the mouse twin of `t` / `Alt+M`. Handle a tab
     // click before the per-screen routing below: on Teams a click otherwise
@@ -130,6 +141,29 @@ fn apply_scroll(app: &mut App, target: ScrollTarget, delta: isize) {
             let len = app.giphy.results.len();
             app.giphy.selected = clamp_move(app.giphy.selected, delta, len);
         }
+    }
+}
+
+/// Dismisses the active centered overlay — the mouse twin of `Esc`. Called when
+/// a click lands outside the overlay's rect. Confirms cancel (the safe default);
+/// help/settings step back to their base screen.
+fn dismiss_overlay(app: &mut App) {
+    match app.screen {
+        Screen::React => chat::close_react(app),
+        Screen::GiphySearch => chat::close_giphy_search(app),
+        Screen::QuickSwitcher => chat::close_quick_switcher(app),
+        Screen::CommandPalette => crate::tui::flows::palette::close_command_palette(app),
+        Screen::ConvSearch => chat::close_conv_search(app),
+        Screen::SearchGlobal => chat::close_search_global(app),
+        Screen::Members => chat::close_members(app),
+        Screen::NewConversation => chat::close_new_conversation(app),
+        Screen::UnhideConversation => chat::close_unhide(app),
+        Screen::ConfirmDeleteMessage => chat::close_delete_confirm(app),
+        Screen::ConfirmConvAction => chat::cancel_conv_action(app),
+        Screen::ConfirmLogout => app.screen = Screen::Inbox,
+        Screen::Settings => app.close_settings(),
+        Screen::Help => app.screen = app.help_from,
+        _ => {}
     }
 }
 

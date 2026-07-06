@@ -34,6 +34,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         popup,
         crate::tui::view::widgets::ScrollTarget::Help,
     );
+    crate::tui::view::widgets::register_modal(popup); // click outside closes it
 
     let inner = Rect {
         x: popup.x + 1,

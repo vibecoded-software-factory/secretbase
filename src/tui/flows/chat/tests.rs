@@ -4911,6 +4911,43 @@ fn clicking_the_teams_tab_steps_up_from_the_channel_browser() {
 }
 
 #[test]
+fn clicking_outside_a_centered_overlay_dismisses_it() {
+    // A real draw records the overlay's modal rect; a click outside it routes
+    // through the generic `dismiss_overlay` path — one close for every overlay.
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut rig = build_rig();
+    set_identity(&mut rig.app, "alice");
+    rig.app.screen = Screen::Inbox;
+    crate::tui::flows::palette::open_command_palette(&mut rig.app);
+    assert_eq!(rig.app.screen, Screen::CommandPalette);
+
+    // Draw so the palette registers its centered-modal rect for this frame.
+    let mut term = Terminal::new(TestBackend::new(90, 30)).unwrap();
+    term.draw(|f| crate::tui::view::draw(f, &mut rig.app))
+        .unwrap();
+    rig.app.last_terminal_size = rig.app.mouse_areas.frame_size;
+
+    // Click the top-left corner — well outside the centered modal.
+    crate::tui::input::mouse::handle(
+        &mut rig.app,
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        },
+    );
+    assert_ne!(
+        rig.app.screen,
+        Screen::CommandPalette,
+        "a click outside the overlay dismissed it"
+    );
+}
+
+#[test]
 fn apply_response_drops_message_when_no_in_flight_slot() {
     // A response arriving without a matching in-flight context is
     // a worker/main-thread disagreement that should NEVER happen

@@ -226,7 +226,12 @@ messages · compose · status) because the message stream is a *viewer*, not
 a grid. **Every picker row is clickable** — click selects, clicking the selected
 row activates (open/run/react/jump/join/send, per screen); the hit map is
 recorded by the shared skeleton itself, so a new picker is clickable for
-free. The screen is mouse-interactive: click a message to select it
+free. **Every centered overlay dismisses on a click outside it** — the mouse
+twin of `Esc`: each modal drawer (`draw_picker_modal` / `draw_input_popup` /
+the settings and help popups) records its rect (`widgets::register_modal`,
+cleared each frame), and `input::mouse` routes an outside-click through one
+`dismiss_overlay` table (confirms cancel — the safe default). A new overlay is
+dismissable for free once it registers its rect. The screen is mouse-interactive: click a message to select it
 (enters select mode on that row), click the **already-selected** row again
 to *activate* it — a reply jumps to the message it quotes (the
 select-then-activate the tree click uses) — and scroll the wheel to page
