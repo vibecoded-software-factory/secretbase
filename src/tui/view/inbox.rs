@@ -1014,4 +1014,33 @@ mod tests {
             "clicking the Chats header focuses the filter"
         );
     }
+
+    #[test]
+    fn clicking_the_menu_anchor_opens_the_command_palette() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.screen = Screen::Inbox;
+        let _ = render_to_text(&mut app);
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        // The `☰ menu` anchor is the left-most of the right-aligned status anchor
+        // (`☰ menu · F1 help · F10 settings`, 31 chars) on the status row (29).
+        // area starts after the mode badge (`-- NORMAL -- `, 13); ends at 90 →
+        // the anchor starts at col 59, `☰ menu` spans 59–64.
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 61,
+                row: 29,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(
+            app.screen,
+            Screen::CommandPalette,
+            "clicking the ☰ menu anchor opened the command palette"
+        );
+    }
 }

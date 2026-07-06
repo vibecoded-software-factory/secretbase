@@ -191,8 +191,10 @@ status strip at the bottom.
   `app::UiMode`), then **condition badges**
   for states that persist as long
   as they're true (`⚠ WORKER DEAD` error+bold; `⇅ reconnecting…` dim while
-  the push stream is down), then the per-focus footer hint, with **`F1 help ·
-  F10 settings` anchored right** (the signed-in `@username` lives in the
+  the push stream is down), then the per-focus footer hint, with **`☰ menu ·
+  F1 help · F10 settings` anchored right** (all three clickable — `☰ menu` opens
+  the command palette, the **mouse gateway** to the switcher / searches / every
+  action for a keyboard-free user; the signed-in `@username` lives in the
   identity chip atop the tree). The **attention badge** (`●N unread · @N
   mentions`, drained by `Ctrl+N`: mentions → DMs → team channels, most recent
   first) and the **action feedback** (spinner / ✓ / ✗) moved to the **dynamic
