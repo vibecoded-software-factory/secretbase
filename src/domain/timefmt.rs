@@ -94,7 +94,6 @@ pub fn day_divider_label(sent_at_s: u64, now_s: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn relative_short_buckets() {
@@ -112,10 +111,15 @@ mod tests {
         // No timestamp / future → empty.
         assert_eq!(message_time(0, 600), "");
         assert_eq!(message_time(200, 100), "");
-        // A few seconds ago is the same local day → relative.
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
+        // A few seconds ago is the same local day → relative. Anchor `now` to
+        // **local noon today** (not the wall clock) so `now - 90` can't cross
+        // the local midnight boundary and flip to a clock time near midnight.
+        let today = chrono::Local::now().date_naive();
+        let noon = today.and_hms_opt(12, 0, 0).unwrap();
+        let now = noon
+            .and_local_timezone(chrono::Local)
+            .single()
+            .map(|dt| dt.timestamp() as u64)
             .unwrap_or(1_000_000);
         assert_eq!(message_time(now - 3, now), "now");
         assert_eq!(message_time(now - 42, now), "now");
