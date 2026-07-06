@@ -11,7 +11,7 @@ use crate::tui::input::common::clamp_move;
 use crate::tui::input::conversation;
 use crate::tui::mouse_areas::hit_test;
 use crate::tui::screens::{Focus, Screen};
-use crate::tui::view::widgets::{ScrollTarget, table_row_at};
+use crate::tui::view::widgets::{ClickAction, ScrollTarget, table_row_at};
 
 pub fn handle(app: &mut App, ev: MouseEvent) {
     // Reject clicks whose coordinates predate the most recent resize.
@@ -42,6 +42,16 @@ pub fn handle(app: &mut App, ev: MouseEvent) {
         && !hit_test(ev.column, ev.row, rect)
     {
         dismiss_overlay(app);
+        return;
+    }
+    // Clickable chrome buttons (confirm yes/no, the F1/F10 status anchor) — the
+    // mouse twin of their keys. Checked after the click-outside dismiss so a
+    // click *inside* a confirm popup reaches its buttons, while a click outside
+    // still cancels.
+    if let MouseEventKind::Down(_) = ev.kind
+        && let Some(action) = crate::tui::view::widgets::button_at(ev.column, ev.row)
+    {
+        apply_click_action(app, action);
         return;
     }
     // Section tabs woven into the Home shell's right-pane border are clickable
@@ -169,6 +179,43 @@ fn dismiss_overlay(app: &mut App) {
         Screen::ConfirmLogout => app.screen = Screen::Inbox,
         Screen::Settings => app.close_settings(),
         Screen::Help => app.screen = app.help_from,
+        _ => {}
+    }
+}
+
+/// Dispatches a click on a registered chrome button — the mouse twin of its key.
+fn apply_click_action(app: &mut App, action: ClickAction) {
+    match action {
+        ClickAction::ConfirmYes => confirm_active(app),
+        // Cancel is the safe default — the same path a click-outside takes.
+        ClickAction::ConfirmNo => dismiss_overlay(app),
+        ClickAction::OpenHelp => {
+            if app.screen == Screen::Help {
+                app.screen = app.help_from;
+            } else {
+                app.help_from = app.screen;
+                app.screen = Screen::Help;
+            }
+        }
+        ClickAction::OpenSettings => app.open_settings(),
+    }
+}
+
+/// Commits the active confirm popup (the `[ confirm ]` click) — mirrors each
+/// confirm's `run_confirm` commit closure.
+fn confirm_active(app: &mut App) {
+    match app.screen {
+        Screen::ConfirmLogout => {
+            // Return to the inbox; only `handle_logout_response` moves to Login.
+            app.screen = Screen::Inbox;
+            crate::tui::flows::auth::request_logout(app);
+        }
+        Screen::ConfirmConvAction => chat::confirm_conv_action(app),
+        Screen::ConfirmDeleteMessage => {
+            app.screen = Screen::Inbox;
+            app.focus = Focus::Chat;
+            chat::request_delete_selected_message(app);
+        }
         _ => {}
     }
 }

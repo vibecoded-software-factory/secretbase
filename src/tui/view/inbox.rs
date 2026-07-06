@@ -827,4 +827,60 @@ mod tests {
             "content is inset from the left border:\n{text}"
         );
     }
+
+    #[test]
+    fn clicking_the_confirm_button_commits_and_cancel_dismisses() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        // Render the logout confirm so its `[ confirm ] [ cancel ]` buttons
+        // register their rects; a click on `[ confirm ]` commits (leaves the
+        // popup). center_rect(80,22) on 90×30 → modal x=9,y=4; the action row is
+        // the modal's bottom line (y=24), `[ confirm ]` at x≈12.
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.screen = Screen::ConfirmLogout;
+        let _ = render_to_text(&mut app);
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 15,
+                row: 24,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_ne!(
+            app.screen,
+            Screen::ConfirmLogout,
+            "clicking [ confirm ] committed / left the popup"
+        );
+    }
+
+    #[test]
+    fn clicking_the_help_anchor_opens_help() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mut app = app();
+        app.identity.logged_in = true;
+        app.identity.username = "me".into();
+        app.screen = Screen::Inbox;
+        let _ = render_to_text(&mut app);
+        app.last_terminal_size = app.mouse_areas.frame_size;
+        // The `F1 help · F10 settings` anchor is right-aligned on the status row
+        // (row 29 of 90×30); `F1 help` occupies cols 68–74.
+        crate::tui::input::mouse::handle(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 70,
+                row: 29,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(
+            app.screen,
+            Screen::Help,
+            "clicking the F1 anchor opened help"
+        );
+    }
 }

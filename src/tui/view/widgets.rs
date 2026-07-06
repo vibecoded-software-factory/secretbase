@@ -522,6 +522,28 @@ thread_local! {
     /// input / settings / help), if one is drawn. The mouse layer uses it for
     /// click-outside-to-dismiss — one generic close path for every modal.
     static MODAL_RECT: std::cell::RefCell<Option<Rect>> = const { std::cell::RefCell::new(None) };
+
+    /// Frame-local **clickable-button registry**: chrome that looks like a
+    /// button (confirm yes/no, the `F1`/`F10` status anchor, …) records its
+    /// rect + a [`ClickAction`] here as it draws, so the mouse layer dispatches
+    /// a click on it generically — the same pattern as the scroll registry.
+    static BUTTONS: std::cell::RefCell<Vec<(Rect, ClickAction)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A semantic action a rendered "button" triggers on click — the mouse twin of
+/// its keybinding. Registered by the widget that draws the button
+/// ([`register_button`]) and dispatched by the input layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClickAction {
+    /// Commit the active confirm popup (the highlighted `[ confirm ]`).
+    ConfirmYes,
+    /// Cancel the active confirm popup (`[ cancel ]`).
+    ConfirmNo,
+    /// Toggle the help overlay (the `F1 help` anchor).
+    OpenHelp,
+    /// Open the settings overlay (the `F10 settings` anchor).
+    OpenSettings,
 }
 
 /// What the mouse wheel moves when it's over a registered region. The widget
@@ -567,6 +589,28 @@ pub enum ScrollTarget {
 pub fn reset_scroll_regions() {
     SCROLL_REGIONS.with(|s| s.borrow_mut().clear());
     MODAL_RECT.with(|m| *m.borrow_mut() = None);
+    BUTTONS.with(|b| b.borrow_mut().clear());
+}
+
+/// Records a clickable button for this frame (rect + the action it triggers).
+pub fn register_button(rect: Rect, action: ClickAction) {
+    if rect.width > 0 && rect.height > 0 {
+        BUTTONS.with(|b| b.borrow_mut().push((rect, action)));
+    }
+}
+
+/// The action of the clickable button under `(column, row)`, if any — the
+/// last-registered (top-most) match.
+pub fn button_at(column: u16, row: u16) -> Option<ClickAction> {
+    BUTTONS.with(|b| {
+        b.borrow()
+            .iter()
+            .rev()
+            .find(|(r, _)| {
+                column >= r.x && column < r.x + r.width && row >= r.y && row < r.y + r.height
+            })
+            .map(|(_, a)| *a)
+    })
 }
 
 /// Records the active centered-overlay rect for this frame. Every modal drawer
@@ -988,6 +1032,33 @@ pub fn draw_confirm_popup(
             scroll_target: None,
         },
     );
+    // Make the `[ confirm ] [ cancel ]` action row clickable — the mouse twin of
+    // y/n. The row is the last inner line of the standard modal; the buttons
+    // follow `inline_confirm_line`'s fixed layout: 2-space inset, `[ confirm ]`
+    // (verb + 4), a space, then `[ cancel ]`.
+    let modal = center_rect(MODAL_WIDTH_PCT, MODAL_HEIGHT, frame.area());
+    let row_y = modal.y + modal.height.saturating_sub(2);
+    let x0 = modal.x + 1 + 2; // inner + the 2-space inset
+    let yes_w = "[ confirm ]".len() as u16;
+    let no_w = "[ cancel ]".len() as u16;
+    register_button(
+        Rect {
+            x: x0,
+            y: row_y,
+            width: yes_w,
+            height: 1,
+        },
+        ClickAction::ConfirmYes,
+    );
+    register_button(
+        Rect {
+            x: x0 + yes_w + 1,
+            y: row_y,
+            width: no_w,
+            height: 1,
+        },
+        ClickAction::ConfirmNo,
+    );
 }
 
 /// Shared single-line search/filter box: a titled block holding the live
@@ -1369,6 +1440,34 @@ pub fn draw_status_strip(frame: &mut Frame, app: &App, full_area: Rect, footer_h
         ),
         area,
     );
+    // The anchor is clickable — the mouse twin of the function keys. It's
+    // right-aligned in `area`; split it into its two labels by char width (the
+    // `·` separator is multi-byte, so count chars, not bytes).
+    let anchor_len = HELP_ANCHOR.chars().count() as u16;
+    if area.width >= anchor_len {
+        let ax = area.x + area.width - anchor_len;
+        let help_w = "F1 help".chars().count() as u16;
+        let sep_w = " · ".chars().count() as u16;
+        let set_w = "F10 settings".chars().count() as u16;
+        register_button(
+            Rect {
+                x: ax,
+                y: area.y,
+                width: help_w,
+                height: 1,
+            },
+            ClickAction::OpenHelp,
+        );
+        register_button(
+            Rect {
+                x: ax + help_w + sep_w,
+                y: area.y,
+                width: set_w,
+                height: 1,
+            },
+            ClickAction::OpenSettings,
+        );
+    }
 }
 
 /// A minimal bottom hint bar — `footer_hint` fit to the width (whole `·`
